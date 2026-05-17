@@ -945,7 +945,3 @@ MVPではWebhookへJSONをPOSTする。
 - Discord Webhook URLは環境変数による全体共有ではなく、ユーザー別にDB暗号化保存する。
 - Provider別の文字数/トークン換算ルールはMVPでは実装しない。
 - 後続フェーズでProvider別TokenCounterを実装し、公式APIまたは公式Tokenizerを使って事前見積もりする。
-
-## 19. 未確定事項
-
-- なし
