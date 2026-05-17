@@ -454,6 +454,7 @@ todo.md の T-1303 API結合テストを実装して。
 - ライター管理
 - 月次利用量集計
 - 利用文字数の課金
+- Provider別TokenCounterによるトークン事前見積もり
 - WordPressメディアアップロード
 - WordPress投稿時のアイキャッチ画像URL指定
 - Discord以外の通知プロバイダー

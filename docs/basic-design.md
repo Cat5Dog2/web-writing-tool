@@ -477,6 +477,7 @@ public enum JobType
 ### 8.5 文字数利用履歴
 
 `UsageLedgers`は加算専用の台帳とする。MVPではAI生成ごとの利用履歴を保存するだけに留め、月次利用量集計、残り文字数算出、課金計算、文字数消費に基づく上限制御は行わない。
+MVPではProvider別の文字数/トークン換算とトークン事前見積もりを実装しない。後続フェーズでProvider別TokenCounterを追加し、公式APIまたは公式Tokenizerを使って事前見積もりする。
 
 | カラム | 型 | 制約 |
 | --- | --- | --- |
@@ -900,3 +901,4 @@ Playwright for .NETを想定する。
 - 初期実装の通知プロバイダーはDiscordのみとし、Discord以外の通知プロバイダーは後続フェーズで扱う。
 - Gemini以外のAI Provider対応はMVPに含めない。後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択可能にする。
 - Discord Webhook URLは環境変数による全体共有ではなく、ユーザー別にDB暗号化保存する。
+- Provider別の文字数/トークン換算ルールはMVPでは実装しない。後続フェーズでProvider別TokenCounterを実装し、公式APIまたは公式Tokenizerを使って事前見積もりする。
