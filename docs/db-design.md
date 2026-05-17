@@ -539,7 +539,7 @@ WordPress投稿履歴を保存する。
 
 ### 6.12 `NotificationSettings`
 
-通知設定を保存する。MVPではユーザーごとにDiscord Webhook 1件を想定する。
+通知設定を保存する。MVPではユーザーごとにDiscord Webhook 1件を想定し、Webhook URLはユーザー別に暗号化保存する。環境変数による全体共有Webhookは使用しない。
 
 | カラム | 型 | NULL | 制約 | 説明 |
 | --- | --- | --- | --- | --- |

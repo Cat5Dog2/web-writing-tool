@@ -88,7 +88,7 @@ public sealed class ExternalIntegrationOptions
 | `SearchProviderOptions` | TavilyEndpoint、TavilyApiKey、XEndpoint、XBearerToken、DefaultRegion、MaxResults、環境別CacheTtl |
 | `ImageProviderOptions` | Provider、Model、ApiKey、OutputPath。MVP外 |
 | `WordpressOptions` | Timeout、RetryCount、AllowedSchemes |
-| `NotificationOptions` | Provider、WebhookUrl、Timeout |
+| `NotificationOptions` | Provider、Timeout。Discord Webhook URLはユーザー別にDB暗号化保存する |
 
 ### 5.3 秘密情報
 
@@ -99,7 +99,7 @@ public sealed class ExternalIntegrationOptions
 | X API Bearer Token | 環境変数またはSecret Manager | DB保存しない |
 | 画像生成API Key | 環境変数またはSecret Manager | MVPでは使用しない |
 | WordPress Application Password | DB暗号化保存 | レスポンスに含めない |
-| Discord Webhook URL | 環境変数またはDB暗号化保存 | レスポンスに含めない |
+| Discord Webhook URL | ユーザー別DB暗号化保存 | レスポンスに含めない |
 
 本番の秘密情報は`.env`やVPS環境変数で渡す場合も、Git管理しない。
 
@@ -935,8 +935,8 @@ MVPではWebhookへJSONをPOSTする。
 
 - Gemini以外のAI Provider対応はMVP対象外とする。
 - 後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択できるようにする。
+- Discord Webhook URLは環境変数による全体共有ではなく、ユーザー別にDB暗号化保存する。
 
 ## 19. 未確定事項
 
-- Discord Webhook URLを環境変数で全体共有にするか、ユーザー別暗号化保存にするか。
 - Provider別の文字数/トークン換算ルール。
