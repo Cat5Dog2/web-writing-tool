@@ -237,7 +237,7 @@ ASP.NET CoreのCookie認証や一部トークン保護に必要なData Protectio
 | `Queued` | 通常処理対象 |
 | `Processing` | `LockedUntil`期限切れ後に再取得 |
 | `RetryWaiting` | `NextRunAt`到達後に再実行 |
-| `Failed` | 管理画面から再実行可 |
+| `Failed` | MVPでは記事詳細・生成結果画面から再実行可。管理者向け横断画面での復旧は後続フェーズ |
 | `Completed` | 再実行しない |
 | `Cancelled` | 再実行しない |
 
