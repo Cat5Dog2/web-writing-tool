@@ -561,7 +561,8 @@ Providerごとの実装:
 - HTTP通信、認証ヘッダー、リトライ、タイムアウトはInfrastructure層で行う。
 - APIキーはOptionsから取得し、ログに出力しない。
 - レスポンスは共通DTOへ変換する。
-- 後続フェーズでOpenAIなど別Providerを追加できるよう、Application層は`IAiTextGenerationClient`にのみ依存する。
+- Gemini以外のAI Provider対応はMVP対象外とし、後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択できるようにする。
+- 後続フェーズで別Providerを追加できるよう、Application層は`IAiTextGenerationClient`にのみ依存する。
 
 ### 11.2 Web検索
 
@@ -897,3 +898,4 @@ Playwright for .NETを想定する。
 - WordPress投稿時のメディアアップロードはMVPに含めない。MVPではアイキャッチ画像URL指定も対応しない。
 - MVPではアイキャッチ画像の作成・生成・加工、外部画像URLの保存・表示、画像ファイル保存、画像メタデータ保存に対応しない。
 - 初期実装の通知プロバイダーはDiscordのみとし、Discord以外の通知プロバイダーは後続フェーズで扱う。
+- Gemini以外のAI Provider対応はMVPに含めない。後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択可能にする。

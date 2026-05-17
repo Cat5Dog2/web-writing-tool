@@ -11,6 +11,7 @@
 | 連携先 | 用途 | 実行主体 | MVP対象 |
 | --- | --- | --- | --- |
 | Google Gemini | タイトル、見出し、本文、リライト生成 | BackgroundService | 対象 |
+| OpenAI GPT / Anthropic ClaudeなどのAI Provider | テキスト生成Providerの追加・選択 | BackgroundService | 対象外 |
 | Tavily Search API | 構成生成、本文生成の参考情報取得 | BackgroundService | 対象 |
 | X API Full-Archive Search | キーワード関連投稿、口コミ、時系列情報の取得 | BackgroundService | 対象 |
 | 画像生成API | アイキャッチ画像生成 | BackgroundService | 対象外 |
@@ -166,6 +167,7 @@ public sealed class ExternalIntegrationOptions
 - リライト
 
 MVPの採用ProviderはGoogle Gemini、採用モデルはGoogle Gemini 3.1 Pro Previewとする。APIモデルIDは`gemini-3.1-pro-preview`、利用可能リージョンはJapanとする。
+Gemini以外のAI Provider対応はMVP対象外とし、後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択可能にする。
 
 ### 8.2 共通インターフェース
 
@@ -224,6 +226,7 @@ public sealed class AiTextGenerationResult
 | レスポンス形式 | Provider別Clientで共通DTO化 |
 | レート制限レスポンス | 共通エラー変換 |
 | 使用量情報 | 取得可能なら共通DTOへ反映 |
+| Provider選択 | MVPはGemini固定。後続フェーズでGPT、Claudeなどの選択を追加 |
 
 ### 8.6 プロンプト管理
 
@@ -928,8 +931,12 @@ MVPではWebhookへJSONをPOSTする。
 11. ジョブHandlerへの組み込み
 12. 外部APIモックを使った結合テスト
 
-## 18. 未確定事項
+## 18. 決定事項
 
-- Gemini以外のAI Provider対応有無。
+- Gemini以外のAI Provider対応はMVP対象外とする。
+- 後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択できるようにする。
+
+## 19. 未確定事項
+
 - Discord Webhook URLを環境変数で全体共有にするか、ユーザー別暗号化保存にするか。
 - Provider別の文字数/トークン換算ルール。

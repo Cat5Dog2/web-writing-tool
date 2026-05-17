@@ -457,6 +457,7 @@ todo.md の T-1303 API結合テストを実装して。
 - WordPressメディアアップロード
 - WordPress投稿時のアイキャッチ画像URL指定
 - Discord以外の通知プロバイダー
+- Gemini以外のAI Provider選択（OpenAI GPT、Anthropic Claudeなど）
 - Workerコンテナ分離
 - MFA
 - CSP強制化
