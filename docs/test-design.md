@@ -35,7 +35,7 @@ AI生成やWordPress投稿など外部依存が多いため、単体テスト、
 | 種別 | 目的 | 主なツール | 実行頻度 |
 | --- | --- | --- | --- |
 | 単体テスト | 業務ロジックを高速検証 | xUnit | 常時 |
-| コンポーネントテスト | Blazorコンポーネント単体検証 | bUnit候補 + xUnit | 必要時 |
+| コンポーネントテスト | Blazorコンポーネント単体検証 | bUnit + xUnit | 必要時 |
 | 結合テスト | API、DI、DB、認証、外部モック検証 | xUnit + WebApplicationFactory | PRごと |
 | DBテスト | PostgreSQL固有挙動検証 | xUnit + Testcontainers候補 / Docker Compose | PRごと |
 | ジョブテスト | BackgroundService、ロック、リトライ検証 | xUnit + PostgreSQL | PRごと |
@@ -52,10 +52,24 @@ AI生成やWordPress投稿など外部依存が多いため、単体テスト、
 | 結合テスト | xUnit + `WebApplicationFactory` |
 | DBテスト | xUnit + PostgreSQL |
 | ジョブテスト | xUnit |
-| コンポーネントテスト | bUnitを採用する場合もxUnit上で実行 |
+| コンポーネントテスト | bUnit + xUnit |
 | E2Eテスト | Playwright for .NETをxUnitランナーで実行 |
 
 新規テストプロジェクトではxUnit v3を第一候補とし、導入時点の.NET SDK、Playwright、bUnit、CI環境との互換性に問題がある場合のみxUnit v2を選択する。
+
+### 4.2 Blazorコンポーネントテスト方針
+
+BlazorコンポーネントテストにはbUnitを採用する。ただしMVPでは対象を再利用コンポーネントと状態表示に絞り、主要ユーザーフローはPlaywright E2Eで検証する。
+
+| 項目 | 方針 |
+| --- | --- |
+| 採用ツール | bUnit |
+| テストランナー | xUnit |
+| MVP対象 | 再利用コンポーネント、入力フォーム、モーダル、状態表示 |
+| 優先対象 | `UsageSummary`、`ArticleSearchForm`、`BulkCreateModal`、`WordpressPostModal`、`JobStatusBadge` |
+| 検証観点 | パラメータ反映、入力バリデーション、条件付き表示、ボタン有効/無効、イベント発火 |
+| 対象外 | 画面全体の業務フロー、ブラウザ固有挙動、JS依存挙動、ドラッグ操作 |
+| 主要フロー | Playwright E2Eで検証 |
 
 ## 5. テストプロジェクト構成
 
@@ -553,7 +567,6 @@ MVP実装完了時点で以下を満たす。
 
 ## 18. 未確定事項
 
-- BlazorコンポーネントテストにbUnitを採用するか。
 - PostgreSQL結合テストをTestcontainersにするかDocker Composeにするか。
 - E2EをPRごとに全件実行するか、最小セットにするか。
 - 性能テストをCIへ組み込むか、リリース前手動にするか。
