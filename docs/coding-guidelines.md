@@ -477,6 +477,7 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 - ジョブが多重実行されないか。
 - DBクエリがページングされているか。
 - Runningジョブがある削除操作を拒否できるか。
+- 記事削除時に関連するQueuedジョブをCanceledへ更新できるか。
 - X投稿のTTLと再取得ルールが守られているか。
 - WordPress投稿の既定がDraftになっているか。
 - `compliance_strict`でPublishが抑止されるか。

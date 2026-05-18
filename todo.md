@@ -140,7 +140,7 @@
 
 - [ ] `T-0304` 記事詳細、更新、論理削除APIを実装する。
   - Endpoint: `GET/PUT/DELETE /api/articles/{articleId}`
-  - 完了条件: Runningジョブがある記事は削除不可。
+  - 完了条件: Runningジョブがある記事は削除不可。Queuedジョブは削除時にCanceledへ更新される。
 
 - [ ] `T-0305` 記事一覧画面を実装する。
   - 参照: `docs/screen-design.md`

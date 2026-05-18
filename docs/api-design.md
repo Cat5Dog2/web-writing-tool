@@ -418,6 +418,7 @@ DELETE /api/articles/{articleId}
 
 - `DeletedAt`を設定する論理削除。
 - 関連するジョブが`Running`の場合は削除不可。
+- 関連する`Queued`ジョブは同一トランザクションで`Canceled`へ更新する。
 
 Response:
 
@@ -1372,6 +1373,7 @@ Response `200 OK`:
 - 利用上限超過時はジョブ登録を拒否する。
 - 投稿可能な記事ステータスは`Completed`または`Posted`とする。
 - `Running`ジョブが存在する記事は削除不可とする。
+- 記事削除時、同一記事に紐づく`Queued`ジョブは`Canceled`へ更新する。
 - `Running`ジョブが存在するユーザーは管理者削除不可とする。
 - 管理者自身と最後のAdminユーザーは削除不可とする。
 - 最後のAdminユーザーは降格、無効化不可とする。

@@ -191,6 +191,7 @@ tests/
 | `IT-API-006` | `PUT /api/articles/{articleId}` | 他ユーザー記事 | 403または404 |
 | `IT-API-007` | `DELETE /api/articles/{articleId}` | Runningジョブあり | 409 |
 | `IT-API-008` | `DELETE /api/articles/{articleId}` | 正常 | 204、論理削除 |
+| `IT-API-009` | `DELETE /api/articles/{articleId}` | Queuedジョブあり | 204、QueuedジョブがCanceled |
 
 ### 8.3 Headings API
 
