@@ -131,7 +131,7 @@ tests/
 | テストID | 対象 | 観点 |
 | --- | --- | --- |
 | `UT-DOM-001` | ArticleStatus | 構成生成、本文生成、投稿の状態遷移 |
-| `UT-DOM-002` | HeadingStatus | 生成中、生成済み、失敗の遷移 |
+| `UT-DOM-002` | HeadingStatus | 待機、生成中、生成済み、失敗の遷移 |
 | `UT-DOM-003` | JobStatus | QueuedからRunning/Succeeded/Failed/Canceled |
 | `UT-DOM-004` | タグ処理 | カンマ区切り、空白除去、重複除去 |
 | `UT-DOM-005` | 文字数計算 | 日本語、改行、記号を含む文字数 |
@@ -316,8 +316,8 @@ tests/
 
 | テストID | 対象 | 観点 |
 | --- | --- | --- |
-| `IT-JOB-001` | OutlineGeneration登録 | ArticleとJobが作成される |
-| `IT-JOB-002` | BodyGeneration登録 | HeadingId付きJobが作成される |
+| `IT-JOB-001` | OutlineGeneration登録 | Jobが作成され、Articleが`OutlineQueued`になる |
+| `IT-JOB-002` | BodyGeneration登録 | HeadingId付きJobが作成され、対象Headingが`Queued`になる |
 | `IT-JOB-003` | 多重登録防止 | 同一HeadingのRunningがあると409 |
 | `IT-JOB-004` | 利用上限 | 上限超過でJobを作らない |
 
