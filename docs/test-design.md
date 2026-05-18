@@ -35,12 +35,27 @@ AI生成やWordPress投稿など外部依存が多いため、単体テスト、
 | 種別 | 目的 | 主なツール | 実行頻度 |
 | --- | --- | --- | --- |
 | 単体テスト | 業務ロジックを高速検証 | xUnit | 常時 |
-| コンポーネントテスト | Blazorコンポーネント単体検証 | bUnit候補 | 必要時 |
-| 結合テスト | API、DI、DB、認証、外部モック検証 | WebApplicationFactory | PRごと |
-| DBテスト | PostgreSQL固有挙動検証 | Testcontainers候補 / Docker Compose | PRごと |
+| コンポーネントテスト | Blazorコンポーネント単体検証 | bUnit候補 + xUnit | 必要時 |
+| 結合テスト | API、DI、DB、認証、外部モック検証 | xUnit + WebApplicationFactory | PRごと |
+| DBテスト | PostgreSQL固有挙動検証 | xUnit + Testcontainers候補 / Docker Compose | PRごと |
 | ジョブテスト | BackgroundService、ロック、リトライ検証 | xUnit + PostgreSQL | PRごと |
-| E2Eテスト | 主要画面フロー検証 | Playwright for .NET | PRまたは夜間 |
+| E2Eテスト | 主要画面フロー検証 | xUnit + Playwright for .NET | PRまたは夜間 |
 | 手動受け入れ | 画像に近いUI・操作性確認 | ブラウザ | リリース前 |
+
+### 4.1 テストフレームワーク方針
+
+テストフレームワークはxUnitに固定する。単体テスト、結合テスト、DBテスト、ジョブテスト、E2EテストでNUnit/MSTestを混在させない。
+
+| 種別 | 方針 |
+| --- | --- |
+| 単体テスト | xUnit |
+| 結合テスト | xUnit + `WebApplicationFactory` |
+| DBテスト | xUnit + PostgreSQL |
+| ジョブテスト | xUnit |
+| コンポーネントテスト | bUnitを採用する場合もxUnit上で実行 |
+| E2Eテスト | Playwright for .NETをxUnitランナーで実行 |
+
+新規テストプロジェクトではxUnit v3を第一候補とし、導入時点の.NET SDK、Playwright、bUnit、CI環境との互換性に問題がある場合のみxUnit v2を選択する。
 
 ## 5. テストプロジェクト構成
 
@@ -538,7 +553,6 @@ MVP実装完了時点で以下を満たす。
 
 ## 18. 未確定事項
 
-- テストフレームワークをxUnit固定にするか。
 - BlazorコンポーネントテストにbUnitを採用するか。
 - PostgreSQL結合テストをTestcontainersにするかDocker Composeにするか。
 - E2EをPRごとに全件実行するか、最小セットにするか。
