@@ -160,7 +160,7 @@ example.com {
 | エンドポイント | 用途 | 内容 |
 | --- | --- | --- |
 | `/health/live` | liveness | プロセス生存確認 |
-| `/health/ready` | readiness | DB接続、マイグレーション状態、Storage書込確認 |
+| `/health/ready` | readiness | PostgreSQL接続、BackgroundService状態確認 |
 | `/health/deps` | 依存先確認 | 外部APIの簡易疎通。管理者限定 |
 
 `/health/live`は軽量にし、外部APIを呼び出さない。外部API障害でコンテナが不必要に再起動されないようにする。
