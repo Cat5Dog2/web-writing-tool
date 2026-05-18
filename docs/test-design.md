@@ -37,7 +37,7 @@ AI生成やWordPress投稿など外部依存が多いため、単体テスト、
 | 単体テスト | 業務ロジックを高速検証 | xUnit | 常時 |
 | コンポーネントテスト | Blazorコンポーネント単体検証 | bUnit + xUnit | 必要時 |
 | 結合テスト | API、DI、DB、認証、外部モック検証 | xUnit + WebApplicationFactory | PRごと |
-| DBテスト | PostgreSQL固有挙動検証 | xUnit + Testcontainers候補 / Docker Compose | PRごと |
+| DBテスト | PostgreSQL固有挙動検証 | xUnit + Testcontainers for .NET | PRごと |
 | ジョブテスト | BackgroundService、ロック、リトライ検証 | xUnit + PostgreSQL | PRごと |
 | E2Eテスト | 主要画面フロー検証 | xUnit + Playwright for .NET | PRまたは夜間 |
 | 手動受け入れ | 画像に近いUI・操作性確認 | ブラウザ | リリース前 |
@@ -262,10 +262,23 @@ tests/
 ### 9.1 方針
 
 - PostgreSQL固有機能を使うため、PostgreSQLで検証する。
-- 候補はTestcontainers for .NETまたはDocker ComposeのテストDB。
+- PostgreSQL結合テストはTestcontainers for .NETを第一候補とする。
+- Docker ComposeのテストDBは、本番相当構成の確認、E2E、手動検証で使用する。
 - EF Core InMemory ProviderはDB制約、SQL、トランザクション、PostgreSQL型の検証には使用しない。
 
-### 9.2 テスト観点
+### 9.2 PostgreSQLテストDB方針
+
+| 項目 | 方針 |
+| --- | --- |
+| 第一候補 | Testcontainers for .NET |
+| 対象 | API結合テスト、DB結合テスト、ジョブ結合テスト |
+| DB | 実PostgreSQLコンテナ |
+| 初期化 | テスト開始時にMigration適用またはスキーマ作成を行う |
+| データ分離 | テストクラスまたはテストコレクション単位でDBを初期化する |
+| Docker Compose | 本番相当のCompose起動確認、E2E、手動検証で使用する |
+| 禁止 | PostgreSQL依存テストにEF Core InMemory Providerを使わない |
+
+### 9.3 テスト観点
 
 | テストID | 対象 | 観点 |
 | --- | --- | --- |
@@ -502,10 +515,9 @@ tests/
 dotnet test
 ```
 
-PostgreSQLを使う結合テストは以下のどちらかを採用する。
+PostgreSQLを使う結合テストはTestcontainers for .NETでPostgreSQLを起動する。
 
-- Testcontainers for .NETでテスト時にPostgreSQLを起動する。
-- `docker compose -f docker-compose.test.yml up -d postgres`でテストDBを起動する。
+Docker ComposeのテストDBは、本番相当構成の確認、E2E、手動検証が必要な場合に使用する。
 
 ### 15.2 CI実行順
 
@@ -567,6 +579,5 @@ MVP実装完了時点で以下を満たす。
 
 ## 18. 未確定事項
 
-- PostgreSQL結合テストをTestcontainersにするかDocker Composeにするか。
 - E2EをPRごとに全件実行するか、最小セットにするか。
 - 性能テストをCIへ組み込むか、リリース前手動にするか。
