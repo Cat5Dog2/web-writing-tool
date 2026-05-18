@@ -188,31 +188,31 @@ tests/
 | `IT-API-003` | `GET /api/articles` | 管理者 | 全記事検索可 |
 | `IT-API-004` | `POST /api/articles` | 正常 | 201 |
 | `IT-API-005` | `POST /api/articles` | キーワード未入力 | 400 ProblemDetails |
-| `IT-API-006` | `PUT /api/articles/{id}` | 他ユーザー記事 | 403または404 |
-| `IT-API-007` | `DELETE /api/articles/{id}` | Runningジョブあり | 409 |
-| `IT-API-008` | `DELETE /api/articles/{id}` | 正常 | 204、論理削除 |
+| `IT-API-006` | `PUT /api/articles/{articleId}` | 他ユーザー記事 | 403または404 |
+| `IT-API-007` | `DELETE /api/articles/{articleId}` | Runningジョブあり | 409 |
+| `IT-API-008` | `DELETE /api/articles/{articleId}` | 正常 | 204、論理削除 |
 
 ### 8.3 Headings API
 
 | テストID | API | 観点 | 期待 |
 | --- | --- | --- | --- |
-| `IT-API-020` | `GET /api/articles/{id}/headings` | 所有者 | 200 |
-| `IT-API-021` | `POST /api/articles/{id}/headings` | H2追加 | 201 |
-| `IT-API-022` | `POST /api/articles/{id}/headings` | H3の親が別記事 | 400または422 |
-| `IT-API-023` | `PUT /api/articles/{id}/headings/order` | 並び替え | 200 |
-| `IT-API-024` | `DELETE /api/articles/{id}/headings/{headingId}` | 生成中 | 409 |
+| `IT-API-020` | `GET /api/articles/{articleId}/headings` | 所有者 | 200 |
+| `IT-API-021` | `POST /api/articles/{articleId}/headings` | H2追加 | 201 |
+| `IT-API-022` | `POST /api/articles/{articleId}/headings` | H3の親が別記事 | 400または422 |
+| `IT-API-023` | `PUT /api/articles/{articleId}/headings/order` | 並び替え | 200 |
+| `IT-API-024` | `DELETE /api/articles/{articleId}/headings/{headingId}` | 生成中 | 409 |
 
 ### 8.4 Jobs API
 
 | テストID | API | 観点 | 期待 |
 | --- | --- | --- | --- |
-| `IT-API-040` | `POST /generation/outline` | 正常登録 | 202、jobId |
-| `IT-API-041` | `POST /generation/outline` | 利用上限超過 | 422 |
-| `IT-API-042` | `POST /generation/body` | 多重実行 | 409 |
-| `IT-API-043` | `GET /api/jobs/{id}` | 所有者 | 200 |
-| `IT-API-044` | `GET /api/jobs/{id}` | 他ユーザー | 403または404 |
-| `IT-API-045` | `POST /api/jobs/{id}/cancel` | Queued | 200、Canceled |
-| `IT-API-046` | `POST /api/jobs/{id}/retry` | Failed | 202、新jobId |
+| `IT-API-040` | `POST /api/articles/{articleId}/generation/outline` | 正常登録 | 202、jobId |
+| `IT-API-041` | `POST /api/articles/{articleId}/generation/outline` | 利用上限超過 | 422 |
+| `IT-API-042` | `POST /api/articles/{articleId}/generation/body` | 多重実行 | 409 |
+| `IT-API-043` | `GET /api/jobs/{jobId}` | 所有者 | 200 |
+| `IT-API-044` | `GET /api/jobs/{jobId}` | 他ユーザー | 403または404 |
+| `IT-API-045` | `POST /api/jobs/{jobId}/cancel` | Queued | 200、Canceled |
+| `IT-API-046` | `POST /api/jobs/{jobId}/retry` | Failed | 202、新jobId |
 
 ### 8.5 WordPress / Notifications API
 
@@ -220,8 +220,8 @@ tests/
 | --- | --- | --- | --- |
 | `IT-API-060` | `POST /api/wordpress-sites` | APP-PASS登録 | レスポンスに秘密情報なし |
 | `IT-API-061` | `GET /api/wordpress-sites` | 一覧 | APP-PASSなし |
-| `IT-API-062` | `POST /api/wordpress-sites/{id}/test` | 接続失敗 | 200、success false |
-| `IT-API-063` | `POST /api/articles/{id}/wordpress-posts` | 投稿ジョブ登録 | 202 |
+| `IT-API-062` | `POST /api/wordpress-sites/{wordpressSiteId}/test` | 接続失敗 | 200、success false |
+| `IT-API-063` | `POST /api/articles/{articleId}/wordpress-posts` | 投稿ジョブ登録 | 202 |
 | `IT-API-064` | `POST /api/articles/bulk` | WordPress自動投稿指定で記事に自動投稿設定を保存 | 202 |
 | `IT-API-065` | `POST /api/articles/bulk` | 他ユーザーのWordPressサイトID指定 | 403または404 |
 | `IT-API-066` | `PUT /api/notifications/settings` | 保存 | 200 |
@@ -531,6 +531,7 @@ PRの最小セットは、ログイン、記事検索、記事作成、生成結
 | `NFT-HC-001` | `/health/live` | アプリ生存 |
 | `NFT-HC-002` | `/health/ready` | PostgreSQL接続 |
 | `NFT-HC-003` | `/health/ready` | Worker状態 |
+| `NFT-HC-004` | `/health/deps` | 外部依存先の簡易疎通結果が秘密情報なしで返る |
 
 ## 15. Docker / CIテスト
 

@@ -46,7 +46,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 | 匿名API | ログイン、ヘルスチェックのみ |
 | 認証必須API | `RequireAuthorization()`を適用 |
 | 所有者チェック | `articleId`、`wordpressSiteId`、`jobId`から所有者を検証 |
-| 管理者API | `RequireAuthorization("AdminOnly")`を適用 |
+| 管理者API | `RequireAuthorization("RequireAdmin")`を適用 |
 
 所有者または管理者が操作できるAPIでは、Applicationサービス内でも所有者検証を行う。APIルートだけで権限を完結させない。
 
@@ -1075,7 +1075,7 @@ Request `WithdrawAccountRequest`:
 - `currentPassword`で再確認する。パスワードはログ、監査ログ、レスポンスへ出さない。
 - 最後のAdminユーザーの場合は拒否する。
 - 対象ユーザーに`Running`ジョブがある場合は退会を拒否する。
-- 対象ユーザーに紐づく記事、見出し、ジョブ、AI生成ログ、利用台帳、Tavily検索結果、X投稿キャッシュ、WordPressサイト、WordPress投稿履歴、通知設定、通知ログ、利用上限、対象ユーザーが操作ユーザーの監査ログをトランザクション内で物理削除する。
+- 対象ユーザーに紐づく記事、見出し、ジョブ、AI生成ログ、利用台帳、Tavily検索結果、X投稿キャッシュ、WordPressサイト、WordPress投稿履歴、通知設定、通知ログ、利用上限、対象ユーザーが操作した既存監査ログをトランザクション内で物理削除する。
 - ユーザー本体はASP.NET Core Identityの`UserManager`を通して削除する。
 - 退会監査ログは削除対象ユーザーへのFKを持たず、対象ユーザーIDを文字列スナップショットとして保存する。`UserId`はNULLにする。
 - 削除成功後、認証Cookieを破棄する。
@@ -1287,7 +1287,7 @@ DELETE /api/admin/users/{userId}
 - 管理者自身の削除は拒否する。
 - 最後のAdminユーザーの削除は拒否する。
 - 対象ユーザーに`Running`ジョブがある場合は削除を拒否する。
-- 対象ユーザーに紐づく記事、見出し、ジョブ、AI生成ログ、利用台帳、Tavily検索結果、X投稿キャッシュ、WordPressサイト、WordPress投稿履歴、通知設定、通知ログ、利用上限、対象ユーザーが操作ユーザーの監査ログをトランザクション内で物理削除する。
+- 対象ユーザーに紐づく記事、見出し、ジョブ、AI生成ログ、利用台帳、Tavily検索結果、X投稿キャッシュ、WordPressサイト、WordPress投稿履歴、通知設定、通知ログ、利用上限、対象ユーザーが操作した既存監査ログをトランザクション内で物理削除する。
 - ユーザー本体はASP.NET Core Identityの`UserManager`を通して削除する。
 - 削除実行者、対象ユーザーID、削除件数サマリを監査ログへ記録する。ただし削除対象ユーザーへのFKは持たず、文字列スナップショットとして保存する。
 

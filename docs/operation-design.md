@@ -235,13 +235,13 @@ ASP.NET CoreのCookie認証や一部トークン保護に必要なData Protectio
 | 状態 | 復旧方針 |
 | --- | --- |
 | `Queued` | 通常処理対象 |
-| `Processing` | `LockedUntil`期限切れ後に再取得 |
-| `RetryWaiting` | `NextRunAt`到達後に再実行 |
+| `Running` | `LockedAt`の期限切れ後、再試行可能なら`Queued`へ戻す |
+| `Queued` + `NextRunAt`未来 | `NextRunAt`到達後に再実行 |
 | `Failed` | MVPでは記事詳細・生成結果画面から再実行可。管理者向け横断画面での復旧は後続フェーズ |
-| `Completed` | 再実行しない |
-| `Cancelled` | 再実行しない |
+| `Succeeded` | 再実行しない |
+| `Canceled` | 再実行しない |
 
-コンテナ再起動時に`Processing`のまま残ったジョブは、ロック期限切れ後に再取得する。
+コンテナ再起動時に`Running`のまま残ったジョブは、ロック期限切れ後に再取得する。
 
 ### 9.3 ジョブ停止
 

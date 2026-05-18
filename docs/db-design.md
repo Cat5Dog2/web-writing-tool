@@ -729,12 +729,12 @@ WordPress投稿履歴を保存する。
 | `XSearchPosts` | `Articles` | Restrict | 通常は記事を論理削除する。ユーザー物理削除時はサービス層で明示的に物理削除 |
 | `WordpressPosts` | `WordpressSites` | Restrict | 通常は投稿先履歴保持。ユーザー物理削除時はサービス層で明示的に物理削除 |
 | `NotificationLogs` | `NotificationSettings` | SetNull | 設定変更後も履歴保持 |
-| `AuditLogs` | `AspNetUsers` | Restrict | 通常は操作ユーザーを参照する。ユーザー物理削除時は対象ユーザーが操作ユーザーの監査ログを削除し、削除監査ログはFKなしのスナップショットで残す |
+| `AuditLogs` | `AspNetUsers` | Restrict | 通常は操作ユーザーを参照する。ユーザー物理削除時は対象ユーザーが操作した既存監査ログを削除し、削除監査ログはFKなしのスナップショットで残す |
 
 本人退会または管理者によるユーザー削除ではDBカスケードだけに依存せず、アプリケーションサービスで以下をトランザクション内に明示削除する。
 
 1. 対象ユーザーの`Running`ジョブがないことを確認する。
-2. `NotificationLogs`、`WordpressPosts`、`XSearchPosts`、`SearchResults`、`UsageLedgers`、`AiGenerationLogs`、対象ユーザーが操作ユーザーの`AuditLogs`を削除する。
+2. `NotificationLogs`、`WordpressPosts`、`XSearchPosts`、`SearchResults`、`UsageLedgers`、`AiGenerationLogs`、対象ユーザーが操作した既存`AuditLogs`を削除する。
 3. `ArticleGenerationJobs`、`ArticleHeadings`、`Articles`を削除する。
 4. `WordpressSites`、`NotificationSettings`、`UserUsageLimits`を削除する。
 5. Identity関連テーブルの`AspNetUserRoles`、`AspNetUserClaims`、`AspNetUserLogins`、`AspNetUserTokens`を削除する。

@@ -139,7 +139,7 @@
   - 完了条件: `キーワード`、`キーワード|タイトル`形式を取り込める。
 
 - [ ] `T-0304` 記事詳細、更新、論理削除APIを実装する。
-  - Endpoint: `GET/PUT/DELETE /api/articles/{id}`
+  - Endpoint: `GET/PUT/DELETE /api/articles/{articleId}`
   - 完了条件: Runningジョブがある記事は削除不可。
 
 - [ ] `T-0305` 記事一覧画面を実装する。
@@ -164,7 +164,7 @@
   - 完了条件: QueuedジョブをRunningへロックして処理できる。
 
 - [ ] `T-0403` ジョブ状態APIを実装する。
-  - Endpoint: `GET /api/jobs/{id}`
+  - Endpoint: `GET /api/jobs/{jobId}`
   - 完了条件: 所有者またはAdminのみ参照できる。
 
 - [ ] `T-0404` ジョブキャンセル、再試行を実装する。

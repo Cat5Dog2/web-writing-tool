@@ -35,29 +35,35 @@ Codexで実装を進める場合も、本書と`todo.md`を基準にする。
 src/
   WebWritingTool.Web/
   WebWritingTool.Application/
+  WebWritingTool.Domain/
   WebWritingTool.Infrastructure/
 tests/
   WebWritingTool.UnitTests/
   WebWritingTool.IntegrationTests/
+  WebWritingTool.E2ETests/
 ```
 
 | プロジェクト | 責務 |
 | --- | --- |
 | `WebWritingTool.Web` | Blazor画面、Minimal API、認証、認可、DI起点、画面状態 |
 | `WebWritingTool.Application` | ユースケース、入力検証、DTO、トランザクション境界、業務ルール |
+| `WebWritingTool.Domain` | エンティティ、値オブジェクト、列挙型、業務ルール |
 | `WebWritingTool.Infrastructure` | EF Core、外部API Client、暗号化、ファイル保存、ジョブ実行補助 |
 | `WebWritingTool.UnitTests` | Domain / Application / Infrastructure単体テスト |
 | `WebWritingTool.IntegrationTests` | API、DB、BackgroundService、外部Clientモック結合テスト |
+| `WebWritingTool.E2ETests` | Playwrightによる主要画面E2Eテスト |
 
 依存方向:
 
 ```text
-Web -> Application -> Infrastructure
+Web -> Application
 Web -> Infrastructure
+Application -> Domain
 Infrastructure -> Application
+Infrastructure -> Domain
 ```
 
-Application層はWeb層へ依存しない。
+Application層はWeb層とInfrastructure層へ依存しない。外部連携やDBの実装はInfrastructure層に置き、Application層はインターフェースとDTOに依存する。
 Web層から`DbContext`を直接操作しない。
 
 ## 4. 命名規則
@@ -130,7 +136,7 @@ Pages/
 
 - API仕様は`docs/api-design.md`を正とする。
 - エンドポイントは機能単位で`MapGroup`する。
-- 管理者APIは`RequireAuthorization("AdminOnly")`を適用する。
+- 管理者APIは`RequireAuthorization("RequireAdmin")`を適用する。
 - 認証必須APIは`RequireAuthorization()`を適用する。
 - 所有者確認はAPI属性だけで完結させず、Applicationサービスでも確認する。
 - 入力不正は`ProblemDetails`で返す。
@@ -248,7 +254,7 @@ Adminユーザー削除:
 - 最後のAdminユーザーは削除できない。
 - 最後のAdminユーザーは降格、無効化できない。
 - 対象ユーザーに`Running`ジョブがある場合は削除できない。
-- 対象ユーザーに紐づく業務データと、対象ユーザーが操作ユーザーの監査ログもトランザクション内で物理削除する。
+- 対象ユーザーに紐づく業務データと、対象ユーザーが操作した既存監査ログもトランザクション内で物理削除する。
 - 監査ログには削除対象ユーザーIDを文字列スナップショットとして残し、削除対象ユーザーへのFKは持たない。
 
 本人退会:
@@ -257,7 +263,7 @@ Adminユーザー削除:
 - 現在パスワードの再確認を必須にする。
 - 最後のAdminユーザーは退会できない。
 - 対象ユーザーに`Running`ジョブがある場合は退会できない。
-- 対象ユーザーに紐づく業務データと、対象ユーザーが操作ユーザーの監査ログもトランザクション内で物理削除する。
+- 対象ユーザーに紐づく業務データと、対象ユーザーが操作した既存監査ログもトランザクション内で物理削除する。
 - 退会監査ログは削除対象ユーザーへのFKを持たず、対象ユーザーIDを文字列スナップショットとして残す。
 
 ## 10. BackgroundService / ジョブルール

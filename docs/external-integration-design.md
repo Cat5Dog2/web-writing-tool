@@ -39,7 +39,7 @@ flowchart LR
     Worker --> AI["IAiTextGenerationClient"]
     Worker --> Search["IWebSearchClient"]
     Worker --> XSearch["IXFullArchiveSearchClient"]
-    Worker --> Image["IImageGenerationClient"]
+    Worker -. "Post-MVP" .-> Image["IImageGenerationClient"]
     Worker --> WP["IWordpressClient"]
     Worker --> Notify["INotificationClient"]
     AI --> Gemini["Gemini API"]
@@ -61,7 +61,7 @@ flowchart LR
 | `GeminiTextGenerationClient` | Geminiテキスト生成 |
 | `TavilyWebSearchClient` | Tavily Web検索 |
 | `XFullArchiveSearchClient` | X投稿検索 |
-| `DefaultImageGenerationClient` | 画像生成。MVP外 |
+| `DefaultImageGenerationClient` | 画像生成。後続フェーズで追加。MVPでは実装・DI登録しない |
 | `WordpressClient` | WordPress REST API |
 | `DiscordNotificationClient` | Discord通知 |
 
@@ -74,7 +74,6 @@ public sealed class ExternalIntegrationOptions
 {
     public AiProviderOptions AiProviders { get; init; } = new();
     public SearchProviderOptions Search { get; init; } = new();
-    public ImageProviderOptions Image { get; init; } = new();
     public WordpressOptions Wordpress { get; init; } = new();
     public NotificationOptions Notifications { get; init; } = new();
 }
@@ -86,9 +85,10 @@ public sealed class ExternalIntegrationOptions
 | --- | --- |
 | `AiProviderOptions` | Provider、Model、ApiKey、Timeout、MaxInputChars。MVPはGoogle Gemini 3.1 Pro Preview |
 | `SearchProviderOptions` | TavilyEndpoint、TavilyApiKey、XEndpoint、XBearerToken、DefaultRegion、MaxResults、環境別CacheTtl |
-| `ImageProviderOptions` | Provider、Model、ApiKey、OutputPath。MVP外 |
 | `WordpressOptions` | Timeout、RetryCount、AllowedSchemes |
 | `NotificationOptions` | Provider、Timeout。Discord Webhook URLはユーザー別にDB暗号化保存する |
+
+`ImageProviderOptions`は後続フェーズで画像生成を追加する時に定義する。MVPでは画像生成Client、画像生成Options、画像生成API KeyをDIへ登録しない。
 
 ### 5.3 秘密情報
 

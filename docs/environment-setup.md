@@ -42,10 +42,12 @@ web-writing-tool/
   src/
     WebWritingTool.Web/
     WebWritingTool.Application/
+    WebWritingTool.Domain/
     WebWritingTool.Infrastructure/
   tests/
     WebWritingTool.UnitTests/
     WebWritingTool.IntegrationTests/
+    WebWritingTool.E2ETests/
   docs/
   scripts/
   docker-compose.yml
@@ -93,9 +95,9 @@ VPS要件の目安:
 
 | 項目 | 最小 | 推奨 |
 | --- | --- | --- |
-| CPU | 1 vCPU | 2 vCPU以上 |
+| CPU | 2 vCPU | 2 vCPU以上 |
 | メモリ | 2GB | 4GB以上 |
-| ストレージ | 30GB | 50GB以上 |
+| ストレージ | 40GB | 80GB以上 |
 | swap | 1GB | 2GB |
 
 ## 4. 秘密情報管理
