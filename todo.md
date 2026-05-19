@@ -31,14 +31,14 @@
 - WordPressサイト登録、接続テスト、下書き投稿ができる。
 - Discord Webhook通知設定、送信テスト、ジョブ通知ができる。
 - WordPress Application PasswordとDiscord Webhook URLが暗号化保存される。
-- Docker ComposeとCaddyでVPS配置できる構成がある。
+- 本番/配置用Docker ComposeとCaddyでVPS配置できる構成がある。
 - 主要な単体テスト、結合テスト、セキュリティテストが通る。
 
 ## 3. フェーズ一覧
 
 | フェーズ | 目的 | 主な成果物 |
 | --- | --- | --- |
-| P0 | プロジェクト土台 | Solution、Blazor Web App、テストプロジェクト |
+| P0 | プロジェクト土台 | 開発用.NET SDK Docker環境、Solution、Blazor Web App、テストプロジェクト |
 | P1 | 認証・認可 | Identity、Admin/User、ログイン |
 | P2 | DB基盤 | Entity、DbContext、Migration、Seed |
 | P3 | 記事管理 | 記事CRUD、一覧、論理削除 |
@@ -50,31 +50,39 @@
 | P9 | Discord通知 | 通知設定、送信テスト、ジョブ通知 |
 | P10 | 管理者機能 | ユーザー管理、ユーザー物理削除 |
 | P11 | セキュリティ | CSRF、XSS、SSRF、秘密情報保護 |
-| P12 | 運用 | Docker Compose、Caddy、ヘルスチェック |
+| P12 | 運用 | 本番/配置用Docker Compose、Caddy、ヘルスチェック |
 | P13 | テスト仕上げ | 単体、結合、E2E、受け入れ確認 |
 
 ## 4. P0 プロジェクト土台
 
+- [ ] `T-0000` 開発用.NET SDK Docker環境を整備する。
+  - 対象: .NET SDK、NuGet cache、作業ディレクトリマウント
+  - 参照: `docs/environment-setup.md`, `docs/configuration-reference.md`, `docs/coding-guidelines.md`
+  - 成果物: `Dockerfile.dev`, `docker-compose.dev.yml`, `.dockerignore`
+  - 完了条件: ホストに.NET SDKを入れずに、Docker経由で`dotnet --info`を実行できる。
+
 - [ ] `T-0001` Solution構成を作成する。
   - 参照: `docs/basic-design.md`
   - 成果物: `src/`, `tests/`
-  - 完了条件: `dotnet build`が通る。
+  - 完了条件: 開発用.NET SDKコンテナ経由で`dotnet build`が通る。
 
 - [ ] `T-0002` Blazor Web Appプロジェクトを作成する。
   - App model: Blazor Web App
   - Render mode: 画面設計に合わせてInteractive Server中心
-  - 完了条件: ローカル起動してトップページが表示される。
+  - 完了条件: 開発用.NET SDKコンテナ経由でローカル起動してトップページが表示される。
 
 - [ ] `T-0003` Application / Infrastructure / Webの責務を分ける。
   - 完了条件: DI登録方針とフォルダ構成が`docs/basic-design.md`と一致する。
 
 - [ ] `T-0004` テストプロジェクトを作成する。
   - 対象: Unit、Integration
-  - 完了条件: 空のテストが実行できる。
+  - 完了条件: 開発用.NET SDKコンテナ経由で空のテストが実行できる。
 
 - [ ] `T-0005` 共通ビルド・テストスクリプトを整備する。
-  - 候補: `scripts/build.ps1`, `scripts/test.ps1`, `scripts/format.ps1`
-  - 完了条件: Codexから同じコマンドで確認できる。
+  - 参照: `docs/environment-setup.md`, `docs/coding-guidelines.md`
+  - 条件: ホストの.NET SDKではなく、開発用.NET SDKコンテナ経由で実行する。
+  - 候補: `scripts/dotnet.ps1`, `scripts/build.ps1`, `scripts/test.ps1`, `scripts/format.ps1`
+  - 完了条件: Codexから同じコマンドでDocker経由の`dotnet build`、`dotnet test`、format確認を実行できる。
 
 ## 5. P1 認証・認可
 
@@ -354,11 +362,12 @@
 
 ## 16. P12 運用
 
-- [ ] `T-1201` Dockerfileを作成する。
-  - 完了条件: appコンテナが起動する。
+- [ ] `T-1201` 本番/配置用Dockerfileを作成する。
+  - 完了条件: 本番/配置用appコンテナが起動する。
 
-- [ ] `T-1202` Docker Composeを作成する。
+- [ ] `T-1202` 本番/配置用Docker Composeを作成する。
   - 対象: app, postgres, caddy
+  - 条件: P0の開発用Docker Composeとは用途を分ける。
   - 完了条件: Caddy経由でappにアクセスできる。
 
 - [ ] `T-1203` Caddy設定を作成する。
