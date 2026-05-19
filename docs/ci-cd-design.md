@@ -13,6 +13,7 @@
 - 外部本番APIはCIで呼ばない。
 - PostgreSQL依存テストにはEF Core InMemory Providerを使わない。
 - DB MigrationはテストPostgreSQLへの適用またはSQL生成で確認する。
+- ローカル開発とPR CIの`dotnet`操作は、共通スクリプト経由で開発用.NET SDKコンテナから実行する。
 - 本番デプロイは自動直送せず、手動承認または明示操作を必須にする。
 - `.env`、実APIキー、DBパスワード、Webhook URL、Application PasswordをCIログや成果物へ出さない。
 - 重大脆弱性が検出された場合はリリースを止める。
@@ -30,6 +31,9 @@ CI/CD基盤はGitHub Actionsとする。
 | production deploy | GitHub Actionsの`workflow_dispatch` + environment protectionで手動承認後に実行する |
 | Runner | 初期はGitHub-hosted runnerを使う |
 | self-hosted runner | 本番相当性能確認、長時間E2E、VPS近似検証が必要になった段階で検討する |
+
+最小CIはP0で導入し、`scripts/dotnet.ps1`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`を実行する。
+本番/配置用Docker確認はP12、テスト品質ゲートの拡張はP13で段階的に追加する。
 
 夜間CIは本番VPSではなくGitHub Actions上で実行する。性能やDocker Composeの本番相当確認がGitHub-hosted runnerでは不十分になった場合のみ、self-hosted runnerまたはリリース前の手動検証へ分離する。
 
@@ -60,8 +64,8 @@ PR CIは必須チェックとする。
 実行順:
 
 1. checkout
-2. .NET SDKセットアップ
-3. restore
+2. Docker利用可否の確認
+3. 開発用.NET SDKコンテナ確認
 4. format check
 5. build
 6. unit tests
@@ -75,9 +79,10 @@ PR CIで実行する範囲:
 
 | 種別 | 対象 | 方針 |
 | --- | --- | --- |
-| restore | solution全体 | NuGet復元 |
-| format | `dotnet format --verify-no-changes`相当 | 実装開始後に有効化 |
-| build | solution全体 | Warningの扱いは実装時に決定 |
+| SDK確認 | 開発用.NET SDKコンテナ | `scripts/dotnet.ps1 --info` |
+| restore | solution全体 | 共通スクリプト内でNuGet復元 |
+| format | solution全体 | `scripts/format.ps1` |
+| build | solution全体 | `scripts/build.ps1`。Warningの扱いは実装時に決定 |
 | unit tests | `WebWritingTool.UnitTests` | 常時必須 |
 | integration tests | `WebWritingTool.IntegrationTests` | WebApplicationFactoryと外部APIモック |
 | DB tests | PostgreSQL | Testcontainers for .NETを第一候補 |
@@ -93,8 +98,9 @@ main CIはPRで省略した検証を補完する。
 
 実行対象:
 
-- restore
-- build
+- SDK確認
+- restore / build
+- format check
 - unit tests
 - integration tests
 - DB / Migration tests
@@ -142,21 +148,21 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 
 ## 9. ビルド
 
-想定コマンド:
+CIとローカル開発では、ホストの.NET SDKを直接使わず、共通スクリプトを使う。
 
 ```powershell
-dotnet restore
-dotnet build --no-restore
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 --info
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 ```
 
-実装開始後は共通スクリプトを使う。
+テストは以下を使う。
 
 ```powershell
-.\scripts\build.ps1
-.\scripts\format.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
-`global.json`、Dockerfile、CIの.NET SDKバージョンは一致させる。
+`global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CIの.NET SDKバージョンは一致させる。
 
 ## 10. テスト実行範囲
 
@@ -199,11 +205,12 @@ Migration確認:
 
 ## 12. Docker build
 
-Docker buildはmain CIで必須とする。PR CIでは実行時間を見て軽量確認として扱う。
+本番/配置用Docker buildはmain CIで必須とする。PR CIでは実行時間を見て軽量確認として扱う。
+開発用`Dockerfile.dev`はP0の最小CIでSDK確認、build、test、formatに使う。
 
 確認項目:
 
-- Dockerfileがビルドできる。
+- 本番/配置用Dockerfileがビルドできる。
 - アプリが非Development設定で起動できる。
 - `ASPNETCORE_URLS=http://+:8080`で待ち受ける。
 - 不要な開発用秘密情報をイメージに含めない。
@@ -328,6 +335,7 @@ DBスキーマ変更を含むリリースでは、前後方互換のある段階
 
 | 失敗箇所 | 確認対象 |
 | --- | --- |
+| SDK確認 | Docker起動、`Dockerfile.dev`、SDKバージョン、作業ディレクトリマウント |
 | restore | NuGet接続、SDKバージョン、パッケージ参照 |
 | build | コンパイルエラー、TargetFramework、Nullable警告 |
 | format | 自動整形差分、生成ファイル除外 |
@@ -344,19 +352,22 @@ DBスキーマ変更を含むリリースでは、前後方互換のある段階
 
 ## 19. 導入順序
 
-1. `dotnet restore` / `dotnet build` のCIを作る。
-2. 単体テストをCIへ追加する。
-3. Testcontainers前提のDB / API結合テストを追加する。
-4. 外部APIモックテストを追加する。
-5. E2E smokeを追加する。
-6. main CIで全E2Eを追加する。
-7. Docker buildを追加する。
-8. Migration SQL生成と適用確認を追加する。
-9. 脆弱性確認を追加する。
-10. 手動承認付きproduction deployを追加する。
+1. P0で開発用.NET SDKコンテナを作る。
+2. P0で`scripts/dotnet.ps1`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`を作る。
+3. P0で最小CIを作り、PRでSDK確認、build、test、formatを実行する。
+4. P13で単体テストをCIへ追加する。
+5. P13でTestcontainers前提のDB / API結合テストを追加する。
+6. P13で外部APIモックテストを追加する。
+7. P13でE2E smokeを追加する。
+8. P13でmain CIの全E2Eを追加する。
+9. P12で本番/配置用Docker buildとCompose確認を追加する。
+10. Migration SQL生成と適用確認を追加する。
+11. 脆弱性確認を追加する。
+12. 手動承認付きproduction deployを追加する。
 
 ## 20. 受け入れ基準
 
+- P0の最小CIで`scripts/dotnet.ps1 --info`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`が成功する。
 - PR CIでrestore、build、単体、結合、DB、ジョブ、E2E smokeが成功する。
 - main CIで全E2Eが成功する。
 - CIで外部本番APIを呼ばない。

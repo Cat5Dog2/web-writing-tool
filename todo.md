@@ -38,7 +38,7 @@
 
 | フェーズ | 目的 | 主な成果物 |
 | --- | --- | --- |
-| P0 | プロジェクト土台 | 開発用.NET SDK Docker環境、Solution、Blazor Web App、テストプロジェクト |
+| P0 | プロジェクト土台 | 開発用.NET SDK Docker環境、Solution、Blazor Web App、テストプロジェクト、最小CI |
 | P1 | 認証・認可 | Identity、Admin/User、ログイン |
 | P2 | DB基盤 | Entity、DbContext、Migration、Seed |
 | P3 | 記事管理 | 記事CRUD、一覧、論理削除 |
@@ -50,8 +50,8 @@
 | P9 | Discord通知 | 通知設定、送信テスト、ジョブ通知 |
 | P10 | 管理者機能 | ユーザー管理、ユーザー物理削除 |
 | P11 | セキュリティ | CSRF、XSS、SSRF、秘密情報保護 |
-| P12 | 運用 | 本番/配置用Docker Compose、Caddy、ヘルスチェック |
-| P13 | テスト仕上げ | 単体、結合、E2E、受け入れ確認 |
+| P12 | 運用 | 本番/配置用Docker Compose、Caddy、ヘルスチェック、Docker CI確認 |
+| P13 | テスト仕上げ | 単体、結合、E2E、受け入れ確認、CI品質ゲート |
 
 ## 4. P0 プロジェクト土台
 
@@ -83,6 +83,12 @@
   - 条件: ホストの.NET SDKではなく、開発用.NET SDKコンテナ経由で実行する。
   - 候補: `scripts/dotnet.ps1`, `scripts/build.ps1`, `scripts/test.ps1`, `scripts/format.ps1`
   - 完了条件: Codexから同じコマンドでDocker経由の`dotnet build`、`dotnet test`、format確認を実行できる。
+
+- [ ] `T-0006` 最小CIを整備する。
+  - 参照: `docs/ci-cd-design.md`, `docs/environment-setup.md`
+  - 対象: GitHub Actions
+  - 条件: 共通ビルド・テストスクリプトを使い、ホストの.NET SDKではなくDocker経由で実行する。
+  - 完了条件: PRで`scripts/dotnet.ps1 --info`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`が実行される。
 
 ## 5. P1 認証・認可
 
@@ -384,6 +390,12 @@
 - [ ] `T-1206` バックアップ、リストア手順を整備する。
   - 完了条件: PostgreSQLバックアップと復元手順が確認できる。
 
+- [ ] `T-1207` 本番/配置用Docker CI確認を整備する。
+  - 参照: `docs/ci-cd-design.md`, `docs/environment-setup.md`
+  - 対象: 本番/配置用Dockerfile、Docker Compose、Caddy、ヘルスチェック
+  - 条件: P0の開発用Docker Composeではなく、本番/配置用構成を対象にする。
+  - 完了条件: main CIまたは夜間CIでDocker image build、Compose起動確認、`/health/live`確認が実行される。
+
 ## 17. P13 テスト仕上げ
 
 - [ ] `T-1301` Domain / Application単体テストを実装する。
@@ -411,6 +423,12 @@
 - [ ] `T-1308` 主要画面E2Eを実装する。
   - 対象: ログイン、記事作成、構成生成、本文生成、WordPress投稿、ユーザー削除
   - 完了条件: 主要導線がブラウザで通る。
+
+- [ ] `T-1309` CI品質ゲートへテスト群を組み込む。
+  - 参照: `docs/ci-cd-design.md`, `docs/test-design.md`
+  - 対象: Unit、Integration、DB、ジョブ、外部連携モック、セキュリティ、E2E smoke
+  - 条件: 通常CIではGemini、Tavily、X API、WordPress、Discordの実APIを呼ばない。
+  - 完了条件: PR CIとmain CIで設計どおりのテスト範囲が実行され、失敗時に必要なテスト成果物が保存される。
 
 ## 18. Codex向け実装プロンプト例
 
