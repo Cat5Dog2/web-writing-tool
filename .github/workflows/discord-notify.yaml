@@ -1,0 +1,39 @@
+name: Discord Notify for X
+on:
+  push:
+  pull_request:
+
+jobs:
+  discord-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Post commit message on push
+        if: github.event_name == 'push'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MESSAGE_BODY: |
+            📦 Push: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.event.head_commit.message }}
+
+            URL: ${{ github.event.head_commit.url }}
+            #個人開発 #100DaysOfCode
+        run: |
+          jq -n --arg content "$MESSAGE_BODY" '{content: $content}' | curl -H "Content-Type: application/json" -X POST -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Post PR info to Discord
+        if: github.event_name == 'pull_request'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MESSAGE_BODY: |
+            🔄 PR #${{ github.event.pull_request.number }}: ${{ github.repository }}
+            Branch: ${{ github.head_ref }}
+            Title: ${{ github.event.pull_request.title }}
+            By: ${{ github.event.pull_request.user.login }}
+
+            URL: ${{ github.event.pull_request.html_url }}
+            #個人開発 #100DaysOfCode
+        run: |
+          jq -n --arg content "$MESSAGE_BODY" '{content: $content}' | curl -H "Content-Type: application/json" -X POST -d @- "$DISCORD_WEBHOOK_URL"
