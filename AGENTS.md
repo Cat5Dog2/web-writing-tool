@@ -7,19 +7,31 @@
 
 ## 最優先参照
 
-実装前に該当する設計書を確認する。
+実装前に [docs/README.md](docs/README.md) で対象領域の設計書を確認する。
+頻出の参照先は以下。
 
+- ドキュメント索引: `docs/README.md`
 - 要件: `docs/requirements.md`
 - 基本設計: `docs/basic-design.md`
 - API: `docs/api-design.md`
+- エラー: `docs/error-codes.md`
 - DB: `docs/db-design.md`
 - 画面: `docs/screen-design.md`
 - ジョブ: `docs/job-design.md`
 - 外部連携: `docs/external-integration-design.md`
+- プロンプト: `docs/prompt-design.md`
+- 記事品質: `docs/article-quality-guidelines.md`
+- トピックリスク分類: `docs/topic-risk-classification.md`
+- コンテンツ表示: `docs/content-rendering-design.md`
+- コンテンツ更新保守: `docs/content-update-maintenance.md`
 - テスト: `docs/test-design.md`
 - 運用: `docs/operation-design.md`
 - セキュリティ: `docs/security-design.md`
+- データ保持・プライバシー: `docs/data-retention-privacy.md`
+- 観測性・ログ: `docs/observability-logging.md`
+- CI/CD: `docs/ci-cd-design.md`
 - 環境構築: `docs/environment-setup.md`
+- 設定: `docs/configuration-reference.md`
 - コーディング規約: `docs/coding-guidelines.md`
 - 実装タスク: `todo.md`
 
