@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+
+WORKDIR /workspace
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    HOME=/home/dotnet \
+    NUGET_PACKAGES=/home/dotnet/.nuget/packages
+
+RUN mkdir -p /home/dotnet/.nuget/packages \
+    && mkdir -p /home/dotnet/.microsoft/usersecrets \
+    && mkdir -p /home/dotnet/.aspnet
+
+CMD ["--info"]

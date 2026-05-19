@@ -34,8 +34,8 @@
 
 ### 2.3 リポジトリ前提
 
-現時点では設計書と`todo.md`が先行している。
-実装開始後は以下の構成を想定する。
+P0完了時点では開発用.NET SDK Docker環境、Solution、Blazor Web App、Unit/Integrationテスト、共通スクリプト、最小CIを用意済みである。
+後続フェーズ完了後は以下の構成を想定する。
 
 ```text
 web-writing-tool/

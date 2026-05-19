@@ -55,36 +55,36 @@
 
 ## 4. P0 プロジェクト土台
 
-- [ ] `T-0000` 開発用.NET SDK Docker環境を整備する。
+- [x] `T-0000` 開発用.NET SDK Docker環境を整備する。
   - 対象: .NET SDK、NuGet cache、作業ディレクトリマウント
   - 参照: `docs/environment-setup.md`, `docs/configuration-reference.md`, `docs/coding-guidelines.md`
   - 成果物: `Dockerfile.dev`, `docker-compose.dev.yml`, `.dockerignore`
   - 完了条件: ホストに.NET SDKを入れずに、Docker経由で`dotnet --info`を実行できる。
 
-- [ ] `T-0001` Solution構成を作成する。
+- [x] `T-0001` Solution構成を作成する。
   - 参照: `docs/basic-design.md`
   - 成果物: `src/`, `tests/`
   - 完了条件: 開発用.NET SDKコンテナ経由で`dotnet build`が通る。
 
-- [ ] `T-0002` Blazor Web Appプロジェクトを作成する。
+- [x] `T-0002` Blazor Web Appプロジェクトを作成する。
   - App model: Blazor Web App
   - Render mode: 画面設計に合わせてInteractive Server中心
   - 完了条件: 開発用.NET SDKコンテナ経由でローカル起動してトップページが表示される。
 
-- [ ] `T-0003` Application / Infrastructure / Webの責務を分ける。
+- [x] `T-0003` Application / Infrastructure / Webの責務を分ける。
   - 完了条件: DI登録方針とフォルダ構成が`docs/basic-design.md`と一致する。
 
-- [ ] `T-0004` テストプロジェクトを作成する。
+- [x] `T-0004` テストプロジェクトを作成する。
   - 対象: Unit、Integration
   - 完了条件: 開発用.NET SDKコンテナ経由で空のテストが実行できる。
 
-- [ ] `T-0005` 共通ビルド・テストスクリプトを整備する。
+- [x] `T-0005` 共通ビルド・テストスクリプトを整備する。
   - 参照: `docs/environment-setup.md`, `docs/coding-guidelines.md`
   - 条件: ホストの.NET SDKではなく、開発用.NET SDKコンテナ経由で実行する。
   - 候補: `scripts/dotnet.ps1`, `scripts/build.ps1`, `scripts/test.ps1`, `scripts/format.ps1`
   - 完了条件: Codexから同じコマンドでDocker経由の`dotnet build`、`dotnet test`、format確認を実行できる。
 
-- [ ] `T-0006` 最小CIを整備する。
+- [x] `T-0006` 最小CIを整備する。
   - 参照: `docs/ci-cd-design.md`, `docs/environment-setup.md`
   - 対象: GitHub Actions
   - 条件: 共通ビルド・テストスクリプトを使い、ホストの.NET SDKではなくDocker経由で実行する。

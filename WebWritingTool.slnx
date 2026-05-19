@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WebWritingTool.Application/WebWritingTool.Application.csproj" />
+    <Project Path="src/WebWritingTool.Domain/WebWritingTool.Domain.csproj" />
+    <Project Path="src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj" />
+    <Project Path="src/WebWritingTool.Web/WebWritingTool.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebWritingTool.IntegrationTests/WebWritingTool.IntegrationTests.csproj" />
+    <Project Path="tests/WebWritingTool.UnitTests/WebWritingTool.UnitTests.csproj" />
+  </Folder>
+</Solution>
