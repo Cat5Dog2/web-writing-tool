@@ -416,6 +416,7 @@ PromptHash計算では、SystemInstruction、UserPrompt、ReferenceSources、Wri
 - [外部連携設計書](external-integration-design.md)
 - [DB設計書](db-design.md)
 - [セキュリティ設計書](security-design.md)
+- [トピックリスク分類設計書](topic-risk-classification.md)
 - [データ保持・プライバシー設計書](data-retention-privacy.md)
 - [エラーコードリファレンス](error-codes.md)
 - [観測性・ログ設計書](observability-logging.md)
