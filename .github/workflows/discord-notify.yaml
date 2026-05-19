@@ -2,6 +2,8 @@ name: Discord Notify for X
 on:
   push:
   pull_request:
+  issues:
+    types: [closed]
 
 jobs:
   discord-notify:
@@ -34,6 +36,21 @@ jobs:
             By: ${{ github.event.pull_request.user.login }}
 
             URL: ${{ github.event.pull_request.html_url }}
+            #個人開発 #100DaysOfCode
+        run: |
+          jq -n --arg content "$MESSAGE_BODY" '{content: $content}' | curl -H "Content-Type: application/json" -X POST -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Post closed issue info to Discord
+        if: github.event_name == 'issues' && github.event.action == 'closed'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MESSAGE_BODY: |
+            ✅ Issue closed #${{ github.event.issue.number }}: ${{ github.repository }}
+            Title: ${{ github.event.issue.title }}
+            Closed by: ${{ github.event.sender.login }}
+            Reason: ${{ github.event.issue.state_reason }}
+
+            URL: ${{ github.event.issue.html_url }}
             #個人開発 #100DaysOfCode
         run: |
           jq -n --arg content "$MESSAGE_BODY" '{content: $content}' | curl -H "Content-Type: application/json" -X POST -d @- "$DISCORD_WEBHOOK_URL"

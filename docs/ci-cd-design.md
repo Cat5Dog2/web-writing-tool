@@ -35,6 +35,8 @@ CI/CD基盤はGitHub Actionsとする。
 最小CIはP0で導入し、`scripts/dotnet.ps1`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`を実行する。
 本番/配置用Docker確認はP12、テスト品質ゲートの拡張はP13で段階的に追加する。
 
+補助通知Workflowとして`discord-notify`を用意し、push、pull request、Issue closeをDiscord Webhookへ通知する。Webhook URLはGitHub Actions Secretの`DISCORD_WEBHOOK_URL`から参照し、ログや成果物へ出さない。
+
 夜間CIは本番VPSではなくGitHub Actions上で実行する。性能やDocker Composeの本番相当確認がGitHub-hosted runnerでは不十分になった場合のみ、self-hosted runnerまたはリリース前の手動検証へ分離する。
 
 JST 03:00に夜間CIを実行する場合、GitHub ActionsのcronはUTC基準のため以下を使う。
