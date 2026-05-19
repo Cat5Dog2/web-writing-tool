@@ -568,6 +568,7 @@ MVPの推奨:
 - [データ保持・プライバシー設計書](data-retention-privacy.md)
 - [プロンプト設計書](prompt-design.md)
 - [記事品質ガイドライン](article-quality-guidelines.md)
+- [コンテンツ更新・メンテナンス設計書](content-update-maintenance.md)
 - [コンテンツレンダリング設計書](content-rendering-design.md)
 - [エラーコードリファレンス](error-codes.md)
 - [設定リファレンス](configuration-reference.md)
