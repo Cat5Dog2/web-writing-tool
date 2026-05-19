@@ -343,7 +343,8 @@ NotificationJobHandler
 
 - appsettingsに秘密情報を入れない。
 - `.env`をGit管理しない。
-- User Secretsまたは環境変数を使う。
+- User Secrets、環境変数、またはGit管理外の`.env`を使う。
+- 開発用.NET SDKコンテナでUser Secretsを使う場合は、保存先を永続化する。
 - WordPress Application PasswordとDiscord Webhook URLはDB暗号化保存する。
 - レスポンスDTOに秘密情報を含めない。
 - 例外メッセージに秘密情報を含めない。
@@ -450,7 +451,7 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 
 ## 18. フォーマット
 
-- `dotnet format`を基本とする。
+- `scripts/format.ps1`を基本とし、開発用.NET SDKコンテナ経由で`dotnet format`を実行する。
 - `.editorconfig`を導入する。
 - usingは不要なものを削除する。
 - nullable reference typesを有効にする。

@@ -39,7 +39,7 @@
 | テスト | [test-design.md](test-design.md) | 単体、結合、DB、ジョブ、E2E、セキュリティテスト |
 | CI/CD | [ci-cd-design.md](ci-cd-design.md) | CI/CD、品質ゲート、成果物、デプロイ方針 |
 | 運用 | [operation-design.md](operation-design.md) | VPS運用、監視、バックアップ、障害対応 |
-| 環境構築 | [environment-setup.md](environment-setup.md) | ローカル、Docker Compose、VPS環境構築 |
+| 環境構築 | [environment-setup.md](environment-setup.md) | 開発用.NET SDK Docker、Docker Compose、VPS環境構築 |
 
 ## 変更時の更新先
 
