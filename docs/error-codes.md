@@ -128,12 +128,12 @@ URL検証ではSSRF対策を優先し、DNS解決後のIPも検証する。
 | `ArticleHasRunningJob` | 409 | 記事に`Running`ジョブがあるため削除できない |
 | `HeadingHasRunningJob` | 409 | 見出しに`Running`ジョブがあるため変更できない |
 | `RunningJobExists` | 409 | 同一対象に`Queued`または`Running`ジョブがある |
-| `HumanReviewRequired` | 422 | `compliance_strict`または人間確認必須の記事を公開しようとした |
+| `HumanReviewRequired` | 422 | `status = Publish`かつ`HumanReviewRequired = true`で`HumanReviewedAt`が未設定 |
 | `XRehydrationRequired` | 422 | productionまたはstrictでX投稿の再取得が未完了 |
 | `XRehydrationFailed` | 422 | X投稿の再取得で削除、非公開、編集、取得不能を検出した |
 | `SearchCacheExpired` | 422 | 必要な検索キャッシュがTTL満了で使用できない |
 
-WordPress下書き投稿は`HumanReviewRequired`の対象外とする。公開投稿だけ抑止する。
+WordPress下書き投稿は`HumanReviewRequired`の対象外とする。公開投稿は`HumanReviewRequired = true`かつ`HumanReviewedAt`未設定の場合だけ抑止する。
 
 ## 10. ジョブエラー
 

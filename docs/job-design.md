@@ -770,16 +770,20 @@ Optionsクラス例:
 ```csharp
 public sealed class BackgroundJobOptions
 {
-    public TimeSpan IdleDelay { get; init; } = TimeSpan.FromSeconds(3);
-    public TimeSpan LockTimeout { get; init; } = TimeSpan.FromMinutes(30);
+    public int IdleDelaySeconds { get; init; } = 3;
+    public int LockTimeoutMinutes { get; init; } = 30;
     public int MaxJobsPerLoop { get; init; } = 1;
     public int DefaultMaxAttempts { get; init; } = 3;
     public string WorkerIdPrefix { get; init; } = "app";
-    public TimeSpan SearchCacheCleanupInterval { get; init; } = TimeSpan.FromHours(1);
+    public int SearchCacheCleanupIntervalMinutes { get; init; } = 60;
+
+    public TimeSpan IdleDelay => TimeSpan.FromSeconds(IdleDelaySeconds);
+    public TimeSpan LockTimeout => TimeSpan.FromMinutes(LockTimeoutMinutes);
+    public TimeSpan SearchCacheCleanupInterval => TimeSpan.FromMinutes(SearchCacheCleanupIntervalMinutes);
 }
 ```
 
-`SearchCacheCleanupInterval`は`SearchCacheCleanupWorker`の実行間隔である。削除件数だけをログに出し、検索本文、X投稿本文、外部APIレスポンス全文はログへ出さない。
+`BackgroundJobs:*Seconds` / `BackgroundJobs:*Minutes`の設定値は同名の数値プロパティへバインドし、Worker内では`TimeSpan`へ変換して使う。`SearchCacheCleanupInterval`は`SearchCacheCleanupWorker`の実行間隔である。削除件数だけをログに出し、検索本文、X投稿本文、外部APIレスポンス全文はログへ出さない。
 
 外部APIタイムアウト:
 
