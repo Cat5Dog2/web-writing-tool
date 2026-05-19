@@ -320,7 +320,7 @@ NotificationJobHandler
 - `production`と`strict`では、X投稿の表示・公開前に必ず再取得する。
 - `legalFinanceHealth`と`politicsSafetyReputation`は`compliance_strict`にする。
 - `compliance_strict`は`strict + HumanReviewRequired`として扱う。
-- 人間確認前のWordPress Publishは拒否する。Draftは許可する。
+- `HumanReviewRequired = true`かつ`HumanReviewedAt`未設定のWordPress Publishは拒否する。Draftは許可する。
 - 一括登録からのWordPress自動投稿はDraft固定とし、同一記事の自動投稿ジョブを二重登録しない。
 
 ## 13. 秘密情報ルール

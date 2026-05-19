@@ -192,6 +192,8 @@ tests/
 | `IT-API-007` | `DELETE /api/articles/{articleId}` | Runningジョブあり | 409 |
 | `IT-API-008` | `DELETE /api/articles/{articleId}` | 正常 | 204、論理削除 |
 | `IT-API-009` | `DELETE /api/articles/{articleId}` | Queuedジョブあり | 204、QueuedジョブがCanceled |
+| `IT-API-010` | `POST /api/articles/{articleId}/human-review` | 人間確認完了 | 200、HumanReviewedAtと確認者が保存される |
+| `IT-API-011` | `PUT /api/articles/{articleId}` | 確認後に本文更新 | HumanReviewedAtがNULLへ戻る |
 
 ### 8.3 Headings API
 
@@ -208,7 +210,7 @@ tests/
 | テストID | API | 観点 | 期待 |
 | --- | --- | --- | --- |
 | `IT-API-040` | `POST /api/articles/{articleId}/generation/outline` | 正常登録 | 202、jobId |
-| `IT-API-041` | `POST /api/articles/{articleId}/generation/outline` | 利用上限超過 | 422 |
+| `IT-API-041` | `POST /api/articles/{articleId}/generation/outline` | 残り構成数不足 | 422 |
 | `IT-API-042` | `POST /api/articles/{articleId}/generation/body` | 多重実行 | 409 |
 | `IT-API-043` | `GET /api/jobs/{jobId}` | 所有者 | 200 |
 | `IT-API-044` | `GET /api/jobs/{jobId}` | 他ユーザー | 403または404 |
@@ -223,6 +225,7 @@ tests/
 | `IT-API-061` | `GET /api/wordpress-sites` | 一覧 | APP-PASSなし |
 | `IT-API-062` | `POST /api/wordpress-sites/{wordpressSiteId}/test` | 接続失敗 | 200、success false |
 | `IT-API-063` | `POST /api/articles/{articleId}/wordpress-posts` | 投稿ジョブ登録 | 202 |
+| `IT-API-071` | `POST /api/articles/{articleId}/wordpress-posts` | 人間確認前のPublish指定 | 422、HumanReviewRequired |
 | `IT-API-064` | `POST /api/articles/bulk` | WordPress自動投稿指定で記事に自動投稿設定を保存 | 202 |
 | `IT-API-065` | `POST /api/articles/bulk` | 他ユーザーのWordPressサイトID指定 | 403または404 |
 | `IT-API-066` | `PUT /api/notifications/settings` | 保存 | 200 |
@@ -320,7 +323,7 @@ tests/
 | `IT-JOB-001` | OutlineGeneration登録 | Jobが作成され、Articleが`OutlineQueued`になる |
 | `IT-JOB-002` | BodyGeneration登録 | HeadingId付きJobが作成され、対象Headingが`Queued`になる |
 | `IT-JOB-003` | 多重登録防止 | 同一HeadingのRunningがあると409 |
-| `IT-JOB-004` | 利用上限 | 上限超過でJobを作らない |
+| `IT-JOB-004` | 残り構成数 | 残数不足でJobを作らない |
 
 ### 10.3 ジョブ取得・排他
 
@@ -362,7 +365,7 @@ tests/
 | `IT-JOB-066` | AI成功後保存失敗 | UsageLedgersを二重記録しない |
 | `IT-JOB-067` | WebSearchキャッシュ | 有効キャッシュがある場合はTavilyを呼ばない |
 | `IT-JOB-068` | X投稿重複 | 同じPostIdは再保存しない |
-| `IT-JOB-069` | X投稿保持期限 | 環境別TTL超過の本文を削除または匿名化する |
+| `IT-JOB-069` | SearchCacheCleanupWorker | 環境別TTL超過の本文を削除または匿名化する |
 | `IT-JOB-070` | X引用再検証 | WordPress投稿前に引用元投稿を再hydrationする |
 | `IT-JOB-071` | 環境別TTL | dev/staging/production/strictのTTLが設定通り適用される |
 | `IT-JOB-072` | TTL解決 | 環境、ユーザー、記事、データソース、トピックのうち最短TTLが採用される |

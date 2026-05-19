@@ -26,7 +26,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 
 | グループ | ベースパス | 用途 |
 | --- | --- | --- |
-| Articles | `/api/articles` | 記事CRUD、検索、一括作成 |
+| Articles | `/api/articles` | 記事CRUD、検索、一括作成、人間確認 |
 | Headings | `/api/articles/{articleId}/headings` | 見出し操作 |
 | Generation | `/api/articles/{articleId}/generation` | AI生成ジョブ登録 |
 | Jobs | `/api/jobs` | ジョブ状態取得、再実行、キャンセル |
@@ -246,6 +246,7 @@ Request `CreateArticleRequest`:
 | `outlineMethod` | string | 必須 | `Keyword` / `Search` / `Ai` |
 | `generationModel` | string | 必須 | 設定済みモデル |
 | `searchMode` | bool | 必須 | 既定false |
+| `isDomesticOnly` | bool | 必須 | 日本国内情報限定。既定true |
 | `notificationMode` | string | 任意 | `None` / `Discord` |
 
 サイト別ライティング設定:
@@ -253,6 +254,11 @@ Request `CreateArticleRequest`:
 - `writingProfileWordpressSiteId`を指定した場合、対象サイトの`siteAdminProfile`、`writingCharacter`、`readerPersona`を記事作成時にスナップショットし、タイトル候補、見出し構成、本文生成、リライトのプロンプトへ反映する。
 - 指定サイトはログインユーザーが所有する有効なWordPressサイトでなければならない。
 - 未指定の場合はサイト別ライティング設定を使わない。
+
+保存対象:
+
+- `tone`、`suggestedKeywords`、`relatedKeywords`、`learningType`、`learningText`、`additionalPrompt`、`isDomesticOnly`は記事の生成設定として保存し、タイトル候補、見出し構成、本文生成、リライトのジョブPayloadへ引き継ぐ。
+- `h2Count`、`h3Count`、`generateImage`は記事本体には保存しない。ジョブ登録時の入力として扱う。
 
 画像生成:
 
@@ -271,6 +277,8 @@ Request例:
   "tone": "Normal",
   "tags": ["クラヲアクト", "ミュージカル"],
   "memo": "",
+  "suggestedKeywords": "クラヲアクト ミュージカル\nクラヲアクト 評判",
+  "relatedKeywords": "舞台 音楽 表現",
   "learningType": "Text",
   "learningText": "",
   "additionalPrompt": "",
@@ -278,6 +286,7 @@ Request例:
   "outlineMethod": "Search",
   "generationModel": "gemini-3.1-pro-preview",
   "searchMode": true,
+  "isDomesticOnly": true,
   "notificationMode": "Discord"
 }
 ```
@@ -363,11 +372,21 @@ Response `200 OK`:
   "tone": "Normal",
   "tags": ["クラヲアクト", "ミュージカル"],
   "memo": "",
+  "suggestedKeywords": "クラヲアクト ミュージカル\nクラヲアクト 評判",
+  "relatedKeywords": "舞台 音楽 表現",
+  "learningType": "Text",
+  "learningText": "",
+  "additionalPrompt": "",
   "body": "",
   "htmlBody": "",
   "metaDescription": "",
   "generationModel": "gemini-3.1-pro-preview",
   "searchMode": true,
+  "isDomesticOnly": true,
+  "topicRisk": "strict",
+  "humanReviewRequired": true,
+  "humanReviewedAt": null,
+  "humanReviewedByUserId": null,
   "writingProfileWordpressSiteId": "fb2a11db-849e-475d-8e79-9208e8f6f5af",
   "writingProfileSiteName": "The Mind Journal",
   "createdAt": "2026-01-03T04:00:00Z",
@@ -392,7 +411,18 @@ Request `UpdateArticleRequest`:
 | `keyword` | string | 必須 | 1から200文字 |
 | `tags` | string[] | 任意 | 各50文字以内 |
 | `memo` | string | 任意 | 1000文字以内 |
+| `tone` | string | 任意 | `Normal`など |
+| `suggestedKeywords` | string | 任意 | 10000文字以内 |
+| `relatedKeywords` | string | 任意 | 10000文字以内 |
+| `learningType` | string | 任意 | `None` / `Text` / `Url` |
+| `learningText` | string | 任意 | 設定上限内 |
+| `additionalPrompt` | string | 任意 | 3000文字以内 |
 | `metaDescription` | string | 任意 | 320文字以内 |
+| `generationModel` | string | 任意 | 設定済みモデル |
+| `outlineMethod` | string | 任意 | `Keyword` / `Search` / `Ai` |
+| `searchMode` | bool | 任意 | Web検索利用 |
+| `isDomesticOnly` | bool | 任意 | 日本国内情報限定 |
+| `notificationMode` | string | 任意 | `None` / `Discord` |
 | `writingProfileWordpressSiteId` | uuid? | 任意 | サイト別ライティング設定を変更する場合に指定。nullで解除 |
 | `body` | string | 任意 | 制限は設定で管理 |
 | `htmlBody` | string | 任意 | 制限は設定で管理 |
@@ -405,6 +435,7 @@ Response `200 OK`: 更新後の`ArticleDetailResponse`。
 - `rowVersion`が古い場合は`409 Conflict`。
 - `writingProfileWordpressSiteId`を変更した場合は、新しいサイト設定を`WritingProfileSnapshotJson`へ再スナップショットする。既存の生成済み本文は自動では再生成しない。
 - MVPでは本文履歴を作成しない。`body`と`htmlBody`を指定した場合は現在値を上書きする。
+- `title`、`body`、`htmlBody`、`metaDescription`、`topicRisk`、X引用内容など公開判断に影響する値を変更した場合、`HumanReviewedAt`と`HumanReviewedByUserId`をNULLに戻す。
 
 ### 6.6 記事削除
 
@@ -424,6 +455,39 @@ Response:
 
 - 成功: `204 No Content`
 - 実行中ジョブあり: `409 Conflict`
+
+### 6.7 人間確認完了
+
+```http
+POST /api/articles/{articleId}/human-review
+```
+
+認可: 所有者または管理者。
+
+Request `CompleteHumanReviewRequest`:
+
+| プロパティ | 型 | 必須 | 制約 |
+| --- | --- | --- | --- |
+| `reviewComment` | string | 任意 | 1000文字以内。監査ログの概要用。本文全文や秘密情報は含めない |
+| `rowVersion` | string | 任意 | 同時更新制御用 |
+
+処理:
+
+- 対象記事の存在と所有者を確認する。
+- `HumanReviewedAt`へ現在時刻、`HumanReviewedByUserId`へ実行ユーザーIDを保存する。
+- `HumanReviewRequired`は判定結果として保持し、公開可否は`HumanReviewRequired = false`または`HumanReviewedAt`ありで判定する。
+- 監査ログへ人間確認完了を記録する。記事本文、HTML本文、プロンプト全文は記録しない。
+
+Response `200 OK`:
+
+```json
+{
+  "articleId": "7bc3e1d4-8f30-4c21-8873-3f1a47c9d19c",
+  "humanReviewRequired": true,
+  "humanReviewedAt": "2026-01-03T05:00:00Z",
+  "humanReviewedByUserId": "user-id"
+}
+```
 
 ## 7. Headings API
 
@@ -555,6 +619,9 @@ Request `GenerateTitleCandidatesRequest`:
 | `titleMethod` | string | 任意 | `Ai`など |
 | `generationModel` | string | 必須 | 使用モデル |
 | `candidateCount` | int | 任意 | 既定5、最大20 |
+| `suggestedKeywords` | string | 任意 | 記事保存値を上書きして使う場合 |
+| `relatedKeywords` | string | 任意 | 記事保存値を上書きして使う場合 |
+| `additionalPrompt` | string | 任意 | 記事保存値を上書きして使う場合 |
 
 Response `202 Accepted`: `JobAcceptedResponse`。
 
@@ -576,9 +643,12 @@ Request `GenerateOutlineRequest`:
 | `generationModel` | string | 必須 | 使用モデル |
 | `searchMode` | bool | 必須 | Web検索利用 |
 | `isDomesticOnly` | bool | 必須 | 日本国内情報限定 |
+| `tone` | string | 任意 | 文章トーン。未指定時は記事保存値 |
+| `suggestedKeywords` | string | 任意 | サジェストキーワード。未指定時は記事保存値 |
+| `relatedKeywords` | string | 任意 | 関連キーワード。未指定時は記事保存値 |
 | `learningType` | string | 任意 | `None` / `Text` / `Url` |
-| `learningText` | string | 任意 | 事前学習テキストまたはURL |
-| `additionalPrompt` | string | 任意 | 追加指示 |
+| `learningText` | string | 任意 | 事前学習テキストまたはURL。未指定時は記事保存値 |
+| `additionalPrompt` | string | 任意 | 追加指示。未指定時は記事保存値 |
 
 Response `202 Accepted`: `JobAcceptedResponse`。
 
@@ -729,9 +799,11 @@ POST /api/jobs/{jobId}/retry
 
 - 元ジョブが`Failed`である。
 - 再実行可能な失敗理由である。
-- 利用上限を超過しない。
+- `remainingOutlineCount`などMVPで制御する明示的な残数を超過しない。
 
-Response `202 Accepted`: 新しい`JobAcceptedResponse`。
+Response `202 Accepted`: 元ジョブのPayloadをコピーした新しい`JobAcceptedResponse`。
+
+再実行では元ジョブの`Status`を`Queued`へ戻さず、新しいジョブIDを発行する。元ジョブは`Failed`のまま監査・原因確認用に残す。
 
 ### 9.4 ジョブキャンセル
 
@@ -923,6 +995,13 @@ Request `CreateWordpressPostRequest`:
 
 MVPではWordPressメディアアップロードAPIを提供せず、WordPress投稿時のアイキャッチ画像URL指定にも対応しない。
 `categoryId`が未指定の場合は投稿先サイトの既定カテゴリを使用する。指定されたカテゴリIDの有効性は投稿時にWordPress側で検証され、無効な場合は投稿失敗として履歴に保存する。
+
+公開制御:
+
+- `status`省略時は`Draft`にする。
+- `status = Publish`かつ`HumanReviewRequired = true`で`HumanReviewedAt`がNULLの場合は`422 HumanReviewRequired`を返す。
+- `Draft`投稿は人間確認未完了でも登録できる。
+- production/strictでX引用を含む場合、表示または投稿前の再hydrationが未完了なら`422 XRehydrationRequired`を返す。
 
 Response `202 Accepted`: `JobAcceptedResponse`。
 
@@ -1269,7 +1348,8 @@ Request:
 処理:
 
 - 対象ユーザーの存在を確認する。
-- `monthlyLimitChars`は0以上を許可する。0は新規ジョブ登録不可として扱う。
+- `monthlyLimitChars`は0以上を許可する。MVPでは設定値表示用であり、文字数消費に基づくジョブ拒否には使わない。
+- 新規構成生成を止める場合は`remainingOutlineCount = 0`にする。
 - 変更前後の上限値、実行者を監査ログへ記録する。
 
 Response `200 OK`。
@@ -1370,7 +1450,7 @@ Response `200 OK`:
 
 ### 16.3 業務バリデーション
 
-- 利用上限超過時はジョブ登録を拒否する。
+- `remainingOutlineCount`などMVPで制御する明示的な残数が不足する場合はジョブ登録を拒否する。
 - 投稿可能な記事ステータスは`Completed`または`Posted`とする。
 - `Running`ジョブが存在する記事は削除不可とする。
 - 記事削除時、同一記事に紐づく`Queued`ジョブは`Canceled`へ更新する。
@@ -1432,5 +1512,5 @@ public static class ArticleEndpoints
 - ジョブ状態取得APIで所有者チェックが行われる。
 - WordPress Application Passwordがレスポンスに含まれない。
 - WordPress接続テスト失敗時に秘密情報がレスポンスへ含まれない。
-- 利用上限超過時にジョブ登録が拒否される。
+- `remainingOutlineCount`などMVPで制御する明示的な残数不足時にジョブ登録が拒否される。
 - 一括作成APIでWordPress自動投稿を有効にした場合、投稿先サイトの所有者確認が行われ、本文生成完了後に下書き投稿ジョブが重複なく登録される。

@@ -231,7 +231,7 @@ productionとstrictでは、X投稿の表示またはWordPress投稿前に再hyd
 | `LastAdminCannotBeDeleted` | 400 | 最後のAdminユーザー削除 |
 | `SelfDeleteForbidden` | 400 | 管理者APIで自分自身を削除 |
 | `DataRetentionPolicyViolation` | 500または運用ログ | TTL満了後のデータが削除またはNULL化されていない |
-| `CacheCleanupFailed` | ジョブ失敗 | 期限切れ検索キャッシュ削除ジョブの失敗 |
+| `CacheCleanupFailed` | 運用ログ / Worker失敗 | 期限切れ検索キャッシュ削除Workerの失敗 |
 
 削除処理の失敗ログには削除件数、対象テーブル、`traceId`を記録する。削除対象本文や秘密情報は記録しない。
 

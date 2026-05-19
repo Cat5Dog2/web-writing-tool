@@ -154,6 +154,11 @@ Identity標準テーブル:
 | `Tone` | `varchar(40)` | Yes |  | 文章トーン |
 | `Tags` | `text[]` | No | default empty | タグ配列 |
 | `Memo` | `text` | Yes |  | メモ |
+| `SuggestedKeywords` | `text` | Yes |  | サジェストキーワード。プロンプト入力用 |
+| `RelatedKeywords` | `text` | Yes |  | 関連キーワード。プロンプト入力用 |
+| `LearningType` | `varchar(40)` | Yes |  | 事前学習種別。None / Text / Url |
+| `LearningText` | `text` | Yes |  | 事前学習本文またはURL |
+| `AdditionalPrompt` | `text` | Yes |  | 追加プロンプト |
 | `Body` | `text` | Yes |  | 結合済み本文 |
 | `HtmlBody` | `text` | Yes |  | HTML本文 |
 | `MetaDescription` | `varchar(320)` | Yes |  | メタディスクリプション |
@@ -210,6 +215,12 @@ Identity標準テーブル:
 - 本人退会または管理者によるユーザー削除時は対象ユーザーの記事と関連データを物理削除する。
 - `WritingProfileWordpressSiteId`は同一ユーザーの有効な`WordpressSites.Id`のみ許可する。記事作成時に`WritingProfileSnapshotJson`へコピーし、生成途中のサイト設定変更でプロンプトが変わらないようにする。
 - `AutoPostToWordpress = true`の場合、`AutoPostWordpressSiteId`は同一ユーザーの有効な`WordpressSites.Id`を指す。自動投稿ジョブ登録後は`AutoPostQueuedAt`を設定し、二重登録を防ぐ。
+
+人間確認方針:
+
+- `HumanReviewRequired = true`の記事は、`HumanReviewedAt`が設定されるまでWordPress公開投稿できない。
+- 人間確認完了時は`HumanReviewedAt`と`HumanReviewedByUserId`を設定する。`HumanReviewRequired`は判定結果として保持する。
+- 確認後にタイトル、本文、HTML本文、メタディスクリプション、TopicRisk、X引用など公開判断に影響する値を変更した場合は、`HumanReviewedAt`と`HumanReviewedByUserId`をNULLに戻す。
 
 ### 6.3 `ArticleHeadings`
 
@@ -705,6 +716,8 @@ WordPress投稿履歴を保存する。
 | `XFullArchiveSearch` | X API Full-Archive Search |
 | `WordpressPost` | WordPress投稿 |
 | `Notification` | 通知 |
+
+期限切れ検索キャッシュ削除は、ユーザー必須の`ArticleGenerationJobs`には登録せず、専用の`SearchCacheCleanupWorker`で扱う。
 
 ### 7.5 `WordpressPostStatus`
 
