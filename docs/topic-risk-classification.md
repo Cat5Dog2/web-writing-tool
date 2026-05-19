@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | `normal` | 一般SEO記事、ハウツー、技術メモ、ブログ下書き、evergreen記事 | 通常TTL、通常プロンプト、通常レビュー |
 | `strict` | 最新情報、ニュース、X投稿利用、料金比較、価格、在庫、ランキング、口コミ、評判、SaaS比較 | 短TTL、出典確認、断定回避、X再取得 |
-| `compliance_strict` | 医療、法律、税金、投資、保険、政治、選挙、災害、事件、不祥事、個人や企業の評判毀損 | strict制約、人間確認必須、Publish抑止 |
+| `compliance_strict` | 医療、法律、税金、投資、保険、政治、選挙、災害、事件、不祥事、個人や企業の評判毀損 | strict制約、人間確認必須、人間確認前のPublish抑止 |
 
 `strict`は鮮度、価格、評判、外部投稿、比較条件の変化に弱い記事を対象にする。`compliance_strict`は読者の健康、財産、安全、法的判断、社会的評価に重大な影響を与える可能性がある記事を対象にする。
 
@@ -490,7 +490,7 @@ MVPの推奨:
 | 入力が空 | `ValidationError` | `normal`へ倒さず、記事作成側の必須入力として拒否する |
 | 辞書ファイルが壊れている | `ConfigurationError` | 起動時またはヘルスチェックで検出する |
 | 判定処理失敗 | `UnknownError` | 安全側に`strict`として扱い、ログへtraceIdを残す |
-| 人間確認が必要 | `HumanReviewRequired` | Publishを拒否する |
+| 人間確認未完了 | `HumanReviewRequired` | `HumanReviewRequired = true`かつ`HumanReviewedAt`未設定のPublishを拒否する |
 | X再取得が必要 | `XRehydrationRequired` | 表示または投稿前に再取得を要求する |
 | X再取得失敗 | `XRehydrationFailed` | 引用停止または人間確認へ回す |
 
@@ -533,7 +533,7 @@ MVPの推奨:
 | `TRC-007` | 複数一致 | strictとcompliance_strictが混在した場合に`compliance_strict`になる |
 | `TRC-008` | TTL優先 | 複数TTL候補のうち最短TTLが採用される |
 | `TRC-009` | X再取得 | production/strictでX表示前再取得が要求される |
-| `TRC-010` | Publish抑止 | `HumanReviewRequired`でPublishが拒否される |
+| `TRC-010` | Publish抑止 | `HumanReviewRequired`かつ`HumanReviewedAt`未設定でPublishが拒否される |
 | `TRC-011` | 除外語 | 技術用語のhealth checkが医療扱いされない |
 | `TRC-012` | 辞書更新 | 辞書変更時に判定テストが更新される |
 | `TRC-013` | ログ除外 | 本文全文、プロンプト全文、X投稿本文全文がログに出ない |
