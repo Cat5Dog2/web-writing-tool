@@ -210,7 +210,7 @@ ASP.NET CoreのCookie認証や一部トークン保護に必要なData Protectio
 
 | タイミング | 方針 |
 | --- | --- |
-| 開発 | `dotnet ef database update` |
+| 開発 | `scripts/dotnet.ps1 ef database update --project src/WebWritingTool.Infrastructure --startup-project src/WebWritingTool.Web` |
 | 本番 | デプロイ手順内で明示実行 |
 | 自動適用 | MVPでは避ける。起動時自動適用は小規模運用のみ検討 |
 | ロールバック | DBバックアップ取得後に実施 |
