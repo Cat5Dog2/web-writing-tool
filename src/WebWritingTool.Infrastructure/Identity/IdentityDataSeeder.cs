@@ -1,29 +1,30 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Domain.Ai;
+using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.Infrastructure.Identity;
 
 public sealed class IdentityDataSeeder(
     RoleManager<IdentityRole> roleManager,
     UserManager<ApplicationUser> userManager,
+    ApplicationDbContext dbContext,
     IOptions<AdminSeedOptions> options,
     ILogger<IdentityDataSeeder> logger)
     : IIdentityDataSeeder
 {
+    private const string InitialAiProvider = "GoogleGemini";
+    private const string InitialAiModel = "gemini-3.1-pro-preview";
+    private const string InitialAiDisplayName = "Google Gemini 3.1 Pro Preview";
+    private const string InitialAiRegion = "Japan";
+
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var role in ApplicationRoles.All)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!await roleManager.RoleExistsAsync(role))
-            {
-                var roleResult = await roleManager.CreateAsync(new IdentityRole(role));
-                EnsureSucceeded(roleResult, $"Failed to seed role '{role}'.");
-            }
-        }
+        await SeedRolesAsync(cancellationToken);
+        await SeedAiModelSettingsAsync(cancellationToken);
 
         var admins = await userManager.GetUsersInRoleAsync(ApplicationRoles.Admin);
         if (admins.Count > 0)
@@ -55,6 +56,46 @@ public sealed class IdentityDataSeeder(
         EnsureSucceeded(roleAssignResult, "Failed to assign Admin role to the initial Admin user.");
 
         logger.LogInformation("Initial Admin user was seeded.");
+    }
+
+    private async Task SeedRolesAsync(CancellationToken cancellationToken)
+    {
+        foreach (var role in ApplicationRoles.All)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!await roleManager.RoleExistsAsync(role))
+            {
+                var roleResult = await roleManager.CreateAsync(new IdentityRole(role));
+                EnsureSucceeded(roleResult, $"Failed to seed role '{role}'.");
+            }
+        }
+    }
+
+    private async Task SeedAiModelSettingsAsync(CancellationToken cancellationToken)
+    {
+        var exists = await dbContext.AiModelSettings.AnyAsync(
+            setting => setting.Provider == InitialAiProvider && setting.Model == InitialAiModel,
+            cancellationToken);
+
+        if (exists)
+        {
+            logger.LogInformation("Initial AI model seed skipped because the model already exists.");
+            return;
+        }
+
+        dbContext.AiModelSettings.Add(new AiModelSetting
+        {
+            Provider = InitialAiProvider,
+            Model = InitialAiModel,
+            DisplayName = InitialAiDisplayName,
+            Region = InitialAiRegion,
+            Enabled = true,
+            SortOrder = 0
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Initial AI model was seeded.");
     }
 
     private static void EnsureSucceeded(IdentityResult result, string message)
