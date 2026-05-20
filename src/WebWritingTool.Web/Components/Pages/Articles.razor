@@ -1,0 +1,575 @@
+@page "/articles"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+
+@inject IArticleQueryService ArticleQueryService
+@inject IArticleCommandService ArticleCommandService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>記事一覧</PageTitle>
+
+<div class="article-page">
+    <header class="article-page-header">
+        <div>
+            <h1>記事作成</h1>
+        </div>
+        <div class="article-actions">
+            <a class="btn btn-primary" href="articles/create">記事を作成</a>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ToggleBulkForm">一括作成</button>
+            <button class="btn btn-outline-secondary" type="button" disabled>記事インポート</button>
+        </div>
+    </header>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><span class="nav-link active">プロジェクト</span></li>
+        <li class="nav-item"><span class="nav-link disabled">詳細</span></li>
+        <li class="nav-item"><span class="nav-link disabled">設定</span></li>
+    </ul>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    @if (showBulkForm)
+    {
+        <section class="article-panel mb-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <h2 class="h5 mb-0">一括作成</h2>
+                <button type="button" class="btn-close" aria-label="閉じる" @onclick="ToggleBulkForm"></button>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label" for="bulk-lines">キーワード一覧</label>
+                    <textarea id="bulk-lines" class="form-control" rows="6" @bind="bulkLines"></textarea>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="bulk-h2">H2の個数</label>
+                    <input id="bulk-h2" class="form-control" type="number" min="1" max="20" @bind="bulkH2Count" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="bulk-h3">H3の個数</label>
+                    <input id="bulk-h3" class="form-control" type="number" min="0" max="60" @bind="bulkH3Count" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bulk-title-method">タイトル構築方法</label>
+                    <select id="bulk-title-method" class="form-select" @bind="bulkTitleMethod">
+                        <option value="Ai">AIで構築</option>
+                        <option value="Keyword">キーワードを使用</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bulk-outline-method">見出し構築方法</label>
+                    <select id="bulk-outline-method" class="form-select" @bind="bulkOutlineMethod">
+                        <option value="Search">検索エンジンの結果を参考にAIで構築</option>
+                        <option value="Keyword">キーワード</option>
+                        <option value="Ai">AI</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bulk-model">何を作成する？</label>
+                    <select id="bulk-model" class="form-select" @bind="bulkGenerationModel">
+                        @foreach (var model in formOptions.GenerationModels)
+                        {
+                            <option value="@model.Model">@model.DisplayName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bulk-writing-profile">サイト別ライティング設定</label>
+                    <select id="bulk-writing-profile" class="form-select" @bind="bulkWritingProfileId">
+                        <option value="">使用しない</option>
+                        @foreach (var profile in formOptions.WritingProfiles)
+                        {
+                            <option value="@profile.Id">@profile.SiteName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bulk-auto-post-site">自動投稿先サイト</label>
+                    <select id="bulk-auto-post-site" class="form-select" @bind="bulkAutoPostSiteId" disabled="@(!bulkAutoPostToWordpress)">
+                        <option value="">未選択</option>
+                        @foreach (var profile in formOptions.WritingProfiles)
+                        {
+                            <option value="@profile.Id">@profile.SiteName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="bulk-category">自動投稿カテゴリ</label>
+                    <input id="bulk-category" class="form-control" type="number" @bind="bulkAutoPostCategoryId" disabled="@(!bulkAutoPostToWordpress)" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input id="bulk-domestic" class="form-check-input" type="checkbox" @bind="bulkIsDomesticOnly" />
+                        <label class="form-check-label" for="bulk-domestic">情報は日本国内のものに限定</label>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input id="bulk-search" class="form-check-input" type="checkbox" @bind="bulkSearchMode" />
+                        <label class="form-check-label" for="bulk-search">検索モード</label>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input id="bulk-auto-post" class="form-check-input" type="checkbox" @bind="bulkAutoPostToWordpress" />
+                        <label class="form-check-label" for="bulk-auto-post">WordPress自動投稿</label>
+                    </div>
+                </div>
+            </div>
+
+            @if (bulkRejectedLines.Count > 0)
+            {
+                <div class="alert alert-warning mt-3" role="alert">
+                    @foreach (var rejectedLine in bulkRejectedLines)
+                    {
+                        <div>@rejectedLine.LineNumber 行目: @rejectedLine.Reason</div>
+                    }
+                </div>
+            }
+
+            <div class="mt-3">
+                <button type="button" class="btn btn-primary" @onclick="SubmitBulkAsync" disabled="@isBulkSubmitting">登録</button>
+            </div>
+        </section>
+    }
+
+    <section class="article-panel mb-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label" for="search-tags">タグ</label>
+                <input id="search-tags" class="form-control" @bind="searchTags" />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" for="search-q">キーワード検索</label>
+                <input id="search-q" class="form-control" @bind="searchQuery" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="page-size">表示件数</label>
+                <select id="page-size" class="form-select" @bind="pageSize">
+                    <option value="10">10件</option>
+                    <option value="30">30件</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-primary w-100" @onclick="SearchAsync">検索</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="text-muted">@articleList.TotalCount 件</div>
+        @if (isLoading)
+        {
+            <div class="text-muted">読み込み中</div>
+        }
+    </div>
+
+    <div class="table-responsive article-table-wrap">
+        <table class="table table-sm align-middle article-table">
+            <thead>
+                <tr>
+                    <th>作成日</th>
+                    <th>見出し取得</th>
+                    <th>ステータス</th>
+                    <th>記事タイトル</th>
+                    <th>タグ</th>
+                    <th>メモ</th>
+                    <th class="text-end">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (articleList.Items.Count == 0 && !isLoading)
+                {
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">該当する記事はありません</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var article in articleList.Items)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@ToDisplayDate(article.CreatedAt)</td>
+                            <td><span class="badge text-bg-light">@article.HeadlineSource</span></td>
+                            <td><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
+                            <td>
+                                <a href="@($"articles/{article.Id}")" class="fw-semibold">@GetArticleTitle(article)</a>
+                                @if (article.Tags.Count > 0)
+                                {
+                                    <div class="article-tag-row">
+                                        @foreach (var tag in article.Tags)
+                                        {
+                                            <span class="badge text-bg-secondary">@tag</span>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td class="article-tags-cell">
+                                @foreach (var tag in article.Tags)
+                                {
+                                    <span class="badge text-bg-secondary">@tag</span>
+                                }
+                            </td>
+                            <td class="article-memo-cell">@article.Memo</td>
+                            <td>
+                                <div class="d-flex justify-content-end gap-2">
+                                    <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
+                                    <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialog(article)">投稿</button>
+                                    <button class="btn btn-sm btn-outline-danger" type="button" disabled="@article.HasRunningJob" @onclick="() => ConfirmDelete(article)">削除</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasPrevious)" @onclick="() => GoToPage(articleList.Page - 1)">前へ</button>
+        <span>@articleList.Page / @Math.Max(articleList.TotalPages, 1)</span>
+        <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasNext)" @onclick="() => GoToPage(articleList.Page + 1)">次へ</button>
+    </div>
+
+    @if (deleteTarget is not null)
+    {
+        <div class="article-dialog-backdrop">
+            <section class="article-dialog" role="dialog" aria-modal="true">
+                <h2 class="h5">記事を削除</h2>
+                <p class="mb-2">@GetArticleTitle(deleteTarget)</p>
+                @if (deleteTarget.HasQueuedJob)
+                {
+                    <p class="text-muted">待機中ジョブは削除時にキャンセルされます。</p>
+                }
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete">キャンセル</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteAsync">削除</button>
+                </div>
+            </section>
+        </div>
+    }
+
+    @if (postTarget is not null)
+    {
+        <div class="article-dialog-backdrop">
+            <section class="article-dialog" role="dialog" aria-modal="true">
+                <h2 class="h5">WordPress投稿</h2>
+                <p class="mb-3">@GetArticleTitle(postTarget)</p>
+                <label class="form-label" for="post-site">投稿先サイト</label>
+                <select id="post-site" class="form-select mb-3">
+                    @foreach (var profile in formOptions.WritingProfiles)
+                    {
+                        <option value="@profile.Id">@profile.SiteName</option>
+                    }
+                </select>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="ClosePostDialog">閉じる</button>
+                    <button type="button" class="btn btn-success" disabled>下書き投稿</button>
+                </div>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? QueryPage { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pageSize")]
+    public int? QueryPageSize { get; set; }
+
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? QuerySearch { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tags")]
+    public string? QueryTags { get; set; }
+
+    private ArticleListResponse articleList = new([], 1, 10, 0, 0, false, false);
+    private ArticleFormOptionsResponse formOptions = new([], []);
+    private string? searchQuery;
+    private string? searchTags;
+    private int pageSize = 10;
+    private bool isLoading;
+    private bool optionsLoaded;
+    private string? errorMessage;
+    private string? successMessage;
+    private bool showBulkForm;
+    private string? bulkLines;
+    private int? bulkH2Count = 5;
+    private int? bulkH3Count = 12;
+    private bool bulkIsDomesticOnly = true;
+    private string bulkTitleMethod = "Ai";
+    private string bulkOutlineMethod = "Search";
+    private string bulkGenerationModel = string.Empty;
+    private bool bulkSearchMode = true;
+    private string? bulkWritingProfileId;
+    private bool bulkAutoPostToWordpress;
+    private string? bulkAutoPostSiteId;
+    private int? bulkAutoPostCategoryId;
+    private bool isBulkSubmitting;
+    private IReadOnlyList<BulkArticleRejectedLine> bulkRejectedLines = [];
+    private ArticleListItemResponse? deleteTarget;
+    private ArticleListItemResponse? postTarget;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        searchQuery = QuerySearch;
+        searchTags = QueryTags;
+        pageSize = QueryPageSize is 30 ? 30 : 10;
+        await EnsureOptionsAsync();
+        await LoadArticlesAsync(QueryPage ?? 1);
+    }
+
+    private async Task EnsureOptionsAsync()
+    {
+        if (optionsLoaded)
+        {
+            return;
+        }
+
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        formOptions = await ArticleQueryService.GetFormOptionsAsync(actor.UserId);
+        bulkGenerationModel = formOptions.GenerationModels.FirstOrDefault()?.Model ?? string.Empty;
+        optionsLoaded = true;
+    }
+
+    private async Task LoadArticlesAsync(int page)
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            articleList = await ArticleQueryService.SearchAsync(
+                actor,
+                new ArticleListQuery(
+                    page,
+                    pageSize,
+                    searchQuery,
+                    ArticleInputNormalizer.SplitTags(searchTags),
+                    Status: null,
+                    CreatedFrom: null,
+                    CreatedTo: null,
+                    Sort: "createdAt",
+                    Direction: "desc"));
+        }
+        catch (Exception)
+        {
+            errorMessage = "記事一覧を取得できませんでした。";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private Task SearchAsync()
+    {
+        NavigationManager.NavigateTo(BuildListUrl(1));
+        return Task.CompletedTask;
+    }
+
+    private void GoToPage(int page)
+    {
+        NavigationManager.NavigateTo(BuildListUrl(page));
+    }
+
+    private string BuildListUrl(int page)
+    {
+        var query = new List<string>
+        {
+            $"page={page}",
+            $"pageSize={pageSize}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            query.Add($"q={Uri.EscapeDataString(searchQuery)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchTags))
+        {
+            query.Add($"tags={Uri.EscapeDataString(searchTags)}");
+        }
+
+        return $"/articles?{string.Join("&", query)}";
+    }
+
+    private void ToggleBulkForm()
+    {
+        showBulkForm = !showBulkForm;
+        bulkRejectedLines = [];
+    }
+
+    private async Task SubmitBulkAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isBulkSubmitting = true;
+        errorMessage = null;
+        successMessage = null;
+        bulkRejectedLines = [];
+
+        var lines = (bulkLines ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.None);
+
+        var result = await ArticleCommandService.BulkCreateAsync(
+            new BulkCreateArticlesCommand(
+                actor.UserId,
+                lines,
+                bulkH2Count,
+                bulkH3Count,
+                bulkIsDomesticOnly,
+                bulkTitleMethod,
+                bulkOutlineMethod,
+                bulkGenerationModel,
+                bulkSearchMode,
+                ParseGuid(bulkWritingProfileId),
+                bulkAutoPostToWordpress,
+                ParseGuid(bulkAutoPostSiteId),
+                bulkAutoPostCategoryId));
+
+        isBulkSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        bulkRejectedLines = result.Value.RejectedLines;
+        successMessage = $"{result.Value.CreatedArticleCount}件の記事を登録しました。";
+        bulkLines = null;
+        showBulkForm = result.Value.RejectedLines.Count > 0;
+        await LoadArticlesAsync(1);
+    }
+
+    private void ConfirmDelete(ArticleListItemResponse article)
+    {
+        deleteTarget = article;
+    }
+
+    private void CancelDelete()
+    {
+        deleteTarget = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (deleteTarget is null)
+        {
+            return;
+        }
+
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        var result = await ArticleCommandService.DeleteAsync(actor, deleteTarget.Id);
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            deleteTarget = null;
+            return;
+        }
+
+        successMessage = "記事を削除しました。";
+        deleteTarget = null;
+        await LoadArticlesAsync(articleList.Page);
+    }
+
+    private void OpenPostDialog(ArticleListItemResponse article)
+    {
+        postTarget = article;
+    }
+
+    private void ClosePostDialog()
+    {
+        postTarget = null;
+    }
+
+    private async Task<ArticleActor?> GetActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new ArticleActor(userId, user.IsInRole("Admin"));
+    }
+
+    private static Guid? ParseGuid(string? value)
+    {
+        return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private static string GetArticleTitle(ArticleListItemResponse article)
+    {
+        return string.IsNullOrWhiteSpace(article.Title) ? article.Keyword : article.Title;
+    }
+
+    private static string ToDisplayDate(DateTimeOffset value)
+    {
+        var local = value.ToLocalTime();
+        return $"{local:yyyy/M/d HH}時";
+    }
+
+    private static string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Completed" or "Posted" => "text-bg-success",
+            "Failed" => "text-bg-danger",
+            "OutlineGenerating" or "BodyGenerating" => "text-bg-primary",
+            "OutlineQueued" or "BodyQueued" => "text-bg-warning",
+            _ => "text-bg-secondary"
+        };
+    }
+
+    private static string GetServiceErrorMessage(
+        ArticleServiceError error,
+        IReadOnlyList<ArticleValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            ArticleServiceError.NotFound => "対象データが見つかりません。",
+            ArticleServiceError.ConflictRunningJob => "実行中ジョブがあるため削除できません。",
+            ArticleServiceError.ConcurrencyConflict => "他の操作により記事が更新されています。",
+            _ => "処理に失敗しました。"
+        };
+    }
+}

@@ -58,3 +58,102 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+.article-page {
+    max-width: 1280px;
+}
+
+.article-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.article-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.article-panel {
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    padding: 1rem;
+    background: #fff;
+}
+
+.article-table-wrap {
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+}
+
+.article-table {
+    margin-bottom: 0;
+}
+
+.article-table th {
+    white-space: nowrap;
+    color: #3d4852;
+    background: #f6f8fb;
+}
+
+.article-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+}
+
+.article-tags-cell {
+    min-width: 10rem;
+}
+
+.article-tags-cell .badge {
+    margin: 0 0.25rem 0.25rem 0;
+}
+
+.article-memo-cell {
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.article-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.article-dialog {
+    width: min(34rem, 100%);
+    border-radius: 8px;
+    padding: 1rem;
+    background: #fff;
+    box-shadow: 0 1rem 3rem rgba(15, 23, 42, 0.2);
+}
+
+.article-heading-list {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+    .article-page-header {
+        flex-direction: column;
+    }
+
+    .article-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}

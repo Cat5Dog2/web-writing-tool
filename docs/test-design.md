@@ -67,7 +67,7 @@ BlazorコンポーネントテストにはbUnitを採用する。ただしMVPで
 | 採用ツール | bUnit |
 | テストランナー | xUnit |
 | MVP対象 | 再利用コンポーネント、入力フォーム、モーダル、状態表示 |
-| 優先対象 | `UsageSummary`、`ArticleSearchForm`、`BulkCreateModal`、`WordpressPostModal`、`JobStatusBadge` |
+| 優先対象 | `ArticleSearchForm`、`BulkCreateModal`、`WordpressPostModal`、`JobStatusBadge` |
 | 検証観点 | パラメータ反映、入力バリデーション、条件付き表示、ボタン有効/無効、イベント発火 |
 | 対象外 | 画面全体の業務フロー、ブラウザ固有挙動、JS依存挙動、ドラッグ操作 |
 | 主要フロー | Playwright E2Eで検証 |
@@ -210,7 +210,7 @@ tests/
 | テストID | API | 観点 | 期待 |
 | --- | --- | --- | --- |
 | `IT-API-040` | `POST /api/articles/{articleId}/generation/outline` | 正常登録 | 202、jobId |
-| `IT-API-041` | `POST /api/articles/{articleId}/generation/outline` | 残り構成数不足 | 422 |
+| `IT-API-041` | `POST /api/articles/{articleId}/generation/outline` | 利用上限不足 | 422 |
 | `IT-API-042` | `POST /api/articles/{articleId}/generation/body` | 多重実行 | 409 |
 | `IT-API-043` | `GET /api/jobs/{jobId}` | 所有者 | 200 |
 | `IT-API-044` | `GET /api/jobs/{jobId}` | 他ユーザー | 403または404 |
@@ -323,7 +323,7 @@ tests/
 | `IT-JOB-001` | OutlineGeneration登録 | Jobが作成され、Articleが`OutlineQueued`になる |
 | `IT-JOB-002` | BodyGeneration登録 | HeadingId付きJobが作成され、対象Headingが`Queued`になる |
 | `IT-JOB-003` | 多重登録防止 | 同一HeadingのRunningがあると409 |
-| `IT-JOB-004` | 残り構成数 | 残数不足でJobを作らない |
+| `IT-JOB-004` | 利用上限 | 上限不足でJobを作らない |
 
 ### 10.3 ジョブ取得・排他
 
