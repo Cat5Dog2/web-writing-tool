@@ -118,22 +118,22 @@
 
 ## 6. P2 DB基盤
 
-- [ ] `T-0201` 業務Entityを作成する。
+- [x] `T-0201` 業務Entityを作成する。
   - 対象: `Articles`, `ArticleHeadings`, `ArticleGenerationJobs`, `AiGenerationLogs`, `UsageLedgers`, `SearchResults`, `XSearchPosts`, `WordpressSites`, `WordpressPosts`, `NotificationSettings`, `NotificationLogs`, `AiModelSettings`, `UserUsageLimits`, `AuditLogs`
   - 参照: `docs/db-design.md`
 
-- [ ] `T-0202` `ApplicationDbContext`を実装する。
+- [x] `T-0202` `ApplicationDbContext`を実装する。
   - 条件: Identity用DbContextを継承する。
   - 完了条件: Entity設定、Index、制約が定義される。
 
-- [ ] `T-0203` 論理削除フィルターを実装する。
+- [x] `T-0203` 論理削除フィルターを実装する。
   - 対象: 記事、見出し、WordPressサイト、通知設定など
   - 完了条件: 通常検索から`DeletedAt`ありの行が除外される。
 
-- [ ] `T-0204` 初期Migrationを作成する。
+- [x] `T-0204` 初期Migrationを作成する。
   - 完了条件: PostgreSQLへMigration適用できる。
 
-- [ ] `T-0205` 初期Seedを作成する。
+- [x] `T-0205` 初期Seedを作成する。
   - 対象: Adminロール、Userロール、初期AIモデル、初期Admin
   - 完了条件: 初回起動時にログイン可能なAdminが作成される。
 
