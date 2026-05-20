@@ -33,6 +33,7 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapAccountEndpoints();
 app.MapArticleEndpoints();
+app.MapJobEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

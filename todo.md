@@ -169,23 +169,23 @@
 
 ## 8. P4 ジョブ基盤
 
-- [ ] `T-0401` ジョブ登録サービスを実装する。
+- [x] `T-0401` ジョブ登録サービスを実装する。
   - 対象: `TitleGeneration`, `OutlineGeneration`, `BodyGeneration`, `Rewrite`, `WebSearch`, `XFullArchiveSearch`, `WordpressPost`, `Notification`
   - 完了条件: 重複ジョブ制御が動く。
 
-- [ ] `T-0402` `BackgroundService`を実装する。
+- [x] `T-0402` `BackgroundService`を実装する。
   - 条件: `IDbContextFactory`または`IServiceScopeFactory`を使う。
   - 完了条件: QueuedジョブをRunningへロックして処理できる。
 
-- [ ] `T-0403` ジョブ状態APIを実装する。
+- [x] `T-0403` ジョブ状態APIを実装する。
   - Endpoint: `GET /api/jobs/{jobId}`
   - 完了条件: 所有者またはAdminのみ参照できる。
 
-- [ ] `T-0404` ジョブキャンセル、再試行を実装する。
+- [x] `T-0404` ジョブキャンセル、再試行を実装する。
   - 条件: MVPではQueuedのみキャンセル可能
   - 完了条件: Failedジョブを再試行できる。
 
-- [ ] `T-0405` ジョブ失敗記録とリトライポリシーを実装する。
+- [x] `T-0405` ジョブ失敗記録とリトライポリシーを実装する。
   - 完了条件: 429、Timeout、認証失敗などを設計どおり分類する。
 
 ## 9. P5 AI生成
