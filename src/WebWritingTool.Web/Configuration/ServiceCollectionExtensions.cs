@@ -6,12 +6,16 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Accounts;
 using WebWritingTool.Application.Articles;
+using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.Accounts;
 using WebWritingTool.Infrastructure.Articles;
+using WebWritingTool.Infrastructure.BackgroundJobs;
 using WebWritingTool.Infrastructure.Data;
 using WebWritingTool.Infrastructure.Identity;
+using WebWritingTool.Infrastructure.Jobs;
 using WebWritingTool.Web.Authorization;
+using WebWritingTool.Web.BackgroundJobs;
 
 internal static class ServiceCollectionExtensions
 {
@@ -66,12 +70,21 @@ internal static class ServiceCollectionExtensions
 
         services.Configure<AdminSeedOptions>(
             configuration.GetSection(AdminSeedOptions.SectionName));
+        services.Configure<BackgroundJobOptions>(
+            configuration.GetSection(BackgroundJobOptions.SectionName));
 
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
         services.AddScoped<ArticleService>();
         services.AddScoped<IArticleCommandService>(provider => provider.GetRequiredService<ArticleService>());
         services.AddScoped<IArticleQueryService>(provider => provider.GetRequiredService<ArticleService>());
+        services.AddSingleton<JobRetryPolicy>();
+        services.AddScoped<JobLeaseService>();
+        services.AddScoped<JobDispatcher>();
+        services.AddScoped<JobService>();
+        services.AddScoped<IJobCommandService>(provider => provider.GetRequiredService<JobService>());
+        services.AddScoped<IJobQueryService>(provider => provider.GetRequiredService<JobService>());
+        services.AddHostedService<ArticleJobWorker>();
 
         return services;
     }
