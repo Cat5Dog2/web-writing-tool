@@ -92,26 +92,26 @@
 
 ## 5. P1 認証・認可
 
-- [ ] `T-0101` ASP.NET Core Identityを導入する。
+- [x] `T-0101` ASP.NET Core Identityを導入する。
   - 参照: `docs/security-design.md`, `docs/db-design.md`
   - 完了条件: `AspNetUsers`などIdentityテーブルがMigration対象になる。
 
-- [ ] `T-0102` ApplicationUser拡張カラムを追加する。
+- [x] `T-0102` ApplicationUser拡張カラムを追加する。
   - 対象: `DisplayName`, `IsEnabled`, `LastLoginAt`, `CreatedAt`, `UpdatedAt`
   - 完了条件: DB設計と一致する。
 
-- [ ] `T-0103` Cookie認証設定を行う。
+- [x] `T-0103` Cookie認証設定を行う。
   - 対象: `Secure`, `HttpOnly`, `SameSite`, ログインパス
   - 完了条件: 未認証時にログインへ遷移する。
 
-- [ ] `T-0104` Admin/UserロールをSeedする。
+- [x] `T-0104` Admin/UserロールをSeedする。
   - 完了条件: 初期Adminユーザーでログインできる。既存Adminがいる場合はSeedがパスワードを上書きしない。
 
-- [ ] `T-0105` 認可ポリシーを実装する。
+- [x] `T-0105` 認可ポリシーを実装する。
   - 対象: `RequireAdmin`, 所有者チェック
   - 完了条件: 他ユーザーのリソースアクセスが拒否される。
 
-- [ ] `T-0106` 本人退会APIと画面導線を実装する。
+- [x] `T-0106` 本人退会APIと画面導線を実装する。
   - Endpoint: `DELETE /api/account`
   - 条件: 現在パスワード確認、最後のAdmin拒否、Runningジョブあり拒否
   - 完了条件: 対象ユーザーと紐づく業務データがトランザクション内で物理削除され、退会後にセッションが破棄される。

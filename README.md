@@ -105,6 +105,45 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 --info
 
 これらのスクリプトは、ホストの.NET SDKではなく開発用.NET SDKコンテナ経由で実行する。
 
+## Dockerでのローカル起動
+
+ローカルでPostgreSQLとWebアプリをまとめて起動する場合は、Git管理外の `.env` を作成してからComposeを起動する。
+
+```powershell
+Copy-Item .env.example .env
+```
+
+`.env` の `POSTGRES_PASSWORD`、`AdminSeed__Email`、`AdminSeed__Password` をローカル用の値へ変更する。
+
+既に `postgres_data` volume を作成済みの場合、`POSTGRES_PASSWORD` を変更しても既存DBユーザーのパスワードは自動変更されない。
+既存DBを残す場合は、DB作成時と同じ `POSTGRES_PASSWORD` を使う。
+
+```powershell
+.\scripts\app-up.ps1
+```
+
+このスクリプトは、PostgreSQLを起動し、EF Core migrationを適用してからWebアプリを起動する。
+また、WindowsとDocker間で `bin/obj` の生成物が混ざってCSS isolationが崩れないよう、起動前にWebプロジェクトをcleanする。
+既にmigration適用済みで起動だけしたい場合は、次を使う。
+
+```powershell
+.\scripts\app-up.ps1 -SkipMigration
+```
+
+cleanも省略したい場合は、`-SkipClean`を追加する。
+
+起動後は以下へアクセスする。
+
+```text
+http://localhost:5080/
+```
+
+停止:
+
+```powershell
+docker compose --env-file .env -f docker-compose.dev.yml down
+```
+
 ## 秘密情報の扱い
 
 - 実APIキー、DBパスワード、Webhook URL、WordPress Application PasswordをGit管理しない。
