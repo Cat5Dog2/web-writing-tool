@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Accounts;
+using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.Accounts;
+using WebWritingTool.Infrastructure.Articles;
 using WebWritingTool.Infrastructure.Data;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Web.Authorization;
@@ -67,6 +69,9 @@ internal static class ServiceCollectionExtensions
 
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
+        services.AddScoped<ArticleService>();
+        services.AddScoped<IArticleCommandService>(provider => provider.GetRequiredService<ArticleService>());
+        services.AddScoped<IArticleQueryService>(provider => provider.GetRequiredService<ArticleService>());
 
         return services;
     }

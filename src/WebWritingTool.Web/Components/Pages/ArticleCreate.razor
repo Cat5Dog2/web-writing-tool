@@ -1,0 +1,302 @@
+@page "/articles/create"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+
+@inject IArticleQueryService ArticleQueryService
+@inject IArticleCommandService ArticleCommandService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>記事作成</PageTitle>
+
+<div class="article-page">
+    <header class="article-page-header">
+        <div>
+            <h1>記事作成</h1>
+        </div>
+        <a class="btn btn-outline-secondary" href="articles">一覧へ戻る</a>
+    </header>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><span class="nav-link active">プロジェクト</span></li>
+        <li class="nav-item"><span class="nav-link disabled">詳細</span></li>
+        <li class="nav-item"><span class="nav-link disabled">設定</span></li>
+    </ul>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    <EditForm Model="form" OnValidSubmit="CreateAsync" FormName="create-article">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <section class="article-panel mb-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" for="keyword">キーワード</label>
+                    <InputText id="keyword" class="form-control" @bind-Value="form.Keyword" />
+                    <ValidationMessage For="() => form.Keyword" />
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-secondary w-100" disabled>記事タイトル候補を出す</button>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label" for="title">タイトル</label>
+                    <InputText id="title" class="form-control" @bind-Value="form.Title" />
+                    <ValidationMessage For="() => form.Title" />
+                </div>
+            </div>
+        </section>
+
+        <section class="article-panel mb-3">
+            <button type="button" class="btn btn-link px-0" @onclick="() => showDetails = !showDetails">
+                詳細設定
+            </button>
+
+            @if (showDetails)
+            {
+                <div class="row g-3 mt-1">
+                    <div class="col-md-2">
+                        <label class="form-label" for="h2-count">H2の個数</label>
+                        <InputNumber id="h2-count" class="form-control" @bind-Value="form.H2Count" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="h3-count">H3の個数</label>
+                        <InputNumber id="h3-count" class="form-control" @bind-Value="form.H3Count" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="tone">文章のトーン</label>
+                        <InputSelect id="tone" class="form-select" @bind-Value="form.Tone">
+                            <option value="Normal">通常</option>
+                            <option value="Friendly">親しみやすい</option>
+                            <option value="Professional">専門的</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <div class="form-check">
+                            <InputCheckbox id="is-domestic" class="form-check-input" @bind-Value="form.IsDomesticOnly" />
+                            <label class="form-check-label" for="is-domestic">情報は日本国内のものに限定</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="tags">タグ</label>
+                        <InputText id="tags" class="form-control" @bind-Value="form.Tags" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="memo">メモ</label>
+                        <InputText id="memo" class="form-control" @bind-Value="form.Memo" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="suggested">サジェストキーワード</label>
+                        <InputTextArea id="suggested" class="form-control" rows="4" @bind-Value="form.SuggestedKeywords" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="related">関連キーワード</label>
+                        <InputTextArea id="related" class="form-control" rows="4" @bind-Value="form.RelatedKeywords" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="learning-type">事前学習種別</label>
+                        <InputSelect id="learning-type" class="form-select" @bind-Value="form.LearningType">
+                            <option value="None">なし</option>
+                            <option value="Text">テキスト</option>
+                            <option value="Url">URL</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="learning-text">事前学習本文</label>
+                        <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="additional-prompt">追加プロンプト</label>
+                        <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="writing-profile">サイト別ライティング設定</label>
+                        <select id="writing-profile" class="form-select" @bind="form.WritingProfileWordpressSiteId">
+                            <option value="">使用しない</option>
+                            @foreach (var profile in formOptions.WritingProfiles)
+                            {
+                                <option value="@profile.Id">@profile.SiteName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <section class="article-panel mb-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label" for="outline-method">見出し構築方法</label>
+                    <InputSelect id="outline-method" class="form-select" @bind-Value="form.OutlineMethod">
+                        <option value="Keyword">キーワード</option>
+                        <option value="Search">検索</option>
+                        <option value="Ai">AI</option>
+                    </InputSelect>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="generation-model">何を作成する？</label>
+                    <InputSelect id="generation-model" class="form-select" @bind-Value="form.GenerationModel">
+                        @foreach (var model in formOptions.GenerationModels)
+                        {
+                            <option value="@model.Model">@model.DisplayName</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-check">
+                        <InputCheckbox id="search-mode" class="form-check-input" @bind-Value="form.SearchMode" />
+                        <label class="form-check-label" for="search-mode">検索モード</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="notification-mode">通知設定</label>
+                    <InputSelect id="notification-mode" class="form-select" @bind-Value="form.NotificationMode">
+                        <option value="None">通知なし</option>
+                        <option value="Discord">Discord</option>
+                    </InputSelect>
+                </div>
+            </div>
+        </section>
+
+        <div class="d-flex justify-content-end gap-2">
+            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">構成を作成</button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private readonly ArticleCreateForm form = new();
+    private ArticleFormOptionsResponse formOptions = new([], []);
+    private bool showDetails = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = await GetUserIdAsync();
+        if (userId is null)
+        {
+            return;
+        }
+
+        formOptions = await ArticleQueryService.GetFormOptionsAsync(userId);
+        form.GenerationModel = formOptions.GenerationModels.FirstOrDefault()?.Model ?? string.Empty;
+    }
+
+    private async Task CreateAsync()
+    {
+        var userId = await GetUserIdAsync();
+        if (userId is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+
+        var result = await ArticleCommandService.CreateAsync(
+            new CreateArticleCommand(
+                userId,
+                form.Keyword,
+                form.Title,
+                GenerateImage: false,
+                form.H2Count,
+                form.H3Count,
+                form.Tone,
+                ArticleInputNormalizer.SplitTags(form.Tags),
+                form.Memo,
+                form.SuggestedKeywords,
+                form.RelatedKeywords,
+                form.LearningType,
+                form.LearningText,
+                form.AdditionalPrompt,
+                ParseGuid(form.WritingProfileWordpressSiteId),
+                form.OutlineMethod,
+                form.GenerationModel,
+                form.SearchMode,
+                form.IsDomesticOnly,
+                form.NotificationMode));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        NavigationManager.NavigateTo($"/articles/{result.Value.Id}");
+    }
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        return authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    private static Guid? ParseGuid(string? value)
+    {
+        return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private static string GetServiceErrorMessage(
+        ArticleServiceError error,
+        IReadOnlyList<ArticleValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error == ArticleServiceError.NotFound
+            ? "選択したサイト別ライティング設定が見つかりません。"
+            : "記事を作成できませんでした。";
+    }
+
+    private sealed class ArticleCreateForm
+    {
+        [Required(ErrorMessage = "キーワードを入力してください。")]
+        [StringLength(200, ErrorMessage = "キーワードは200文字以内で入力してください。")]
+        public string Keyword { get; set; } = string.Empty;
+
+        [StringLength(250, ErrorMessage = "タイトルは250文字以内で入力してください。")]
+        public string? Title { get; set; }
+
+        public int? H2Count { get; set; } = 5;
+
+        public int? H3Count { get; set; } = 12;
+
+        public string? Tone { get; set; } = "Normal";
+
+        public bool IsDomesticOnly { get; set; } = true;
+
+        public string? Tags { get; set; }
+
+        public string? Memo { get; set; }
+
+        public string? SuggestedKeywords { get; set; }
+
+        public string? RelatedKeywords { get; set; }
+
+        public string? LearningType { get; set; } = "None";
+
+        public string? LearningText { get; set; }
+
+        public string? AdditionalPrompt { get; set; }
+
+        public string? WritingProfileWordpressSiteId { get; set; }
+
+        public string OutlineMethod { get; set; } = "Search";
+
+        public string GenerationModel { get; set; } = string.Empty;
+
+        public bool SearchMode { get; set; } = true;
+
+        public string? NotificationMode { get; set; } = "None";
+    }
+}

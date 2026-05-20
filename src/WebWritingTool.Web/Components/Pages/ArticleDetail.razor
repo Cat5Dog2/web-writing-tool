@@ -1,0 +1,396 @@
+@page "/articles/{ArticleId:guid}"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+
+@inject IArticleQueryService ArticleQueryService
+@inject IArticleCommandService ArticleCommandService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>記事詳細</PageTitle>
+
+<div class="article-page">
+    <header class="article-page-header">
+        <div>
+            <h1>記事詳細</h1>
+            @if (article is not null)
+            {
+                <div class="text-muted">@article.Status</div>
+            }
+        </div>
+        <a class="btn btn-outline-secondary" href="articles">一覧へ戻る</a>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-muted">読み込み中</div>
+    }
+    else if (article is null)
+    {
+        <div class="alert alert-warning" role="alert">記事が見つかりません。</div>
+    }
+    else
+    {
+        <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="edit-article">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <section class="article-panel mb-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="keyword">キーワード</label>
+                        <InputText id="keyword" class="form-control" @bind-Value="form.Keyword" />
+                        <ValidationMessage For="() => form.Keyword" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="title">タイトル</label>
+                        <InputText id="title" class="form-control" @bind-Value="form.Title" />
+                        <ValidationMessage For="() => form.Title" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="tags">タグ</label>
+                        <InputText id="tags" class="form-control" @bind-Value="form.Tags" />
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="memo">メモ</label>
+                        <InputText id="memo" class="form-control" @bind-Value="form.Memo" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="tone">文章のトーン</label>
+                        <InputSelect id="tone" class="form-select" @bind-Value="form.Tone">
+                            <option value="Normal">通常</option>
+                            <option value="Friendly">親しみやすい</option>
+                            <option value="Professional">専門的</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="outline-method">見出し構築方法</label>
+                        <InputSelect id="outline-method" class="form-select" @bind-Value="form.OutlineMethod">
+                            <option value="Keyword">キーワード</option>
+                            <option value="Search">検索</option>
+                            <option value="Ai">AI</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="generation-model">生成モデル</label>
+                        <InputSelect id="generation-model" class="form-select" @bind-Value="form.GenerationModel">
+                            @foreach (var model in formOptions.GenerationModels)
+                            {
+                                <option value="@model.Model">@model.DisplayName</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="writing-profile">サイト別ライティング設定</label>
+                        <select id="writing-profile" class="form-select" @bind="form.WritingProfileWordpressSiteId">
+                            <option value="">使用しない</option>
+                            @foreach (var profile in formOptions.WritingProfiles)
+                            {
+                                <option value="@profile.Id">@profile.SiteName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="notification-mode">通知設定</label>
+                        <InputSelect id="notification-mode" class="form-select" @bind-Value="form.NotificationMode">
+                            <option value="None">通知なし</option>
+                            <option value="Discord">Discord</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end gap-4">
+                        <div class="form-check">
+                            <InputCheckbox id="search-mode" class="form-check-input" @bind-Value="form.SearchMode" />
+                            <label class="form-check-label" for="search-mode">検索モード</label>
+                        </div>
+                        <div class="form-check">
+                            <InputCheckbox id="is-domestic" class="form-check-input" @bind-Value="form.IsDomesticOnly" />
+                            <label class="form-check-label" for="is-domestic">国内限定</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="suggested">サジェストキーワード</label>
+                        <InputTextArea id="suggested" class="form-control" rows="4" @bind-Value="form.SuggestedKeywords" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="related">関連キーワード</label>
+                        <InputTextArea id="related" class="form-control" rows="4" @bind-Value="form.RelatedKeywords" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="learning-type">事前学習種別</label>
+                        <InputSelect id="learning-type" class="form-select" @bind-Value="form.LearningType">
+                            <option value="None">なし</option>
+                            <option value="Text">テキスト</option>
+                            <option value="Url">URL</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="learning-text">事前学習本文</label>
+                        <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="additional-prompt">追加プロンプト</label>
+                        <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="meta-description">メタディスクリプション</label>
+                        <InputTextArea id="meta-description" class="form-control" rows="4" @bind-Value="form.MetaDescription" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="body">本文</label>
+                        <InputTextArea id="body" class="form-control" rows="8" @bind-Value="form.Body" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="html-body">HTML本文</label>
+                        <InputTextArea id="html-body" class="form-control" rows="8" @bind-Value="form.HtmlBody" />
+                    </div>
+                </div>
+            </section>
+
+            <div class="d-flex justify-content-between gap-2">
+                <button type="button" class="btn btn-outline-danger" @onclick="DeleteAsync">削除</button>
+                <button type="submit" class="btn btn-primary" disabled="@isSubmitting">保存</button>
+            </div>
+        </EditForm>
+
+        <section class="article-panel mt-4">
+            <h2 class="h5">見出し</h2>
+            @if (article.Headings.Count == 0)
+            {
+                <div class="text-muted">見出しはありません。</div>
+            }
+            else
+            {
+                <ol class="article-heading-list">
+                    @foreach (var heading in article.Headings)
+                    {
+                        <li>
+                            <span class="badge text-bg-light">H@heading.Level</span>
+                            <span>@heading.Title</span>
+                            <span class="text-muted ms-2">@heading.Status</span>
+                        </li>
+                    }
+                </ol>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ArticleId { get; set; }
+
+    private ArticleDetailResponse? article;
+    private ArticleFormOptionsResponse formOptions = new([], []);
+    private readonly ArticleEditForm form = new();
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        formOptions = await ArticleQueryService.GetFormOptionsAsync(actor.UserId);
+        article = await ArticleQueryService.GetAsync(actor, ArticleId);
+        if (article is not null)
+        {
+            PopulateForm(article);
+        }
+
+        isLoading = false;
+    }
+
+    private void PopulateForm(ArticleDetailResponse detail)
+    {
+        form.Keyword = detail.Keyword;
+        form.Title = detail.Title ?? string.Empty;
+        form.Tags = string.Join(", ", detail.Tags);
+        form.Memo = detail.Memo;
+        form.Tone = detail.Tone ?? "Normal";
+        form.SuggestedKeywords = detail.SuggestedKeywords;
+        form.RelatedKeywords = detail.RelatedKeywords;
+        form.LearningType = detail.LearningType ?? "None";
+        form.LearningText = detail.LearningText;
+        form.AdditionalPrompt = detail.AdditionalPrompt;
+        form.MetaDescription = detail.MetaDescription;
+        form.GenerationModel = detail.GenerationModel ?? formOptions.GenerationModels.FirstOrDefault()?.Model ?? string.Empty;
+        form.OutlineMethod = detail.OutlineMethod;
+        form.SearchMode = detail.SearchMode;
+        form.IsDomesticOnly = detail.IsDomesticOnly;
+        form.NotificationMode = detail.NotificationMode;
+        form.WritingProfileWordpressSiteId = detail.WritingProfileWordpressSiteId?.ToString();
+        form.Body = detail.Body;
+        form.HtmlBody = detail.HtmlBody;
+        form.RowVersion = detail.RowVersion;
+    }
+
+    private async Task SaveAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await ArticleCommandService.UpdateAsync(
+            new UpdateArticleCommand(
+                actor,
+                ArticleId,
+                form.Keyword,
+                form.Title,
+                ArticleInputNormalizer.SplitTags(form.Tags),
+                form.Memo,
+                form.Tone,
+                form.SuggestedKeywords,
+                form.RelatedKeywords,
+                form.LearningType,
+                form.LearningText,
+                form.AdditionalPrompt,
+                form.MetaDescription,
+                form.GenerationModel,
+                form.OutlineMethod,
+                form.SearchMode,
+                form.IsDomesticOnly,
+                form.NotificationMode,
+                ParseGuid(form.WritingProfileWordpressSiteId),
+                form.Body,
+                form.HtmlBody,
+                form.RowVersion));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        article = result.Value;
+        PopulateForm(result.Value);
+        successMessage = "記事を保存しました。";
+    }
+
+    private async Task DeleteAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        var result = await ArticleCommandService.DeleteAsync(actor, ArticleId);
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        NavigationManager.NavigateTo("/articles");
+    }
+
+    private async Task<ArticleActor?> GetActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new ArticleActor(userId, user.IsInRole("Admin"));
+    }
+
+    private static Guid? ParseGuid(string? value)
+    {
+        return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private static string GetServiceErrorMessage(
+        ArticleServiceError error,
+        IReadOnlyList<ArticleValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            ArticleServiceError.NotFound => "記事が見つかりません。",
+            ArticleServiceError.ConflictRunningJob => "実行中ジョブがあるため削除できません。",
+            ArticleServiceError.ConcurrencyConflict => "他の操作により記事が更新されています。再読み込みしてください。",
+            _ => "処理に失敗しました。"
+        };
+    }
+
+    private sealed class ArticleEditForm
+    {
+        [Required(ErrorMessage = "キーワードを入力してください。")]
+        [StringLength(200, ErrorMessage = "キーワードは200文字以内で入力してください。")]
+        public string Keyword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "タイトルを入力してください。")]
+        [StringLength(250, ErrorMessage = "タイトルは250文字以内で入力してください。")]
+        public string Title { get; set; } = string.Empty;
+
+        public string? Tags { get; set; }
+
+        public string? Memo { get; set; }
+
+        public string? Tone { get; set; }
+
+        public string? SuggestedKeywords { get; set; }
+
+        public string? RelatedKeywords { get; set; }
+
+        public string? LearningType { get; set; }
+
+        public string? LearningText { get; set; }
+
+        public string? AdditionalPrompt { get; set; }
+
+        public string? MetaDescription { get; set; }
+
+        public string GenerationModel { get; set; } = string.Empty;
+
+        public string OutlineMethod { get; set; } = "Search";
+
+        public bool SearchMode { get; set; }
+
+        public bool IsDomesticOnly { get; set; } = true;
+
+        public string? NotificationMode { get; set; }
+
+        public string? WritingProfileWordpressSiteId { get; set; }
+
+        public string? Body { get; set; }
+
+        public string? HtmlBody { get; set; }
+
+        public string? RowVersion { get; set; }
+    }
+}
