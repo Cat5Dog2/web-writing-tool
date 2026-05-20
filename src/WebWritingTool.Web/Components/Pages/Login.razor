@@ -1,0 +1,70 @@
+@page "/login"
+@attribute [AllowAnonymous]
+
+<PageTitle>ログイン</PageTitle>
+
+<h1>ログイン</h1>
+
+@if (AccountDeleted)
+{
+    <div class="alert alert-success" role="status">アカウントを削除しました。</div>
+}
+
+@if (LoginError == "invalid")
+{
+    <div class="alert alert-danger" role="alert">メールアドレスまたはパスワードが正しくありません。</div>
+}
+else if (LoginError == "disabled")
+{
+    <div class="alert alert-danger" role="alert">このアカウントは無効です。</div>
+}
+
+<form method="post" action="@GetFormAction()" class="auth-form">
+    <AntiforgeryToken />
+    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+    <div class="mb-3">
+        <label class="form-label" for="email">メールアドレス</label>
+        <input id="email" name="email" type="email" class="form-control" autocomplete="username" required />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="password">パスワード</label>
+        <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required />
+    </div>
+
+    <div class="form-check mb-3">
+        <input id="remember-me" name="rememberMe" type="checkbox" value="true" class="form-check-input" />
+        <label class="form-check-label" for="remember-me">ログイン状態を保持</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">ログイン</button>
+</form>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    public bool AccountDeleted { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? LoginError { get; set; }
+
+    private string GetFormAction()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl))
+        {
+            return "/login";
+        }
+
+        if (!ReturnUrl.StartsWith("/", StringComparison.Ordinal)
+            || ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+            || ReturnUrl.Contains("://", StringComparison.Ordinal))
+        {
+            return "/login";
+        }
+
+        return $"/login?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+    }
+}

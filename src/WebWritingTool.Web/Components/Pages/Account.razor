@@ -1,0 +1,47 @@
+@page "/account"
+@attribute [Authorize]
+
+<PageTitle>アカウント</PageTitle>
+
+<h1>アカウント</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<section class="mt-4">
+    <h2 class="h4">退会</h2>
+    <p>退会すると、アカウントと紐づくデータが削除されます。確認のため現在のパスワードと <code>DELETE</code> を入力してください。</p>
+
+    <form method="post" action="/account/withdraw" class="auth-form">
+        <AntiforgeryToken />
+
+        <div class="mb-3">
+            <label class="form-label" for="current-password">現在のパスワード</label>
+            <input id="current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="confirm-text">確認文字列</label>
+            <input id="confirm-text" name="confirmText" class="form-control" required />
+        </div>
+
+        <button type="submit" class="btn btn-danger">退会する</button>
+    </form>
+</section>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? WithdrawError { get; set; }
+
+    private string? errorMessage => WithdrawError switch
+    {
+        "running-jobs" => "実行中のジョブがあるため退会できません。",
+        "last-admin" => "最後のAdminユーザーは退会できません。",
+        "confirm" => "確認文字列が正しくありません。",
+        "password" => "現在のパスワードが正しくありません。",
+        "failed" => "退会処理に失敗しました。",
+        _ => null
+    };
+}

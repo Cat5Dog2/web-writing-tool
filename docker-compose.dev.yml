@@ -1,16 +1,41 @@
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-web_writing_tool}
+      POSTGRES_USER: ${POSTGRES_USER:-web_writing_tool}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dotnet-sdk:
     build:
       context: .
       dockerfile: Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
     working_dir: /workspace
     entrypoint: ["dotnet"]
+    command: ["run", "--project", "src/WebWritingTool.Web", "--urls", "http://0.0.0.0:8080"]
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+      DOTNET_NUGET_SIGNATURE_VERIFICATION: "false"
+      NUGET_CERT_REVOCATION_MODE: "offline"
       HOME: /home/dotnet
       NUGET_PACKAGES: /home/dotnet/.nuget/packages
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      AdminSeed__Email: ${AdminSeed__Email:-}
+      AdminSeed__Password: ${AdminSeed__Password:-}
     ports:
       - "5080:8080"
     volumes:
@@ -20,6 +45,7 @@ services:
       - dotnet_aspnet:/home/dotnet/.aspnet
 
 volumes:
+  postgres_data:
   dotnet_nuget_cache:
   dotnet_usersecrets:
   dotnet_aspnet:

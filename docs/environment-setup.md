@@ -213,13 +213,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secr
 
 ### 5.4 PostgreSQL起動
 
-ローカル開発ではPostgreSQLもDockerで起動する。
-開発用Composeに`postgres`サービスがある場合は、以下で起動する。
+ローカル開発ではPostgreSQLとWebアプリをDockerで起動する。
+初回はGit管理外の`.env`を作成し、ローカル用の秘密情報を設定する。
 
 ```powershell
-docker compose -f docker-compose.dev.yml up -d postgres
-docker compose -f docker-compose.dev.yml ps
+Copy-Item .env.example .env
 ```
+
+`.env`の以下をローカル用の値へ変更する。
+
+- `POSTGRES_PASSWORD`
+- `AdminSeed__Email`
+- `AdminSeed__Password`
+
+`.env`はGitへコミットしない。
+既に`postgres_data` volumeを作成済みの場合、`POSTGRES_PASSWORD`を変更しても既存DBユーザーのパスワードは自動変更されない。
+既存DBを残す場合は、DB作成時と同じ`POSTGRES_PASSWORD`を使う。
 
 本番/配置用`docker-compose.yml`の`app`, `postgres`, `caddy`構成とは用途を分ける。
 P2以降でDBが必要になるため、PostgreSQLの開発用サービスはP2開始前までに用意する。
@@ -243,9 +252,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 ef --vers
 
 ### 5.6 アプリ起動
 
+PostgreSQLとWebアプリをまとめて起動する。
+
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 run --project src/WebWritingTool.Web
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/app-up.ps1
 ```
+
+`scripts/app-up.ps1`はPostgreSQLを起動し、EF Core migrationを適用してからWebアプリを起動する。
+また、WindowsとDocker間で`bin/obj`の生成物が混ざってCSS isolationが崩れないよう、起動前にWebプロジェクトをcleanする。
+既にmigration適用済みで起動だけしたい場合は、`-SkipMigration`を指定する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/app-up.ps1 -SkipMigration
+```
+
+cleanも省略したい場合は、`-SkipClean`を追加する。
 
 起動後に確認する。
 
@@ -684,9 +705,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 ef databa
 ### 13.6 開発用Docker Compose
 
 ```powershell
-docker compose -f docker-compose.dev.yml up -d
-docker compose -f docker-compose.dev.yml ps
-docker compose -f docker-compose.dev.yml down
+Copy-Item .env.example .env
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/app-up.ps1
+docker compose --env-file .env -f docker-compose.dev.yml ps
+docker compose --env-file .env -f docker-compose.dev.yml down
 ```
 
 ### 13.7 本番/配置用Docker Compose
