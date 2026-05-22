@@ -1,12 +1,18 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using WebWritingTool.Application.Articles;
+using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Domain.Jobs;
 
 namespace WebWritingTool.Web.Endpoints;
 
 public static class ArticleEndpoints
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public static IEndpointRouteBuilder MapArticleEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/articles")
@@ -36,6 +42,26 @@ public static class ArticleEndpoints
         api.MapDelete("/{articleId:guid}", DeleteArticleAsync)
             .WithName("DeleteArticle")
             .WithSummary("記事を論理削除します。");
+
+        api.MapPost("/{articleId:guid}/generation/title-candidates", GenerateTitleCandidatesAsync)
+            .WithName("GenerateTitleCandidates")
+            .WithSummary("タイトル候補生成ジョブを登録します。");
+
+        api.MapPost("/{articleId:guid}/generation/outline", GenerateOutlineAsync)
+            .WithName("GenerateOutline")
+            .WithSummary("見出し構成生成ジョブを登録します。");
+
+        api.MapPost("/{articleId:guid}/generation/headings/{headingId:guid}/body", GenerateHeadingBodyAsync)
+            .WithName("GenerateHeadingBody")
+            .WithSummary("見出し本文生成ジョブを登録します。");
+
+        api.MapPost("/{articleId:guid}/generation/body", GenerateArticleBodyAsync)
+            .WithName("GenerateArticleBody")
+            .WithSummary("本文一括生成ジョブを登録します。");
+
+        api.MapPost("/{articleId:guid}/generation/headings/{headingId:guid}/rewrite", RewriteHeadingBodyAsync)
+            .WithName("RewriteHeadingBody")
+            .WithSummary("見出し本文リライトジョブを登録します。");
 
         return endpoints;
     }
@@ -231,12 +257,189 @@ public static class ArticleEndpoints
             : ToProblemResult(result.Error, result.ValidationErrors);
     }
 
+    private static Task<IResult> GenerateTitleCandidatesAsync(
+        Guid articleId,
+        [FromBody] GenerateTitleCandidatesRequest request,
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        CancellationToken cancellationToken)
+    {
+        var payload = new TitleGenerationPayload(
+            articleId,
+            request.Keyword,
+            request.GenerationModel,
+            request.CandidateCount,
+            request.TitleMethod,
+            request.SuggestedKeywords,
+            request.RelatedKeywords,
+            request.AdditionalPrompt);
+
+        return EnqueueGenerationJobAsync(
+            principal,
+            jobCommandService,
+            JobType.TitleGeneration,
+            articleId,
+            headingId: null,
+            payload,
+            cancellationToken);
+    }
+
+    private static Task<IResult> GenerateOutlineAsync(
+        Guid articleId,
+        [FromBody] GenerateOutlineRequest request,
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        CancellationToken cancellationToken)
+    {
+        var payload = new OutlineGenerationPayload(
+            articleId,
+            request.Keyword,
+            request.Title,
+            request.H2Count,
+            request.H3Count,
+            request.OutlineMethod,
+            request.GenerationModel,
+            request.SearchMode,
+            request.IsDomesticOnly,
+            request.Tone,
+            request.SuggestedKeywords,
+            request.RelatedKeywords,
+            request.LearningType,
+            request.LearningText,
+            request.AdditionalPrompt);
+
+        return EnqueueGenerationJobAsync(
+            principal,
+            jobCommandService,
+            JobType.OutlineGeneration,
+            articleId,
+            headingId: null,
+            payload,
+            cancellationToken);
+    }
+
+    private static Task<IResult> GenerateHeadingBodyAsync(
+        Guid articleId,
+        Guid headingId,
+        [FromBody] GenerateHeadingBodyRequest request,
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        CancellationToken cancellationToken)
+    {
+        var payload = new BodyGenerationPayload(
+            articleId,
+            headingId,
+            Scope: null,
+            request.GenerationModel,
+            request.TargetLength,
+            request.UseWebSearch,
+            request.AdditionalPrompt);
+
+        return EnqueueGenerationJobAsync(
+            principal,
+            jobCommandService,
+            JobType.BodyGeneration,
+            articleId,
+            headingId,
+            payload,
+            cancellationToken);
+    }
+
+    private static Task<IResult> GenerateArticleBodyAsync(
+        Guid articleId,
+        [FromBody] GenerateArticleBodyRequest request,
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        CancellationToken cancellationToken)
+    {
+        var payload = new BodyGenerationPayload(
+            articleId,
+            HeadingId: null,
+            request.Scope,
+            request.GenerationModel,
+            TargetLength: null,
+            request.UseWebSearch,
+            request.AdditionalPrompt);
+
+        return EnqueueGenerationJobAsync(
+            principal,
+            jobCommandService,
+            JobType.BodyGeneration,
+            articleId,
+            headingId: null,
+            payload,
+            cancellationToken);
+    }
+
+    private static Task<IResult> RewriteHeadingBodyAsync(
+        Guid articleId,
+        Guid headingId,
+        [FromBody] RewriteHeadingBodyRequest request,
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        CancellationToken cancellationToken)
+    {
+        var payload = new RewritePayload(
+            articleId,
+            headingId,
+            request.Operation,
+            request.GenerationModel,
+            request.AdditionalPrompt);
+
+        return EnqueueGenerationJobAsync(
+            principal,
+            jobCommandService,
+            JobType.Rewrite,
+            articleId,
+            headingId,
+            payload,
+            cancellationToken);
+    }
+
+    private static async Task<IResult> EnqueueGenerationJobAsync<TPayload>(
+        ClaimsPrincipal principal,
+        IJobCommandService jobCommandService,
+        JobType jobType,
+        Guid articleId,
+        Guid? headingId,
+        TPayload payload,
+        CancellationToken cancellationToken)
+    {
+        var actor = GetJobActor(principal);
+        if (actor is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await jobCommandService.EnqueueAsync(
+            new EnqueueJobCommand(
+                actor,
+                jobType,
+                articleId,
+                headingId,
+                JsonSerializer.Serialize(payload, JsonOptions),
+                Priority: 0),
+            cancellationToken);
+
+        return result.Succeeded && result.Value is not null
+            ? Results.Accepted(result.Value.StatusUrl, result.Value)
+            : ToJobProblemResult(result.Error, result.ValidationErrors);
+    }
+
     private static ArticleActor? GetActor(ClaimsPrincipal principal)
     {
         var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
         return string.IsNullOrWhiteSpace(userId)
             ? null
             : new ArticleActor(userId, principal.IsInRole(ApplicationRoles.Admin));
+    }
+
+    private static JobActor? GetJobActor(ClaimsPrincipal principal)
+    {
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new JobActor(userId, principal.IsInRole(ApplicationRoles.Admin));
     }
 
     private static IResult ToProblemResult(
@@ -263,6 +466,30 @@ public static class ArticleEndpoints
             _ => Results.Problem(
                 title: "Bad Request",
                 detail: "Article operation failed.",
+                statusCode: StatusCodes.Status400BadRequest)
+        };
+    }
+
+    private static IResult ToJobProblemResult(
+        JobServiceError error,
+        IReadOnlyList<JobValidationError> validationErrors)
+    {
+        return error switch
+        {
+            JobServiceError.ValidationFailed => Results.ValidationProblem(
+                validationErrors
+                    .GroupBy(item => item.Field)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(item => item.Message).ToArray())),
+            JobServiceError.NotFound => Results.NotFound(),
+            JobServiceError.RunningJobExists => Results.Problem(
+                title: "Conflict",
+                detail: "A queued or running job already exists for this target.",
+                statusCode: StatusCodes.Status409Conflict),
+            _ => Results.Problem(
+                title: "Bad Request",
+                detail: "Job operation failed.",
                 statusCode: StatusCodes.Status400BadRequest)
         };
     }
@@ -344,4 +571,46 @@ public static class ArticleEndpoints
         string? Body,
         string? HtmlBody,
         string? RowVersion);
+
+    private sealed record GenerateTitleCandidatesRequest(
+        string? Keyword,
+        string? TitleMethod,
+        string GenerationModel,
+        int? CandidateCount,
+        string? SuggestedKeywords,
+        string? RelatedKeywords,
+        string? AdditionalPrompt);
+
+    private sealed record GenerateOutlineRequest(
+        string? Keyword,
+        string? Title,
+        int? H2Count,
+        int? H3Count,
+        string OutlineMethod,
+        string GenerationModel,
+        bool SearchMode,
+        bool IsDomesticOnly,
+        string? Tone,
+        string? SuggestedKeywords,
+        string? RelatedKeywords,
+        string? LearningType,
+        string? LearningText,
+        string? AdditionalPrompt);
+
+    private sealed record GenerateHeadingBodyRequest(
+        string GenerationModel,
+        int? TargetLength,
+        bool UseWebSearch,
+        string? AdditionalPrompt);
+
+    private sealed record GenerateArticleBodyRequest(
+        string Scope,
+        string GenerationModel,
+        bool UseWebSearch,
+        string? AdditionalPrompt);
+
+    private sealed record RewriteHeadingBodyRequest(
+        string Operation,
+        string GenerationModel,
+        string? AdditionalPrompt);
 }
