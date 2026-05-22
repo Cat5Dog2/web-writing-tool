@@ -4,14 +4,18 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Accounts;
 using WebWritingTool.Application.Articles;
+using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.Accounts;
 using WebWritingTool.Infrastructure.Articles;
 using WebWritingTool.Infrastructure.BackgroundJobs;
+using WebWritingTool.Infrastructure.BackgroundJobs.Handlers;
 using WebWritingTool.Infrastructure.Data;
+using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Infrastructure.Jobs;
 using WebWritingTool.Web.Authorization;
@@ -72,18 +76,40 @@ internal static class ServiceCollectionExtensions
             configuration.GetSection(AdminSeedOptions.SectionName));
         services.Configure<BackgroundJobOptions>(
             configuration.GetSection(BackgroundJobOptions.SectionName));
+        services
+            .AddOptions<GeminiOptions>()
+            .Bind(configuration.GetSection(GeminiOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Model), "Gemini model is required.")
+            .Validate(
+                options => string.Equals(options.Region, GeminiOptions.DefaultRegion, StringComparison.OrdinalIgnoreCase),
+                "Gemini region must be Japan for MVP.")
+            .Validate(options => options.TimeoutSeconds > 0, "Gemini timeout must be greater than zero.");
 
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
         services.AddScoped<ArticleService>();
         services.AddScoped<IArticleCommandService>(provider => provider.GetRequiredService<ArticleService>());
         services.AddScoped<IArticleQueryService>(provider => provider.GetRequiredService<ArticleService>());
+        services.AddSingleton<TitleGenerationPromptBuilder>();
+        services.AddSingleton<OutlineGenerationPromptBuilder>();
+        services.AddSingleton<BodyGenerationPromptBuilder>();
+        services.AddSingleton<RewritePromptBuilder>();
+        services.AddHttpClient<IAiTextGenerationClient, GeminiTextGenerationClient>((provider, client) =>
+        {
+            var geminiOptions = provider.GetRequiredService<IOptions<GeminiOptions>>().Value;
+            client.BaseAddress = geminiOptions.EndpointBaseAddress;
+            client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds);
+        });
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
         services.AddScoped<JobService>();
         services.AddScoped<IJobCommandService>(provider => provider.GetRequiredService<JobService>());
         services.AddScoped<IJobQueryService>(provider => provider.GetRequiredService<JobService>());
+        services.AddScoped<IJobHandler, TitleGenerationJobHandler>();
+        services.AddScoped<IJobHandler, OutlineGenerationJobHandler>();
+        services.AddScoped<IJobHandler, BodyGenerationJobHandler>();
+        services.AddScoped<IJobHandler, RewriteJobHandler>();
         services.AddHostedService<ArticleJobWorker>();
 
         return services;
