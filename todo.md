@@ -25,7 +25,7 @@
 - 記事の作成、一覧、編集、論理削除ができる。
 - 見出し構成、本文生成、リライトをジョブとして登録できる。
 - BackgroundServiceがジョブを取得し、成功、失敗、再試行、キャンセルを扱える。
-- Google Gemini 3.1 Pro Previewによるテキスト生成Clientが実装される。
+- Google Gemini 3.5 Flashによるテキスト生成Clientが実装される。
 - Tavily検索、X API Full-Archive SearchのClient、キャッシュ、重複排除、TTLが実装される。
 - X投稿を表示または公開利用する前に再取得できる。
 - WordPressサイト登録、接続テスト、下書き投稿ができる。
@@ -191,7 +191,7 @@
 ## 9. P5 AI生成
 
 - [x] `T-0501` Geminiオプションを実装する。
-  - Model: `gemini-3.1-pro-preview`
+  - Model: `gemini-3.5-flash`
   - Region: Japan
   - 完了条件: APIキーは環境変数またはSecretから読む。
 

@@ -83,7 +83,7 @@ public sealed class ExternalIntegrationOptions
 
 | Options | 主な項目 |
 | --- | --- |
-| `AiProviderOptions` | Provider、Model、ApiKey、Timeout、MaxInputChars。MVPはGoogle Gemini 3.1 Pro Preview |
+| `AiProviderOptions` | Provider、Model、ApiKey、Timeout、MaxInputChars。MVPはGoogle Gemini 3.5 Flash |
 | `SearchProviderOptions` | TavilyEndpoint、TavilyApiKey、XEndpoint、XBearerToken、DefaultRegion、MaxResults、環境別CacheTtl |
 | `WordpressOptions` | Timeout、RetryCount、AllowedSchemes |
 | `NotificationOptions` | Provider、Timeout。Discord Webhook URLはユーザー別にDB暗号化保存する |
@@ -166,7 +166,7 @@ public sealed class ExternalIntegrationOptions
 - 長文化
 - リライト
 
-MVPの採用ProviderはGoogle Gemini、採用モデルはGoogle Gemini 3.1 Pro Previewとする。APIモデルIDは`gemini-3.1-pro-preview`、利用可能リージョンはJapanとする。
+MVPの採用ProviderはGoogle Gemini、採用モデルはGoogle Gemini 3.5 Flashとする。APIモデルIDは`gemini-3.5-flash`、利用可能リージョンはJapanとする。
 Gemini以外のAI Provider対応はMVP対象外とし、後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択可能にする。
 
 ### 8.2 共通インターフェース

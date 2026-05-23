@@ -17,7 +17,7 @@ public class GeminiTextGenerationClientTests
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
                 request.RequestUri?.ToString());
             Assert.True(request.Headers.TryGetValues("x-goog-api-key", out var values));
             Assert.Equal("test-key", Assert.Single(values));
@@ -47,7 +47,7 @@ public class GeminiTextGenerationClientTests
 
         var result = await client.GenerateAsync(new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.1-pro-preview",
+            "gemini-3.5-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",
@@ -57,7 +57,7 @@ public class GeminiTextGenerationClientTests
 
         Assert.Equal("生成本文", result.Text);
         Assert.Equal(AiProviders.Gemini, result.Provider);
-        Assert.Equal("gemini-3.1-pro-preview", result.Model);
+        Assert.Equal("gemini-3.5-flash", result.Model);
         Assert.Equal("response-1", result.RawResponseId);
         Assert.Equal("systemuser".Length, result.PromptChars);
         Assert.Equal("生成本文".Length, result.OutputChars);
@@ -131,7 +131,7 @@ public class GeminiTextGenerationClientTests
     {
         return new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.1-pro-preview",
+            "gemini-3.5-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",

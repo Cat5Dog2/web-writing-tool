@@ -204,7 +204,7 @@ Response `200 OK`:
       "keyword": "クラヲアクト,ミュージカル",
       "tags": ["クラヲアクト", "ミュージカル"],
       "memo": "",
-      "generationModel": "gemini-3.1-pro-preview",
+      "generationModel": "gemini-3.5-flash",
       "canPostToWordpress": true
     }
   ],
@@ -284,7 +284,7 @@ Request例:
   "additionalPrompt": "",
   "writingProfileWordpressSiteId": "fb2a11db-849e-475d-8e79-9208e8f6f5af",
   "outlineMethod": "Search",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "searchMode": true,
   "isDomesticOnly": true,
   "notificationMode": "Discord"
@@ -380,7 +380,7 @@ Response `200 OK`:
   "body": "",
   "htmlBody": "",
   "metaDescription": "",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "searchMode": true,
   "isDomesticOnly": true,
   "topicRisk": "strict",
@@ -1108,7 +1108,7 @@ Response `200 OK`:
 {
   "monthlyLimitChars": 200000,
   "remainingOutlineCount": 40,
-  "defaultModel": "gemini-3.1-pro-preview",
+  "defaultModel": "gemini-3.5-flash",
   "monthlyUsageAggregationEnabled": false
 }
 ```

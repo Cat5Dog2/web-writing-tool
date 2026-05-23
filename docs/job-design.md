@@ -191,7 +191,7 @@ sequenceDiagram
 {
   "requestedByUserId": "user-id",
   "articleId": "7bc3e1d4-8f30-4c21-8873-3f1a47c9d19c",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "requestedAt": "2026-01-03T04:00:00Z"
 }
 ```
@@ -204,7 +204,7 @@ sequenceDiagram
 {
   "articleId": "7bc3e1d4-8f30-4c21-8873-3f1a47c9d19c",
   "keyword": "クラヲアクト,ミュージカル",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "candidateCount": 5,
   "titleMethod": "Ai"
 }
@@ -221,7 +221,7 @@ sequenceDiagram
   "h3Count": 12,
   "tone": "Normal",
   "outlineMethod": "Search",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "searchMode": true,
   "isDomesticOnly": true,
   "suggestedKeywords": "クラヲアクト ミュージカル\nクラヲアクト 評判",
@@ -238,7 +238,7 @@ sequenceDiagram
 {
   "articleId": "7bc3e1d4-8f30-4c21-8873-3f1a47c9d19c",
   "headingId": "4e4fd809-803f-46ec-902e-8a61df2e29cc",
-  "generationModel": "gemini-3.1-pro-preview",
+  "generationModel": "gemini-3.5-flash",
   "targetLength": 500,
   "useWebSearch": true,
   "additionalPrompt": ""

@@ -17,8 +17,8 @@ public sealed class IdentityDataSeeder(
     : IIdentityDataSeeder
 {
     private const string InitialAiProvider = "GoogleGemini";
-    private const string InitialAiModel = "gemini-3.1-pro-preview";
-    private const string InitialAiDisplayName = "Google Gemini 3.1 Pro Preview";
+    private const string InitialAiModel = "gemini-3.5-flash";
+    private const string InitialAiDisplayName = "Google Gemini 3.5 Flash";
     private const string InitialAiRegion = "Japan";
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)

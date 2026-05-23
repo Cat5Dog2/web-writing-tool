@@ -4,7 +4,7 @@ public sealed class GeminiOptions
 {
     public const string SectionName = "AiProviders:Gemini";
     public const string Provider = "GoogleGemini";
-    public const string DefaultModel = "gemini-3.1-pro-preview";
+    public const string DefaultModel = "gemini-3.5-flash";
     public const string DefaultRegion = "Japan";
 
     public string ApiKey { get; init; } = string.Empty;

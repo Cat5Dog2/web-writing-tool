@@ -4,7 +4,7 @@
 
 本書は、AIライティングツールで使用するプロンプトの設計、入力、出力形式、検証、保存、テスト方針を定義する。
 
-対象は、タイトル候補生成、見出し構成生成、本文生成、要約、長文化、リライト、再取得である。MVPのAI ProviderはGoogle Gemini、モデルは`gemini-3.1-pro-preview`とする。
+対象は、タイトル候補生成、見出し構成生成、本文生成、要約、長文化、リライト、再取得である。MVPのAI ProviderはGoogle Gemini、モデルは`gemini-3.5-flash`とする。
 
 ## 2. 基本方針
 
@@ -340,7 +340,7 @@ JSON出力はコードフェンスなしの純粋なJSONを要求する。パー
 | 項目 | 内容 |
 | --- | --- |
 | `Provider` | `Gemini` |
-| `Model` | `gemini-3.1-pro-preview` |
+| `Model` | `gemini-3.5-flash` |
 | `Operation` | `TitleGeneration`など |
 | `PromptHash` | 正規化済みプロンプトのSHA-256など |
 | `PromptChars` | 入力文字数 |
@@ -409,7 +409,7 @@ PromptHash計算では、SystemInstruction、UserPrompt、ReferenceSources、Wri
 ## 20. 決定事項
 
 - MVPのAI ProviderはGoogle Gemini固定とする。
-- MVPの既定モデルは`gemini-3.1-pro-preview`とする。
+- MVPの既定モデルは`gemini-3.5-flash`とする。
 - プロンプト全文は保存しない。
 - `AiGenerationLogs`には`PromptHash`と文字数を保存する。
 - 構造化出力はJSONで受け取り、サーバー側で検証する。
