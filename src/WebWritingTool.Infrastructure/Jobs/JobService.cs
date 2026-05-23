@@ -177,7 +177,10 @@ public sealed class JobService(
             errors.Add(new JobValidationError(nameof(command.ArticleId), "見出しジョブでは記事IDを指定してください。"));
         }
 
-        if ((command.JobType is JobType.OutlineGeneration or JobType.WordpressPost)
+        if ((command.JobType is JobType.OutlineGeneration
+                or JobType.WebSearch
+                or JobType.XFullArchiveSearch
+                or JobType.WordpressPost)
             && command.ArticleId is null)
         {
             errors.Add(new JobValidationError(nameof(command.ArticleId), "記事IDを指定してください。"));

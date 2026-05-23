@@ -9,6 +9,7 @@ using WebWritingTool.Application.Accounts;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.Accounts;
 using WebWritingTool.Infrastructure.Articles;
@@ -18,6 +19,7 @@ using WebWritingTool.Infrastructure.Data;
 using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Infrastructure.Jobs;
+using WebWritingTool.Infrastructure.Search;
 using WebWritingTool.Web.Authorization;
 using WebWritingTool.Web.BackgroundJobs;
 
@@ -84,21 +86,52 @@ internal static class ServiceCollectionExtensions
                 options => string.Equals(options.Region, GeminiOptions.DefaultRegion, StringComparison.OrdinalIgnoreCase),
                 "Gemini region must be Japan for MVP.")
             .Validate(options => options.TimeoutSeconds > 0, "Gemini timeout must be greater than zero.");
+        services
+            .AddOptions<SearchProviderOptions>()
+            .Bind(configuration.GetSection(SearchProviderOptions.SectionName))
+            .Validate(options => options.Tavily.TimeoutSeconds > 0, "Tavily timeout must be greater than zero.")
+            .Validate(options => options.X.TimeoutSeconds > 0, "X timeout must be greater than zero.")
+            .Validate(options => options.X.DefaultMaxResults is >= 10 and <= 100, "X default max results must be between 10 and 100.")
+            .Validate(options => options.X.BulkMaxResults is >= 100 and <= 500, "X bulk max results must be between 100 and 500.")
+            .Validate(options => options.X.MonthlySafetyLimitPosts > 0, "X monthly safety limit must be greater than zero.");
+        services
+            .AddOptions<SearchCachePolicyOptions>()
+            .Bind(configuration.GetSection(SearchCachePolicyOptions.SectionName))
+            .Validate(
+                options => SearchCachePolicies.Allowed.Contains(SearchCachePolicyResolver.NormalizePolicy(options.Policy)),
+                "Search cache policy is invalid.");
 
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
         services.AddScoped<ArticleService>();
         services.AddScoped<IArticleCommandService>(provider => provider.GetRequiredService<ArticleService>());
         services.AddScoped<IArticleQueryService>(provider => provider.GetRequiredService<ArticleService>());
+        services.AddScoped<IXPostRehydrationService, XPostRehydrationService>();
+        services.AddScoped<SearchCacheCleanupService>();
         services.AddSingleton<TitleGenerationPromptBuilder>();
         services.AddSingleton<OutlineGenerationPromptBuilder>();
         services.AddSingleton<BodyGenerationPromptBuilder>();
         services.AddSingleton<RewritePromptBuilder>();
+        services.AddSingleton(provider =>
+            new SearchCachePolicyResolver(
+                provider.GetRequiredService<IOptions<SearchCachePolicyOptions>>().Value));
+        services.AddSingleton(TopicRiskKeywordDictionary.Default);
+        services.AddSingleton<ITopicRiskClassifier, TopicRiskClassifier>();
         services.AddHttpClient<IAiTextGenerationClient, GeminiTextGenerationClient>((provider, client) =>
         {
             var geminiOptions = provider.GetRequiredService<IOptions<GeminiOptions>>().Value;
             client.BaseAddress = geminiOptions.EndpointBaseAddress;
             client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds);
+        });
+        services.AddHttpClient<IWebSearchClient, TavilyWebSearchClient>((provider, client) =>
+        {
+            var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(searchOptions.Tavily.TimeoutSeconds);
+        });
+        services.AddHttpClient<IXFullArchiveSearchClient, XFullArchiveSearchClient>((provider, client) =>
+        {
+            var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(searchOptions.X.TimeoutSeconds);
         });
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
@@ -110,7 +143,10 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IJobHandler, OutlineGenerationJobHandler>();
         services.AddScoped<IJobHandler, BodyGenerationJobHandler>();
         services.AddScoped<IJobHandler, RewriteJobHandler>();
+        services.AddScoped<IJobHandler, WebSearchJobHandler>();
+        services.AddScoped<IJobHandler, XFullArchiveSearchJobHandler>();
         services.AddHostedService<ArticleJobWorker>();
+        services.AddHostedService<SearchCacheCleanupWorker>();
 
         return services;
     }

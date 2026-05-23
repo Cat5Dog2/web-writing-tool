@@ -14,7 +14,12 @@ public sealed class BackgroundJobOptions
 
     public string WorkerIdPrefix { get; init; } = "app";
 
+    public int SearchCacheCleanupIntervalMinutes { get; init; } = 60;
+
     public TimeSpan IdleDelay => TimeSpan.FromSeconds(Math.Max(1, IdleDelaySeconds));
 
     public TimeSpan LockTimeout => TimeSpan.FromMinutes(Math.Max(1, LockTimeoutMinutes));
+
+    public TimeSpan SearchCacheCleanupInterval =>
+        TimeSpan.FromMinutes(Math.Max(1, SearchCacheCleanupIntervalMinutes));
 }

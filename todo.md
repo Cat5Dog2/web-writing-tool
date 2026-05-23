@@ -217,28 +217,28 @@
 
 ## 10. P6 検索連携
 
-- [ ] `T-0601` Tavily Clientを実装する。
+- [x] `T-0601` Tavily Clientを実装する。
   - 完了条件: 検索結果を共通DTOへ変換できる。
 
-- [ ] `T-0602` X API Full-Archive Search Clientを実装する。
+- [x] `T-0602` X API Full-Archive Search Clientを実装する。
   - 条件: Pay-per-use、必要時のみ、通常100件、大量調査500件
   - 完了条件: Post IDで重複排除できる。
 
-- [ ] `T-0603` 検索条件正規化とQueryHashを実装する。
+- [x] `T-0603` 検索条件正規化とQueryHashを実装する。
   - 完了条件: 同一条件でキャッシュヒットする。
 
-- [ ] `T-0604` Tavily / XキャッシュTTLを実装する。
+- [x] `T-0604` Tavily / XキャッシュTTLを実装する。
   - 対象: dev, staging, production, strict
   - 完了条件: 最短TTLルールが動く。
 
-- [ ] `T-0605` strict / compliance_strict判定を実装する。
+- [x] `T-0605` strict / compliance_strict判定を実装する。
   - 入力: YAMLまたはJSON辞書
   - 完了条件: legalFinanceHealthとpoliticsSafetyReputationは`compliance_strict`になる。
 
-- [ ] `T-0606` X投稿再hydrationを実装する。
+- [x] `T-0606` X投稿再hydrationを実装する。
   - 完了条件: production/strictでは表示・公開前に必ず再取得する。
 
-- [ ] `T-0607` 期限切れ検索キャッシュ削除Workerを実装する。
+- [x] `T-0607` 期限切れ検索キャッシュ削除Workerを実装する。
   - 完了条件: X投稿本文など短期保持データがTTL後に削除またはNULL化される。
 
 ## 11. P7 生成結果編集
