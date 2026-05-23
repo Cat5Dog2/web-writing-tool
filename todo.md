@@ -25,7 +25,7 @@
 - 記事の作成、一覧、編集、論理削除ができる。
 - 見出し構成、本文生成、リライトをジョブとして登録できる。
 - BackgroundServiceがジョブを取得し、成功、失敗、再試行、キャンセルを扱える。
-- Google Gemini 3.1 Pro Previewによるテキスト生成Clientが実装される。
+- Google Gemini 3.5 Flashによるテキスト生成Clientが実装される。
 - Tavily検索、X API Full-Archive SearchのClient、キャッシュ、重複排除、TTLが実装される。
 - X投稿を表示または公開利用する前に再取得できる。
 - WordPressサイト登録、接続テスト、下書き投稿ができる。
@@ -191,7 +191,7 @@
 ## 9. P5 AI生成
 
 - [x] `T-0501` Geminiオプションを実装する。
-  - Model: `gemini-3.1-pro-preview`
+  - Model: `gemini-3.5-flash`
   - Region: Japan
   - 完了条件: APIキーは環境変数またはSecretから読む。
 
@@ -217,28 +217,28 @@
 
 ## 10. P6 検索連携
 
-- [ ] `T-0601` Tavily Clientを実装する。
+- [x] `T-0601` Tavily Clientを実装する。
   - 完了条件: 検索結果を共通DTOへ変換できる。
 
-- [ ] `T-0602` X API Full-Archive Search Clientを実装する。
+- [x] `T-0602` X API Full-Archive Search Clientを実装する。
   - 条件: Pay-per-use、必要時のみ、通常100件、大量調査500件
   - 完了条件: Post IDで重複排除できる。
 
-- [ ] `T-0603` 検索条件正規化とQueryHashを実装する。
+- [x] `T-0603` 検索条件正規化とQueryHashを実装する。
   - 完了条件: 同一条件でキャッシュヒットする。
 
-- [ ] `T-0604` Tavily / XキャッシュTTLを実装する。
+- [x] `T-0604` Tavily / XキャッシュTTLを実装する。
   - 対象: dev, staging, production, strict
   - 完了条件: 最短TTLルールが動く。
 
-- [ ] `T-0605` strict / compliance_strict判定を実装する。
+- [x] `T-0605` strict / compliance_strict判定を実装する。
   - 入力: YAMLまたはJSON辞書
   - 完了条件: legalFinanceHealthとpoliticsSafetyReputationは`compliance_strict`になる。
 
-- [ ] `T-0606` X投稿再hydrationを実装する。
+- [x] `T-0606` X投稿再hydrationを実装する。
   - 完了条件: production/strictでは表示・公開前に必ず再取得する。
 
-- [ ] `T-0607` 期限切れ検索キャッシュ削除Workerを実装する。
+- [x] `T-0607` 期限切れ検索キャッシュ削除Workerを実装する。
   - 完了条件: X投稿本文など短期保持データがTTL後に削除またはNULL化される。
 
 ## 11. P7 生成結果編集

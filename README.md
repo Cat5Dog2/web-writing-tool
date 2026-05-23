@@ -114,6 +114,7 @@ Copy-Item .env.example .env
 ```
 
 `.env` の `POSTGRES_PASSWORD`、`AdminSeed__Email`、`AdminSeed__Password` をローカル用の値へ変更する。
+Gemini、Tavily、X APIを実行する場合は、同じ `.env` の `AiProviders__Gemini__ApiKey`、`SearchProviders__Tavily__ApiKey`、`SearchProviders__X__BearerToken` も実値へ変更する。
 
 既に `postgres_data` volume を作成済みの場合、`POSTGRES_PASSWORD` を変更しても既存DBユーザーのパスワードは自動変更されない。
 既存DBを残す場合は、DB作成時と同じ `POSTGRES_PASSWORD` を使う。

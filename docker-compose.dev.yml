@@ -36,6 +36,19 @@ services:
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       AdminSeed__Email: ${AdminSeed__Email:-}
       AdminSeed__Password: ${AdminSeed__Password:-}
+      AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
+      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.5-flash}
+      AiProviders__Gemini__Region: ${AiProviders__Gemini__Region:-Japan}
+      AiProviders__Gemini__TimeoutSeconds: ${AiProviders__Gemini__TimeoutSeconds:-120}
+      SearchProviders__DefaultRegion: ${SearchProviders__DefaultRegion:-Japan}
+      SearchProviders__Tavily__ApiKey: ${SearchProviders__Tavily__ApiKey:-}
+      SearchProviders__Tavily__TimeoutSeconds: ${SearchProviders__Tavily__TimeoutSeconds:-30}
+      SearchProviders__X__BearerToken: ${SearchProviders__X__BearerToken:-}
+      SearchProviders__X__TimeoutSeconds: ${SearchProviders__X__TimeoutSeconds:-30}
+      SearchProviders__X__DefaultMaxResults: ${SearchProviders__X__DefaultMaxResults:-100}
+      SearchProviders__X__BulkMaxResults: ${SearchProviders__X__BulkMaxResults:-500}
+      SearchProviders__X__MonthlySafetyLimitPosts: ${SearchProviders__X__MonthlySafetyLimitPosts:-10000}
+      SearchCache__Policy: ${SearchCache__Policy:-dev}
     ports:
       - "5080:8080"
     volumes:

@@ -861,7 +861,7 @@ MVPでは月次利用量集計機能を実装しない。`UsageLedgers`は時系
 初期シード候補:
 
 - `AiModelSettings`
-  - GoogleGemini / gemini-3.1-pro-preview / Google Gemini 3.1 Pro Preview / Japan
+  - GoogleGemini / gemini-3.5-flash / Google Gemini 3.5 Flash / Japan
 - 管理者ロール
 - 一般ユーザーロール
 - 初期Adminユーザー
