@@ -30,6 +30,7 @@ dotnet build WebWritingTool.slnx --configuration $Configuration --no-restore
 dotnet tool install --global dotnet-ef --version 10.0.8
 /home/dotnet/.dotnet/tools/dotnet-ef database update --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj --context ApplicationDbContext
 "@
+$migrationCommand = $migrationCommand -replace "`r", ''
 
 & docker @composeArgs run --rm --build --entrypoint /bin/sh dotnet-sdk -lc $migrationCommand
 exit $LASTEXITCODE
