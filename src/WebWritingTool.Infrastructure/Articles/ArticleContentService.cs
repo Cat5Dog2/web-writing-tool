@@ -3,13 +3,15 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.Infrastructure.Articles;
 
 public sealed partial class ArticleContentService(
     ApplicationDbContext dbContext,
-    IContentRenderingService contentRenderingService)
+    IContentRenderingService contentRenderingService,
+    IWordpressPostCommandService wordpressPostCommandService)
     : IArticleContentService
 {
     public async Task<ArticleServiceResult<ConvertArticleHtmlResponse>> ConvertHtmlAsync(
@@ -72,6 +74,10 @@ public sealed partial class ArticleContentService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await wordpressPostCommandService.QueueAutoPostIfReadyAsync(
+            article.UserId,
+            article.Id,
+            cancellationToken);
 
         return ArticleServiceResult<ConvertArticleHtmlResponse>.Success(
             new ConvertArticleHtmlResponse(article.Id, htmlBody, convertedAt));

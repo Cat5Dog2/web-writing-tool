@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
@@ -12,7 +14,9 @@ public sealed class BodyGenerationJobHandler(
     ApplicationDbContext dbContext,
     IAiTextGenerationClient aiClient,
     IOptions<GeminiOptions> geminiOptions,
-    BodyGenerationPromptBuilder promptBuilder)
+    BodyGenerationPromptBuilder promptBuilder,
+    IContentRenderingService contentRenderingService,
+    IWordpressPostCommandService wordpressPostCommandService)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
     public JobType JobType => JobType.BodyGeneration;
@@ -100,9 +104,19 @@ public sealed class BodyGenerationJobHandler(
         {
             article.Status = ArticleStatus.Completed;
             article.CompletedAt ??= DateTimeOffset.UtcNow;
+            if (article.AutoPostToWordpress && !string.IsNullOrWhiteSpace(article.Body))
+            {
+                article.HtmlBody = contentRenderingService.ConvertMarkdownToHtml(
+                    article.Body,
+                    insertLineBreakAfterPeriod: false);
+            }
         }
 
         await DbContext.SaveChangesAsync(cancellationToken);
+        await wordpressPostCommandService.QueueAutoPostIfReadyAsync(
+            job.UserId,
+            article.Id,
+            cancellationToken);
 
         return new JobExecutionResult(SerializeResult(new
         {
