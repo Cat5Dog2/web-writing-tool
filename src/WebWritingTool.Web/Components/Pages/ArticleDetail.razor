@@ -6,21 +6,28 @@
 
 @inject IArticleQueryService ArticleQueryService
 @inject IArticleCommandService ArticleCommandService
+@inject IArticleHeadingService HeadingService
+@inject IArticleContentService ArticleContentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
-<PageTitle>記事詳細</PageTitle>
+<PageTitle>生成結果編集</PageTitle>
 
-<div class="article-page">
+<div class="article-page article-editor-page">
     <header class="article-page-header">
         <div>
-            <h1>記事詳細</h1>
+            <h1>生成結果編集</h1>
             @if (article is not null)
             {
                 <div class="text-muted">@article.Status</div>
             }
         </div>
-        <a class="btn btn-outline-secondary" href="articles">一覧へ戻る</a>
+        <div class="article-actions">
+            <a class="btn btn-outline-secondary" href="/articles">一覧へ戻る</a>
+            <a class="btn btn-outline-primary @(article?.HtmlBody is null ? "disabled" : string.Empty)"
+               href="@($"/articles/{ArticleId}/preview")"
+               aria-disabled="@(article?.HtmlBody is null)">プレビュー</a>
+        </div>
     </header>
 
     @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -43,147 +50,163 @@
     }
     else
     {
-        <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="edit-article">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
-
-            <section class="article-panel mb-3">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label" for="keyword">キーワード</label>
-                        <InputText id="keyword" class="form-control" @bind-Value="form.Keyword" />
-                        <ValidationMessage For="() => form.Keyword" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="title">タイトル</label>
-                        <InputText id="title" class="form-control" @bind-Value="form.Title" />
-                        <ValidationMessage For="() => form.Title" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="tags">タグ</label>
-                        <InputText id="tags" class="form-control" @bind-Value="form.Tags" />
-                    </div>
-                    <div class="col-md-8">
-                        <label class="form-label" for="memo">メモ</label>
-                        <InputText id="memo" class="form-control" @bind-Value="form.Memo" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="tone">文章のトーン</label>
-                        <InputSelect id="tone" class="form-select" @bind-Value="form.Tone">
-                            <option value="Normal">通常</option>
-                            <option value="Friendly">親しみやすい</option>
-                            <option value="Professional">専門的</option>
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="outline-method">見出し構築方法</label>
-                        <InputSelect id="outline-method" class="form-select" @bind-Value="form.OutlineMethod">
-                            <option value="Keyword">キーワード</option>
-                            <option value="Search">検索</option>
-                            <option value="Ai">AI</option>
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="generation-model">生成モデル</label>
-                        <InputSelect id="generation-model" class="form-select" @bind-Value="form.GenerationModel">
-                            @foreach (var model in formOptions.GenerationModels)
-                            {
-                                <option value="@model.Model">@model.DisplayName</option>
-                            }
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="writing-profile">サイト別ライティング設定</label>
-                        <select id="writing-profile" class="form-select" @bind="form.WritingProfileWordpressSiteId">
-                            <option value="">使用しない</option>
-                            @foreach (var profile in formOptions.WritingProfiles)
-                            {
-                                <option value="@profile.Id">@profile.SiteName</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="notification-mode">通知設定</label>
-                        <InputSelect id="notification-mode" class="form-select" @bind-Value="form.NotificationMode">
-                            <option value="None">通知なし</option>
-                            <option value="Discord">Discord</option>
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-4 d-flex align-items-end gap-4">
-                        <div class="form-check">
-                            <InputCheckbox id="search-mode" class="form-check-input" @bind-Value="form.SearchMode" />
-                            <label class="form-check-label" for="search-mode">検索モード</label>
+        <div class="article-editor-grid">
+            <aside class="article-editor-sidebar">
+                <section class="article-panel">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="title">タイトル</label>
+                            <input id="title" class="form-control" @bind="form.Title" />
                         </div>
-                        <div class="form-check">
-                            <InputCheckbox id="is-domestic" class="form-check-input" @bind-Value="form.IsDomesticOnly" />
-                            <label class="form-check-label" for="is-domestic">国内限定</label>
+                        <div class="col-12">
+                            <label class="form-label" for="keyword">キーワード</label>
+                            <input id="keyword" class="form-control" @bind="form.Keyword" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="meta-description">メタディスクリプション</label>
+                            <textarea id="meta-description" class="form-control" rows="4" @bind="form.MetaDescription"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="tags">タグ</label>
+                            <input id="tags" class="form-control" @bind="form.Tags" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="memo">メモ</label>
+                            <textarea id="memo" class="form-control" rows="3" @bind="form.Memo"></textarea>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="generation-model">モデル</label>
+                            <select id="generation-model" class="form-select" @bind="form.GenerationModel">
+                                @foreach (var model in formOptions.GenerationModels)
+                                {
+                                    <option value="@model.Model">@model.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="outline-method">構成</label>
+                            <select id="outline-method" class="form-select" @bind="form.OutlineMethod">
+                                <option value="Keyword">キーワード</option>
+                                <option value="Search">検索</option>
+                                <option value="Ai">AI</option>
+                            </select>
+                        </div>
+                        <div class="col-12 d-flex flex-wrap gap-3">
+                            <div class="form-check">
+                                <input id="search-mode" class="form-check-input" type="checkbox" @bind="form.SearchMode" />
+                                <label class="form-check-label" for="search-mode">検索モード</label>
+                            </div>
+                            <div class="form-check">
+                                <input id="is-domestic" class="form-check-input" type="checkbox" @bind="form.IsDomesticOnly" />
+                                <label class="form-check-label" for="is-domestic">国内限定</label>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="suggested">サジェストキーワード</label>
-                        <InputTextArea id="suggested" class="form-control" rows="4" @bind-Value="form.SuggestedKeywords" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="related">関連キーワード</label>
-                        <InputTextArea id="related" class="form-control" rows="4" @bind-Value="form.RelatedKeywords" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="learning-type">事前学習種別</label>
-                        <InputSelect id="learning-type" class="form-select" @bind-Value="form.LearningType">
-                            <option value="None">なし</option>
-                            <option value="Text">テキスト</option>
-                            <option value="Url">URL</option>
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-8">
-                        <label class="form-label" for="learning-text">事前学習本文</label>
-                        <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="additional-prompt">追加プロンプト</label>
-                        <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="meta-description">メタディスクリプション</label>
-                        <InputTextArea id="meta-description" class="form-control" rows="4" @bind-Value="form.MetaDescription" />
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label" for="body">本文</label>
-                        <InputTextArea id="body" class="form-control" rows="8" @bind-Value="form.Body" />
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label" for="html-body">HTML本文</label>
-                        <InputTextArea id="html-body" class="form-control" rows="8" @bind-Value="form.HtmlBody" />
-                    </div>
-                </div>
-            </section>
 
-            <div class="d-flex justify-content-between gap-2">
-                <button type="button" class="btn btn-outline-danger" @onclick="DeleteAsync">削除</button>
-                <button type="submit" class="btn btn-primary" disabled="@isSubmitting">保存</button>
-            </div>
-        </EditForm>
+                    <div class="article-editor-actions">
+                        <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveArticleAsync">保存</button>
+                        <button type="button" class="btn btn-outline-primary" disabled="@isSubmitting" @onclick="ConvertHtmlAsync">HTML変換</button>
+                        <label class="form-check article-period-break">
+                            <input class="form-check-input" type="checkbox" @bind="insertLineBreakAfterPeriod" />
+                            <span class="form-check-label">句点改行</span>
+                        </label>
+                    </div>
+                </section>
 
-        <section class="article-panel mt-4">
-            <h2 class="h5">見出し</h2>
-            @if (article.Headings.Count == 0)
-            {
-                <div class="text-muted">見出しはありません。</div>
-            }
-            else
-            {
-                <ol class="article-heading-list">
-                    @foreach (var heading in article.Headings)
+                <section class="article-panel">
+                    <div class="article-section-header">
+                        <h2 class="h5">見出し構成</h2>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary" @onclick="AddH2Async">H2追加</button>
+                            <button type="button" class="btn btn-outline-primary" disabled="@(!CanAddH3)" @onclick="AddH3Async">H3追加</button>
+                        </div>
+                    </div>
+
+                    @if (article.Headings.Count == 0)
                     {
-                        <li>
-                            <span class="badge text-bg-light">H@heading.Level</span>
-                            <span>@heading.Title</span>
-                            <span class="text-muted ms-2">@heading.Status</span>
-                        </li>
+                        <div class="text-muted">見出しはありません。</div>
                     }
-                </ol>
-            }
-        </section>
+                    else
+                    {
+                        <div class="article-outline-tree">
+                            @foreach (var group in GetHeadingGroups())
+                            {
+                                @RenderHeadingButton(group.Heading)
+                                @foreach (var child in group.Children)
+                                {
+                                    @RenderHeadingButton(child)
+                                }
+                            }
+                        </div>
+                    }
+
+                    @if (deleteHeadingId.HasValue)
+                    {
+                        <div class="alert alert-warning mt-3" role="alert">
+                            <div>この見出しを削除しますか。</div>
+                            <div class="d-flex gap-2 mt-2">
+                                <button type="button" class="btn btn-sm btn-danger" @onclick="ConfirmDeleteHeadingAsync">削除</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelDeleteHeading">キャンセル</button>
+                            </div>
+                        </div>
+                    }
+                </section>
+            </aside>
+
+            <main class="article-editor-main">
+                @if (selectedHeading is null)
+                {
+                    <section class="article-panel">
+                        <div class="text-muted">編集する見出しを選択してください。</div>
+                    </section>
+                }
+                else
+                {
+                    <section class="article-panel article-heading-editor">
+                        <div class="article-section-header">
+                            <div>
+                                <span class="badge text-bg-light">H@selectedHeading.Level</span>
+                                <span class="badge text-bg-secondary ms-1">@selectedHeading.Status</span>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveSelectedHeadingAsync(-1)">上へ</button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveSelectedHeadingAsync(1)">下へ</button>
+                                <button type="button" class="btn btn-outline-danger" @onclick="() => RequestDeleteHeading(selectedHeading.Id)">削除</button>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="heading-title">見出しタイトル</label>
+                            <input id="heading-title" class="form-control" @bind="headingForm.Title" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="heading-body">本文</label>
+                            <textarea id="heading-body" class="form-control article-body-editor" rows="18" @bind="headingForm.Body"></textarea>
+                        </div>
+
+                        <div class="article-heading-editor-footer">
+                            <div class="article-heading-settings">
+                                <label class="form-label" for="target-length">目安文字数</label>
+                                <input id="target-length" class="form-control" type="number" min="0" @bind="headingForm.TargetLength" />
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" @bind="headingForm.UseWebSearch" />
+                                    <span class="form-check-label">Web検索</span>
+                                </label>
+                            </div>
+                            <div class="article-heading-save">
+                                <span class="text-muted">@HeadingBodyLength 文字</span>
+                                <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveHeadingAsync">本文を保存</button>
+                            </div>
+                        </div>
+                    </section>
+                }
+            </main>
+        </div>
+
+        <div class="article-editor-danger">
+            <button type="button" class="btn btn-outline-danger" @onclick="DeleteArticleAsync">記事を削除</button>
+        </div>
     }
 </div>
 
@@ -193,22 +216,31 @@
 
     private ArticleDetailResponse? article;
     private ArticleFormOptionsResponse formOptions = new([], []);
+    private ArticleHeadingResponse? selectedHeading;
     private readonly ArticleEditForm form = new();
+    private readonly HeadingEditForm headingForm = new();
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool insertLineBreakAfterPeriod;
+    private Guid? deleteHeadingId;
     private string? errorMessage;
     private string? successMessage;
+
+    private bool CanAddH3 => article is not null && GetSelectedH2Id().HasValue;
+
+    private int HeadingBodyLength => headingForm.Body?.Length ?? 0;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(Guid? preferredHeadingId = null)
     {
         var actor = await GetActorAsync();
         if (actor is null)
         {
+            isLoading = false;
             return;
         }
 
@@ -217,6 +249,7 @@
         if (article is not null)
         {
             PopulateForm(article);
+            SelectHeading(preferredHeadingId ?? selectedHeading?.Id ?? article.Headings.FirstOrDefault()?.Id);
         }
 
         isLoading = false;
@@ -241,22 +274,42 @@
         form.IsDomesticOnly = detail.IsDomesticOnly;
         form.NotificationMode = detail.NotificationMode;
         form.WritingProfileWordpressSiteId = detail.WritingProfileWordpressSiteId?.ToString();
-        form.Body = detail.Body;
-        form.HtmlBody = detail.HtmlBody;
         form.RowVersion = detail.RowVersion;
     }
 
-    private async Task SaveAsync()
+    private void SelectHeading(Guid? headingId)
+    {
+        selectedHeading = headingId.HasValue && article is not null
+            ? article.Headings.FirstOrDefault(heading => heading.Id == headingId.Value)
+            : null;
+
+        if (selectedHeading is null)
+        {
+            headingForm.Title = string.Empty;
+            headingForm.Body = null;
+            headingForm.TargetLength = null;
+            headingForm.UseWebSearch = false;
+            headingForm.RowVersion = null;
+            return;
+        }
+
+        headingForm.Title = selectedHeading.Title;
+        headingForm.Body = selectedHeading.Body;
+        headingForm.TargetLength = selectedHeading.TargetLength;
+        headingForm.UseWebSearch = selectedHeading.UseWebSearch;
+        headingForm.RowVersion = selectedHeading.RowVersion;
+    }
+
+    private async Task SaveArticleAsync()
     {
         var actor = await GetActorAsync();
-        if (actor is null)
+        if (actor is null || article is null)
         {
             return;
         }
 
         isSubmitting = true;
-        errorMessage = null;
-        successMessage = null;
+        ClearMessages();
 
         var result = await ArticleCommandService.UpdateAsync(
             new UpdateArticleCommand(
@@ -279,8 +332,8 @@
                 form.IsDomesticOnly,
                 form.NotificationMode,
                 ParseGuid(form.WritingProfileWordpressSiteId),
-                form.Body,
-                form.HtmlBody,
+                article.Body,
+                article.HtmlBody,
                 form.RowVersion));
 
         isSubmitting = false;
@@ -296,7 +349,243 @@
         successMessage = "記事を保存しました。";
     }
 
-    private async Task DeleteAsync()
+    private async Task SaveHeadingAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null || selectedHeading is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var result = await HeadingService.UpdateHeadingAsync(
+            new UpdateArticleHeadingCommand(
+                actor,
+                ArticleId,
+                selectedHeading.Id,
+                headingForm.Title,
+                headingForm.Body,
+                headingForm.TargetLength,
+                headingForm.UseWebSearch,
+                headingForm.RowVersion));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        await LoadAsync(result.Value.Id);
+        successMessage = "本文を保存しました。";
+    }
+
+    private async Task AddH2Async()
+    {
+        await CreateHeadingAsync(level: 2, parentId: null, title: "新しいH2");
+    }
+
+    private async Task AddH3Async()
+    {
+        var parentId = GetSelectedH2Id();
+        if (!parentId.HasValue)
+        {
+            return;
+        }
+
+        await CreateHeadingAsync(level: 3, parentId: parentId.Value, title: "新しいH3");
+    }
+
+    private async Task CreateHeadingAsync(int level, Guid? parentId, string title)
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var result = await HeadingService.CreateHeadingAsync(
+            new CreateArticleHeadingCommand(
+                actor,
+                ArticleId,
+                parentId,
+                level,
+                title,
+                selectedHeading?.Id,
+                TargetLength: null,
+                UseWebSearch: false));
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        await LoadAsync(result.Value.Id);
+        successMessage = "見出しを追加しました。";
+    }
+
+    private void RequestDeleteHeading(Guid headingId)
+    {
+        deleteHeadingId = headingId;
+    }
+
+    private void CancelDeleteHeading()
+    {
+        deleteHeadingId = null;
+    }
+
+    private async Task ConfirmDeleteHeadingAsync()
+    {
+        if (!deleteHeadingId.HasValue)
+        {
+            return;
+        }
+
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var result = await HeadingService.DeleteHeadingAsync(actor, ArticleId, deleteHeadingId.Value);
+        deleteHeadingId = null;
+
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        selectedHeading = null;
+        await LoadAsync();
+        successMessage = "見出しを削除しました。";
+    }
+
+    private async Task MoveSelectedHeadingAsync(int direction)
+    {
+        if (article is null || selectedHeading is null)
+        {
+            return;
+        }
+
+        var flattened = selectedHeading.Level == 2
+            ? MoveH2Group(direction)
+            : MoveH3WithinParent(direction);
+
+        if (flattened is null)
+        {
+            return;
+        }
+
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var items = flattened
+            .Select((heading, index) => new ArticleHeadingOrderItem(
+                heading.Id,
+                heading.Level == 3 ? heading.ParentId : null,
+                (index + 1) * 10))
+            .ToArray();
+
+        var result = await HeadingService.UpdateHeadingOrderAsync(
+            new UpdateArticleHeadingOrderCommand(actor, ArticleId, items));
+
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        await LoadAsync(selectedHeading.Id);
+        successMessage = "見出し順を更新しました。";
+    }
+
+    private IReadOnlyList<ArticleHeadingResponse>? MoveH2Group(int direction)
+    {
+        var groups = GetHeadingGroups().ToList();
+        var index = groups.FindIndex(group => group.Heading.Id == selectedHeading?.Id);
+        var newIndex = index + direction;
+        if (index < 0 || newIndex < 0 || newIndex >= groups.Count)
+        {
+            return null;
+        }
+
+        (groups[index], groups[newIndex]) = (groups[newIndex], groups[index]);
+        return groups.SelectMany(group => new[] { group.Heading }.Concat(group.Children)).ToArray();
+    }
+
+    private IReadOnlyList<ArticleHeadingResponse>? MoveH3WithinParent(int direction)
+    {
+        if (selectedHeading?.ParentId is null)
+        {
+            return null;
+        }
+
+        var groups = GetHeadingGroups().ToList();
+        var targetGroup = groups.FirstOrDefault(group => group.Heading.Id == selectedHeading.ParentId.Value);
+        if (targetGroup is null)
+        {
+            return null;
+        }
+
+        var children = targetGroup.Children.ToList();
+        var index = children.FindIndex(child => child.Id == selectedHeading.Id);
+        var newIndex = index + direction;
+        if (index < 0 || newIndex < 0 || newIndex >= children.Count)
+        {
+            return null;
+        }
+
+        (children[index], children[newIndex]) = (children[newIndex], children[index]);
+
+        return groups
+            .SelectMany(group =>
+            {
+                var groupChildren = group.Heading.Id == targetGroup.Heading.Id
+                    ? children
+                    : group.Children;
+                return new[] { group.Heading }.Concat(groupChildren);
+            })
+            .ToArray();
+    }
+
+    private async Task ConvertHtmlAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var result = await ArticleContentService.ConvertHtmlAsync(
+            new ConvertArticleHtmlCommand(actor, ArticleId, insertLineBreakAfterPeriod));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        await LoadAsync(selectedHeading?.Id);
+        successMessage = "HTMLへ変換しました。";
+    }
+
+    private async Task DeleteArticleAsync()
     {
         var actor = await GetActorAsync();
         if (actor is null)
@@ -312,6 +601,69 @@
         }
 
         NavigationManager.NavigateTo("/articles");
+    }
+
+    private RenderFragment RenderHeadingButton(ArticleHeadingResponse heading) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", GetHeadingButtonClass(heading));
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => SelectHeading(heading.Id)));
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "badge text-bg-light");
+        builder.AddContent(sequence++, $"H{heading.Level}");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "article-outline-title");
+        builder.AddContent(sequence++, heading.Title);
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "article-outline-count");
+        builder.AddContent(sequence++, $"{heading.ActualLength ?? heading.Body?.Length ?? 0}字");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private IReadOnlyList<HeadingGroup> GetHeadingGroups()
+    {
+        if (article is null)
+        {
+            return [];
+        }
+
+        var ordered = article.Headings.OrderBy(heading => heading.DisplayOrder).ToArray();
+        var h2Items = ordered.Where(heading => heading.Level == 2).ToArray();
+        return h2Items
+            .Select(heading => new HeadingGroup(
+                heading,
+                ordered.Where(child => child.ParentId == heading.Id).ToArray()))
+            .ToArray();
+    }
+
+    private string GetHeadingButtonClass(ArticleHeadingResponse heading)
+    {
+        var classes = heading.Level == 3
+            ? "article-outline-item article-outline-item-child"
+            : "article-outline-item";
+
+        return selectedHeading?.Id == heading.Id ? $"{classes} active" : classes;
+    }
+
+    private Guid? GetSelectedH2Id()
+    {
+        if (selectedHeading is null)
+        {
+            return null;
+        }
+
+        return selectedHeading.Level == 2 ? selectedHeading.Id : selectedHeading.ParentId;
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        successMessage = null;
     }
 
     private async Task<ArticleActor?> GetActorAsync()
@@ -342,19 +694,20 @@
         {
             ArticleServiceError.NotFound => "記事が見つかりません。",
             ArticleServiceError.ConflictRunningJob => "実行中ジョブがあるため削除できません。",
-            ArticleServiceError.ConcurrencyConflict => "他の操作により記事が更新されています。再読み込みしてください。",
+            ArticleServiceError.ConflictGeneratingHeading => "生成待ちまたは生成中の見出しは操作できません。",
+            ArticleServiceError.ConcurrencyConflict => "他の操作により更新されています。再読み込みしてください。",
             _ => "処理に失敗しました。"
         };
     }
 
+    private sealed record HeadingGroup(
+        ArticleHeadingResponse Heading,
+        IReadOnlyList<ArticleHeadingResponse> Children);
+
     private sealed class ArticleEditForm
     {
-        [Required(ErrorMessage = "キーワードを入力してください。")]
-        [StringLength(200, ErrorMessage = "キーワードは200文字以内で入力してください。")]
         public string Keyword { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "タイトルを入力してください。")]
-        [StringLength(250, ErrorMessage = "タイトルは250文字以内で入力してください。")]
         public string Title { get; set; } = string.Empty;
 
         public string? Tags { get; set; }
@@ -387,9 +740,18 @@
 
         public string? WritingProfileWordpressSiteId { get; set; }
 
+        public string? RowVersion { get; set; }
+    }
+
+    private sealed class HeadingEditForm
+    {
+        public string Title { get; set; } = string.Empty;
+
         public string? Body { get; set; }
 
-        public string? HtmlBody { get; set; }
+        public int? TargetLength { get; set; }
+
+        public bool UseWebSearch { get; set; }
 
         public string? RowVersion { get; set; }
     }

@@ -83,7 +83,48 @@ public sealed record ArticleHeadingResponse(
     int DisplayOrder,
     int? TargetLength,
     int? ActualLength,
-    string Status);
+    string Status,
+    bool UseWebSearch,
+    string RowVersion);
+
+public sealed record ArticleHeadingListResponse(IReadOnlyList<ArticleHeadingResponse> Items);
+
+public sealed record CreateArticleHeadingCommand(
+    ArticleActor Actor,
+    Guid ArticleId,
+    Guid? ParentId,
+    int Level,
+    string Title,
+    Guid? InsertAfterHeadingId,
+    int? TargetLength,
+    bool UseWebSearch);
+
+public sealed record UpdateArticleHeadingCommand(
+    ArticleActor Actor,
+    Guid ArticleId,
+    Guid HeadingId,
+    string Title,
+    string? Body,
+    int? TargetLength,
+    bool UseWebSearch,
+    string? RowVersion);
+
+public sealed record UpdateArticleHeadingOrderCommand(
+    ArticleActor Actor,
+    Guid ArticleId,
+    IReadOnlyList<ArticleHeadingOrderItem> Items);
+
+public sealed record ArticleHeadingOrderItem(Guid HeadingId, Guid? ParentId, int DisplayOrder);
+
+public sealed record ConvertArticleHtmlCommand(
+    ArticleActor Actor,
+    Guid ArticleId,
+    bool InsertLineBreakAfterPeriod);
+
+public sealed record ConvertArticleHtmlResponse(
+    Guid ArticleId,
+    string HtmlBody,
+    DateTimeOffset ConvertedAt);
 
 public sealed record CreateArticleCommand(
     string UserId,
@@ -180,7 +221,8 @@ public enum ArticleServiceError
     ValidationFailed,
     NotFound,
     ConflictRunningJob,
-    ConcurrencyConflict
+    ConcurrencyConflict,
+    ConflictGeneratingHeading
 }
 
 public sealed record ArticleValidationError(string Field, string Message);

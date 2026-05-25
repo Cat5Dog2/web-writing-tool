@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
+using WebWritingTool.Application.Rendering;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Domain.Wordpress;
@@ -8,7 +9,9 @@ using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.Infrastructure.Articles;
 
-public sealed class ArticleService(ApplicationDbContext dbContext)
+public sealed class ArticleService(
+    ApplicationDbContext dbContext,
+    IContentRenderingService contentRenderingService)
     : IArticleCommandService, IArticleQueryService
 {
     private const int DefaultPage = 1;
@@ -352,10 +355,16 @@ public sealed class ArticleService(ApplicationDbContext dbContext)
             dbContext.Entry(article).Property(item => item.RowVersion).OriginalValue = rowVersion;
         }
 
+        var normalizedBody = ArticleInputNormalizer.NormalizeOptionalText(command.Body);
+        var normalizedHtmlBody = ArticleInputNormalizer.NormalizeOptionalText(command.HtmlBody);
+        var sanitizedHtmlBody = normalizedHtmlBody is null
+            ? null
+            : ArticleInputNormalizer.NormalizeOptionalText(contentRenderingService.SanitizeHtml(normalizedHtmlBody));
+
         var reviewSensitiveValueChanged =
             !string.Equals(article.Title, command.Title.Trim(), StringComparison.Ordinal)
-            || !string.Equals(article.Body, ArticleInputNormalizer.NormalizeOptionalText(command.Body), StringComparison.Ordinal)
-            || !string.Equals(article.HtmlBody, ArticleInputNormalizer.NormalizeOptionalText(command.HtmlBody), StringComparison.Ordinal)
+            || !string.Equals(article.Body, normalizedBody, StringComparison.Ordinal)
+            || !string.Equals(article.HtmlBody, sanitizedHtmlBody, StringComparison.Ordinal)
             || !string.Equals(article.MetaDescription, ArticleInputNormalizer.NormalizeOptionalText(command.MetaDescription), StringComparison.Ordinal);
 
         article.Keyword = command.Keyword.Trim();
@@ -376,8 +385,8 @@ public sealed class ArticleService(ApplicationDbContext dbContext)
         article.NotificationMode = NormalizeNotificationMode(command.NotificationMode);
         article.WritingProfileWordpressSiteId = writingProfile?.Id;
         article.WritingProfileSnapshotJson = writingProfile is null ? null : CreateWritingProfileSnapshotJson(writingProfile);
-        article.Body = ArticleInputNormalizer.NormalizeOptionalText(command.Body);
-        article.HtmlBody = ArticleInputNormalizer.NormalizeOptionalText(command.HtmlBody);
+        article.Body = normalizedBody;
+        article.HtmlBody = sanitizedHtmlBody;
 
         if (reviewSensitiveValueChanged)
         {
@@ -773,7 +782,9 @@ public sealed class ArticleService(ApplicationDbContext dbContext)
                 heading.DisplayOrder,
                 heading.TargetLength,
                 heading.ActualLength,
-                heading.Status.ToString()))
+                heading.Status.ToString(),
+                heading.UseWebSearch,
+                Convert.ToBase64String(heading.RowVersion)))
             .ToListAsync(cancellationToken);
 
         return new ArticleDetailResponse(

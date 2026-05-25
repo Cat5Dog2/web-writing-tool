@@ -514,7 +514,8 @@ Response `200 OK`:
       "targetLength": 500,
       "actualLength": 0,
       "status": "Pending",
-      "useWebSearch": true
+      "useWebSearch": true,
+      "rowVersion": "base64-row-version"
     }
   ]
 }

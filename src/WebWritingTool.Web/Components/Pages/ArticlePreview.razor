@@ -1,0 +1,79 @@
+@page "/articles/{ArticleId:guid}/preview"
+@attribute [Authorize]
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components
+@using WebWritingTool.Application.Rendering
+
+@inject IArticleQueryService ArticleQueryService
+@inject IContentRenderingService ContentRenderingService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>記事プレビュー</PageTitle>
+
+<div class="article-page article-preview-page">
+    <header class="article-page-header">
+        <div>
+            <h1>@(article?.Title ?? "記事プレビュー")</h1>
+            @if (!string.IsNullOrWhiteSpace(article?.MetaDescription))
+            {
+                <p class="article-preview-description">@article.MetaDescription</p>
+            }
+        </div>
+        <a class="btn btn-outline-secondary" href="@($"/articles/{ArticleId}")">編集に戻る</a>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="text-muted">読み込み中</div>
+    }
+    else if (article is null)
+    {
+        <div class="alert alert-warning" role="alert">記事が見つかりません。</div>
+    }
+    else if (string.IsNullOrWhiteSpace(sanitizedHtml))
+    {
+        <div class="alert alert-info" role="status">プレビューできるHTML本文がありません。</div>
+    }
+    else
+    {
+        <article class="article-preview-body">
+            @((MarkupString)sanitizedHtml)
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ArticleId { get; set; }
+
+    private ArticleDetailResponse? article;
+    private string sanitizedHtml = string.Empty;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        article = await ArticleQueryService.GetAsync(actor, ArticleId);
+        sanitizedHtml = article?.HtmlBody is null
+            ? string.Empty
+            : ContentRenderingService.SanitizeHtml(article.HtmlBody);
+        isLoading = false;
+    }
+
+    private async Task<ArticleActor?> GetActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new ArticleActor(userId, user.IsInRole("Admin"));
+    }
+}

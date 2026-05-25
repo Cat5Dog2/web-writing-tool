@@ -3,7 +3,16 @@ using WebWritingTool.Web.Configuration;
 using WebWritingTool.Web.Endpoints;
 using WebWritingTool.Infrastructure.Identity;
 
+DevelopmentEnvironmentFileConfiguration.TryLoadAspNetCoreEnvironmentFromDotEnv();
+
 var builder = WebApplication.CreateBuilder(args);
+builder.AddDevelopmentEnvironmentFileConfiguration();
+if (builder.Environment.IsDevelopment() && OperatingSystem.IsWindows())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
+}
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -33,13 +42,29 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapAccountEndpoints();
 app.MapArticleEndpoints();
+app.MapHeadingEndpoints();
 app.MapJobEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-await SeedIdentityAsync(app);
+try
+{
+    await SeedIdentityAsync(app);
+    await app.RunAsync();
+}
+catch (Exception exception)
+{
+    try
+    {
+        app.Logger.LogCritical(exception, "Application terminated unexpectedly.");
+    }
+    catch
+    {
+        Console.Error.WriteLine($"Application terminated unexpectedly: {exception.GetType().Name}");
+    }
 
-app.Run();
+    Environment.ExitCode = 1;
+}
 
 static async Task SeedIdentityAsync(WebApplication app)
 {

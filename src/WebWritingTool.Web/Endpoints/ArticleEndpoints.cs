@@ -63,6 +63,10 @@ public static class ArticleEndpoints
             .WithName("RewriteHeadingBody")
             .WithSummary("見出し本文リライトジョブを登録します。");
 
+        api.MapPost("/{articleId:guid}/generation/html", ConvertArticleHtmlAsync)
+            .WithName("ConvertArticleHtml")
+            .WithSummary("記事本文をHTMLへ変換します。");
+
         return endpoints;
     }
 
@@ -396,6 +400,31 @@ public static class ArticleEndpoints
             cancellationToken);
     }
 
+    private static async Task<IResult> ConvertArticleHtmlAsync(
+        Guid articleId,
+        [FromBody] ConvertArticleHtmlRequest request,
+        ClaimsPrincipal principal,
+        IArticleContentService articleContentService,
+        CancellationToken cancellationToken)
+    {
+        var actor = GetActor(principal);
+        if (actor is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await articleContentService.ConvertHtmlAsync(
+            new ConvertArticleHtmlCommand(
+                actor,
+                articleId,
+                request.InsertLineBreakAfterPeriod),
+            cancellationToken);
+
+        return result.Succeeded && result.Value is not null
+            ? Results.Ok(result.Value)
+            : ToProblemResult(result.Error, result.ValidationErrors);
+    }
+
     private static async Task<IResult> EnqueueGenerationJobAsync<TPayload>(
         ClaimsPrincipal principal,
         IJobCommandService jobCommandService,
@@ -613,4 +642,6 @@ public static class ArticleEndpoints
         string Operation,
         string GenerationModel,
         string? AdditionalPrompt);
+
+    private sealed record ConvertArticleHtmlRequest(bool InsertLineBreakAfterPeriod);
 }
