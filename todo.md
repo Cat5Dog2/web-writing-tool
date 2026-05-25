@@ -261,32 +261,32 @@
 
 ## 12. P8 WordPress連携
 
-- [ ] `T-0801` WordPressサイト登録APIを実装する。
+- [x] `T-0801` WordPressサイト登録APIを実装する。
   - 条件: HTTPSのみ、SSRF対策、Application Password暗号化
   - 完了条件: レスポンスにAPP-PASSが含まれない。
 
-- [ ] `T-0802` WordPress接続テストを実装する。
+- [x] `T-0802` WordPress接続テストを実装する。
   - 完了条件: 認証失敗は`success: false`として扱える。
 
-- [ ] `T-0803` WordPressカテゴリ取得を実装する。
+- [x] `T-0803` WordPressカテゴリ取得を実装する。
   - MVP方針: カテゴリ一覧はDBキャッシュせず、WordPress REST APIから都度取得する。
   - 完了条件: 投稿モーダルでカテゴリ選択でき、カテゴリ一覧キャッシュテーブルを作らない。
 
-- [ ] `T-0804` WordPress投稿プレビューを実装する。
+- [x] `T-0804` WordPress投稿プレビューを実装する。
   - 完了条件: タイトル、HTML本文を確認できる。
 
-- [ ] `T-0805` WordPress投稿ジョブを実装する。
+- [x] `T-0805` WordPress投稿ジョブを実装する。
   - 条件: 投稿ステータス既定はDraft
   - 完了条件: 投稿成功時にPostId、PostUrl、PostedAtを保存する。
 
-- [ ] `T-0806` compliance_strict公開抑止を実装する。
+- [x] `T-0806` compliance_strict公開抑止を実装する。
   - 完了条件: 人間確認前はPublish不可、Draftは可。
 
-- [ ] `T-0807` 一括登録後のWordPress自動投稿を実装する。
+- [x] `T-0807` 一括登録後のWordPress自動投稿を実装する。
   - 条件: 一括登録で明示的に有効化した場合のみ対象。自動投稿はDraft固定。
   - 完了条件: 本文生成とHTML変換が完了した記事ごとにWordpressPostジョブが重複なく登録される。
 
-- [ ] `T-0808` WordPressサイト別ライティング設定を実装する。
+- [x] `T-0808` WordPressサイト別ライティング設定を実装する。
   - 対象: 管理人プロフィール、語り手・キャラ設定、読者ペルソナ
   - 完了条件: WordPressサイト登録/更新APIと設定画面で保存・編集でき、APP-PASSは引き続きレスポンスへ含まれない。
 

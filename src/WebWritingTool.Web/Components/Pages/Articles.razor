@@ -6,6 +6,9 @@
 
 @inject IArticleQueryService ArticleQueryService
 @inject IArticleCommandService ArticleCommandService
+@inject IWordpressPostCommandService WordpressPostCommandService
+@inject IWordpressPostQueryService WordpressPostQueryService
+@inject IWordpressSiteQueryService WordpressSiteQueryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
@@ -225,7 +228,7 @@
                             <td>
                                 <div class="d-flex justify-content-end gap-2">
                                     <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
-                                    <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialog(article)">投稿</button>
+                                    <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
                                     <button class="btn btn-sm btn-outline-danger" type="button" disabled="@article.HasRunningJob" @onclick="() => ConfirmDelete(article)">削除</button>
                                 </div>
                             </td>
@@ -265,17 +268,62 @@
         <div class="article-dialog-backdrop">
             <section class="article-dialog" role="dialog" aria-modal="true">
                 <h2 class="h5">WordPress投稿</h2>
-                <p class="mb-3">@GetArticleTitle(postTarget)</p>
-                <label class="form-label" for="post-site">投稿先サイト</label>
-                <select id="post-site" class="form-select mb-3">
-                    @foreach (var profile in formOptions.WritingProfiles)
+                @if (isPostDialogLoading)
+                {
+                    <div class="text-muted">読み込み中</div>
+                }
+                else if (postPreview is null)
+                {
+                    <div class="alert alert-warning">投稿プレビューを取得できませんでした。</div>
+                }
+                else if (postPreview.AvailableSites.Count == 0)
+                {
+                    <div class="alert alert-warning">WordPressサイトが登録されていません。<a href="/settings">設定</a>から登録してください。</div>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <label class="form-label" for="post-title">タイトル</label>
+                        <input id="post-title" class="form-control" @bind="postForm.Title" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="post-site">投稿先サイト</label>
+                        <select id="post-site" class="form-select" value="@postForm.SiteId" @onchange="OnPostSiteChangedAsync">
+                            @foreach (var site in postPreview.AvailableSites)
+                            {
+                                <option value="@site.Id">@site.SiteName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="post-category">カテゴリ</label>
+                        <select id="post-category" class="form-select" value="@postForm.CategoryId" @onchange="OnPostCategoryChanged">
+                            <option value="">既定カテゴリ</option>
+                            @foreach (var category in postCategories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="post-status">投稿ステータス</label>
+                        <select id="post-status" class="form-select" @bind="postForm.Status">
+                            <option value="@WordpressPostStatuses.Draft">下書き</option>
+                            <option value="@WordpressPostStatuses.Publish" disabled="@IsPublishBlocked">公開</option>
+                        </select>
+                    </div>
+                    @if (IsPublishBlocked)
                     {
-                        <option value="@profile.Id">@profile.SiteName</option>
+                        <div class="alert alert-warning">人間確認前の記事は公開投稿できません。下書き投稿は可能です。</div>
                     }
-                </select>
+                    <div class="mb-3">
+                        <label class="form-label" for="post-html">本文HTML</label>
+                        <textarea id="post-html" class="form-control" rows="8" @bind="postForm.HtmlBody"></textarea>
+                    </div>
+                }
                 <div class="d-flex justify-content-end gap-2">
                     <button type="button" class="btn btn-outline-secondary" @onclick="ClosePostDialog">閉じる</button>
-                    <button type="button" class="btn btn-success" disabled>下書き投稿</button>
+                    <button type="button" class="btn btn-success" disabled="@(!CanSubmitPost)" @onclick="SubmitPostAsync">投稿ジョブ登録</button>
                 </div>
             </section>
         </div>
@@ -321,6 +369,22 @@
     private IReadOnlyList<BulkArticleRejectedLine> bulkRejectedLines = [];
     private ArticleListItemResponse? deleteTarget;
     private ArticleListItemResponse? postTarget;
+    private WordpressPostPreviewResponse? postPreview;
+    private IReadOnlyList<WordpressCategoryDto> postCategories = [];
+    private readonly WordpressPostForm postForm = new();
+    private bool isPostDialogLoading;
+    private bool isPostSubmitting;
+
+    private bool IsPublishBlocked => postPreview?.HumanReviewRequired == true && postPreview.HumanReviewedAt is null;
+
+    private bool CanSubmitPost =>
+        !isPostSubmitting
+        && postPreview is not null
+        && postPreview.AvailableSites.Count > 0
+        && Guid.TryParse(postForm.SiteId, out _)
+        && !string.IsNullOrWhiteSpace(postForm.Title)
+        && !string.IsNullOrWhiteSpace(postForm.HtmlBody)
+        && !(IsPublishBlocked && postForm.Status == WordpressPostStatuses.Publish);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -507,14 +571,121 @@
         await LoadArticlesAsync(articleList.Page);
     }
 
-    private void OpenPostDialog(ArticleListItemResponse article)
+    private async Task OpenPostDialogAsync(ArticleListItemResponse article)
     {
         postTarget = article;
+        postPreview = null;
+        postCategories = [];
+        isPostDialogLoading = true;
+        ClearPostForm();
+
+        var actor = await GetWordpressActorAsync();
+        if (actor is null)
+        {
+            isPostDialogLoading = false;
+            return;
+        }
+
+        postPreview = await WordpressPostQueryService.GetPreviewAsync(actor, article.Id);
+        if (postPreview is not null)
+        {
+            postForm.Title = postPreview.Title;
+            postForm.HtmlBody = postPreview.HtmlBody;
+            postForm.Status = WordpressPostStatuses.Draft;
+            postForm.SiteId = postPreview.AvailableSites.FirstOrDefault()?.Id.ToString();
+            postForm.CategoryId = postPreview.AvailableSites.FirstOrDefault()?.DefaultCategoryId;
+            await LoadPostCategoriesAsync();
+        }
+
+        isPostDialogLoading = false;
     }
 
     private void ClosePostDialog()
     {
         postTarget = null;
+        postPreview = null;
+        postCategories = [];
+        ClearPostForm();
+    }
+
+    private async Task OnPostSiteChangedAsync(ChangeEventArgs args)
+    {
+        postForm.SiteId = args.Value?.ToString();
+        var selectedSite = postPreview?.AvailableSites.FirstOrDefault(site => site.Id.ToString() == postForm.SiteId);
+        postForm.CategoryId = selectedSite?.DefaultCategoryId;
+        await LoadPostCategoriesAsync();
+    }
+
+    private void OnPostCategoryChanged(ChangeEventArgs args)
+    {
+        postForm.CategoryId = int.TryParse(args.Value?.ToString(), out var categoryId)
+            ? categoryId
+            : null;
+    }
+
+    private async Task LoadPostCategoriesAsync()
+    {
+        postCategories = [];
+        var actor = await GetWordpressActorAsync();
+        if (actor is null || !Guid.TryParse(postForm.SiteId, out var siteId))
+        {
+            return;
+        }
+
+        var result = await WordpressSiteQueryService.GetCategoriesAsync(actor, siteId);
+        if (result.Succeeded && result.Value is not null)
+        {
+            postCategories = result.Value.Items;
+        }
+    }
+
+    private async Task SubmitPostAsync()
+    {
+        if (postTarget is null || postPreview is null || !Guid.TryParse(postForm.SiteId, out var siteId))
+        {
+            return;
+        }
+
+        var actor = await GetWordpressActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isPostSubmitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await WordpressPostCommandService.CreatePostJobAsync(
+            new CreateWordpressPostJobCommand(
+                actor,
+                postTarget.Id,
+                siteId,
+                postForm.Title,
+                postForm.HtmlBody,
+                postForm.CategoryId,
+                postForm.Status));
+
+        isPostSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetWordpressServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        successMessage = "WordPress投稿ジョブを登録しました。";
+        ClosePostDialog();
+        await LoadArticlesAsync(articleList.Page);
+    }
+
+    private void ClearPostForm()
+    {
+        postForm.SiteId = null;
+        postForm.Title = string.Empty;
+        postForm.HtmlBody = string.Empty;
+        postForm.CategoryId = null;
+        postForm.Status = WordpressPostStatuses.Draft;
     }
 
     private async Task<ArticleActor?> GetActorAsync()
@@ -525,6 +696,16 @@
         return string.IsNullOrWhiteSpace(userId)
             ? null
             : new ArticleActor(userId, user.IsInRole("Admin"));
+    }
+
+    private async Task<WordpressActor?> GetWordpressActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new WordpressActor(userId, user.IsInRole("Admin"));
     }
 
     private static Guid? ParseGuid(string? value)
@@ -571,5 +752,38 @@
             ArticleServiceError.ConcurrencyConflict => "他の操作により記事が更新されています。",
             _ => "処理に失敗しました。"
         };
+    }
+
+    private static string GetWordpressServiceErrorMessage(
+        WordpressServiceError error,
+        IReadOnlyList<WordpressValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            WordpressServiceError.NotFound => "対象データが見つかりません。",
+            WordpressServiceError.Conflict => "WordPress投稿ジョブがすでに待機中または実行中です。",
+            WordpressServiceError.HumanReviewRequired => "人間確認前の記事は公開投稿できません。",
+            WordpressServiceError.NotPostable => "投稿可能な記事状態ではありません。",
+            WordpressServiceError.ExternalFailure => "WordPress連携に失敗しました。",
+            _ => "WordPress投稿に失敗しました。"
+        };
+    }
+
+    private sealed class WordpressPostForm
+    {
+        public string? SiteId { get; set; }
+
+        public string Title { get; set; } = string.Empty;
+
+        public string HtmlBody { get; set; } = string.Empty;
+
+        public int? CategoryId { get; set; }
+
+        public string Status { get; set; } = WordpressPostStatuses.Draft;
     }
 }

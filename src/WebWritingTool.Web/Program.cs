@@ -44,6 +44,7 @@ app.MapAccountEndpoints();
 app.MapArticleEndpoints();
 app.MapHeadingEndpoints();
 app.MapJobEndpoints();
+app.MapWordpressEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

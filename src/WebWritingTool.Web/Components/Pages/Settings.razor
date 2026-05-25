@@ -1,0 +1,384 @@
+@page "/settings"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+
+@inject IWordpressSiteCommandService WordpressSiteCommandService
+@inject IWordpressSiteQueryService WordpressSiteQueryService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>設定</PageTitle>
+
+<div class="article-page">
+    <header class="article-page-header">
+        <div>
+            <h1>設定</h1>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <section class="article-panel">
+                <h2 class="h5 mb-3">@FormTitle</h2>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="site-name">サイト名</label>
+                        <input id="site-name" class="form-control" @bind="form.SiteName" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="base-url">URL</label>
+                        <input id="base-url" class="form-control" type="url" @bind="form.BaseUrl" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="login-id">WordPressログインID</label>
+                        <input id="login-id" class="form-control" @bind="form.LoginId" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="app-pass">APP-PASS</label>
+                        <input id="app-pass" class="form-control" type="password" @bind="form.ApplicationPassword" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label" for="default-category-id">既定カテゴリID</label>
+                        <input id="default-category-id" class="form-control" type="number" @bind="form.DefaultCategoryId" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label" for="default-category-name">既定カテゴリ名</label>
+                        <input id="default-category-name" class="form-control" @bind="form.DefaultCategoryName" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="site-admin-profile">管理人プロフィール</label>
+                        <textarea id="site-admin-profile" class="form-control" rows="4" @bind="form.SiteAdminProfile"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="writing-character">語り手・キャラ設定</label>
+                        <textarea id="writing-character" class="form-control" rows="4" @bind="form.WritingCharacter"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="reader-persona">読者ペルソナ</label>
+                        <textarea id="reader-persona" class="form-control" rows="4" @bind="form.ReaderPersona"></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveAsync">@SaveButtonLabel</button>
+                    @if (editingSiteId.HasValue)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" disabled="@isSubmitting" @onclick="ResetForm">新規登録へ戻る</button>
+                    }
+                </div>
+            </section>
+        </div>
+
+        <div class="col-lg-7">
+            <section class="article-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0">WordPress連携</h2>
+                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="LoadSitesAsync">再読み込み</button>
+                </div>
+
+                @if (isLoading)
+                {
+                    <div class="text-muted">読み込み中</div>
+                }
+                else if (sites.Items.Count == 0)
+                {
+                    <div class="text-muted">登録済みサイトはありません。</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>サイト</th>
+                                    <th>ID</th>
+                                    <th>カテゴリ</th>
+                                    <th>接続</th>
+                                    <th class="text-end">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var site in sites.Items)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="fw-semibold">@site.SiteName</div>
+                                            <div class="text-muted small">@site.BaseUrl</div>
+                                        </td>
+                                        <td>@site.LoginId</td>
+                                        <td>@GetCategoryLabel(site)</td>
+                                        <td>@(site.LastConnectedAt.HasValue ? ToDisplayDate(site.LastConnectedAt.Value) : "-")</td>
+                                        <td>
+                                            <div class="d-flex justify-content-end gap-2">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(site)">編集</button>
+                                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => TestAsync(site.Id)">接続テスト</button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(site.Id)">削除</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
+</div>
+
+@code {
+    private WordpressSiteListResponse sites = new([]);
+    private readonly WordpressSiteForm form = new();
+    private Guid? editingSiteId;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string? successMessage;
+
+    private string FormTitle => editingSiteId.HasValue ? "WordPressサイト編集" : "WordPressサイト登録";
+
+    private string SaveButtonLabel => editingSiteId.HasValue ? "更新" : "登録";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSitesAsync();
+    }
+
+    private async Task LoadSitesAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        isLoading = true;
+        sites = await WordpressSiteQueryService.ListAsync(actor);
+        isLoading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        WordpressServiceResult<WordpressSiteResponse> result;
+        if (editingSiteId.HasValue)
+        {
+            result = await WordpressSiteCommandService.UpdateAsync(
+                new UpdateWordpressSiteCommand(
+                    actor,
+                    editingSiteId.Value,
+                    form.SiteName,
+                    form.BaseUrl,
+                    form.LoginId,
+                    form.ApplicationPassword,
+                    form.DefaultCategoryId,
+                    form.DefaultCategoryName,
+                    form.SiteAdminProfile,
+                    form.WritingCharacter,
+                    form.ReaderPersona,
+                    form.RowVersion));
+        }
+        else
+        {
+            result = await WordpressSiteCommandService.CreateAsync(
+                new CreateWordpressSiteCommand(
+                    actor.UserId,
+                    form.SiteName,
+                    form.BaseUrl,
+                    form.LoginId,
+                    form.ApplicationPassword ?? string.Empty,
+                    form.DefaultCategoryId,
+                    form.DefaultCategoryName,
+                    form.SiteAdminProfile,
+                    form.WritingCharacter,
+                    form.ReaderPersona));
+        }
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        successMessage = editingSiteId.HasValue ? "WordPressサイトを更新しました。" : "WordPressサイトを登録しました。";
+        ResetForm();
+        await LoadSitesAsync();
+    }
+
+    private void Edit(WordpressSiteResponse site)
+    {
+        editingSiteId = site.Id;
+        form.SiteName = site.SiteName;
+        form.BaseUrl = site.BaseUrl;
+        form.LoginId = site.LoginId;
+        form.ApplicationPassword = null;
+        form.DefaultCategoryId = site.DefaultCategoryId;
+        form.DefaultCategoryName = site.DefaultCategoryName;
+        form.SiteAdminProfile = site.SiteAdminProfile;
+        form.WritingCharacter = site.WritingCharacter;
+        form.ReaderPersona = site.ReaderPersona;
+        form.RowVersion = site.RowVersion;
+        ClearMessages();
+    }
+
+    private async Task TestAsync(Guid siteId)
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var result = await WordpressSiteCommandService.TestConnectionAsync(actor, siteId);
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        if (result.Value.Success)
+        {
+            successMessage = result.Value.Message;
+            await LoadSitesAsync();
+        }
+        else
+        {
+            errorMessage = result.Value.Message;
+        }
+    }
+
+    private async Task DeleteAsync(Guid siteId)
+    {
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var result = await WordpressSiteCommandService.DeleteAsync(actor, siteId);
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        if (editingSiteId == siteId)
+        {
+            ResetForm();
+        }
+
+        successMessage = "WordPressサイトを削除しました。";
+        await LoadSitesAsync();
+    }
+
+    private void ResetForm()
+    {
+        editingSiteId = null;
+        form.SiteName = string.Empty;
+        form.BaseUrl = string.Empty;
+        form.LoginId = string.Empty;
+        form.ApplicationPassword = string.Empty;
+        form.DefaultCategoryId = null;
+        form.DefaultCategoryName = null;
+        form.SiteAdminProfile = null;
+        form.WritingCharacter = null;
+        form.ReaderPersona = null;
+        form.RowVersion = null;
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private async Task<WordpressActor?> GetActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new WordpressActor(userId, user.IsInRole("Admin"));
+    }
+
+    private static string GetCategoryLabel(WordpressSiteResponse site)
+    {
+        if (site.DefaultCategoryId.HasValue && !string.IsNullOrWhiteSpace(site.DefaultCategoryName))
+        {
+            return $"{site.DefaultCategoryName} ({site.DefaultCategoryId})";
+        }
+
+        return site.DefaultCategoryId?.ToString() ?? "-";
+    }
+
+    private static string ToDisplayDate(DateTimeOffset value)
+    {
+        return $"{value.ToLocalTime():yyyy/M/d HH:mm}";
+    }
+
+    private static string GetServiceErrorMessage(
+        WordpressServiceError error,
+        IReadOnlyList<WordpressValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            WordpressServiceError.NotFound => "対象データが見つかりません。",
+            WordpressServiceError.ConcurrencyConflict => "他の操作により更新されています。再読み込みしてください。",
+            WordpressServiceError.ExternalFailure => "WordPress連携に失敗しました。",
+            _ => "処理に失敗しました。"
+        };
+    }
+
+    private sealed class WordpressSiteForm
+    {
+        public string SiteName { get; set; } = string.Empty;
+
+        public string BaseUrl { get; set; } = string.Empty;
+
+        public string LoginId { get; set; } = string.Empty;
+
+        public string? ApplicationPassword { get; set; } = string.Empty;
+
+        public int? DefaultCategoryId { get; set; }
+
+        public string? DefaultCategoryName { get; set; }
+
+        public string? SiteAdminProfile { get; set; }
+
+        public string? WritingCharacter { get; set; }
+
+        public string? ReaderPersona { get; set; }
+
+        public string? RowVersion { get; set; }
+    }
+}

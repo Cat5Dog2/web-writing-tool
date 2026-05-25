@@ -12,6 +12,7 @@ using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Rendering;
 using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Infrastructure.Accounts;
 using WebWritingTool.Infrastructure.Articles;
 using WebWritingTool.Infrastructure.BackgroundJobs;
@@ -21,8 +22,11 @@ using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Infrastructure.Jobs;
 using WebWritingTool.Infrastructure.Search;
+using WebWritingTool.Infrastructure.Security;
+using WebWritingTool.Infrastructure.Wordpress;
 using WebWritingTool.Web.Authorization;
 using WebWritingTool.Web.BackgroundJobs;
+using WebWritingTool.Web.Security;
 
 internal static class ServiceCollectionExtensions
 {
@@ -101,14 +105,31 @@ internal static class ServiceCollectionExtensions
             .Validate(
                 options => SearchCachePolicies.Allowed.Contains(SearchCachePolicyResolver.NormalizePolicy(options.Policy)),
                 "Search cache policy is invalid.");
+        services
+            .AddOptions<WordpressOptions>()
+            .Bind(configuration.GetSection(WordpressOptions.SectionName))
+            .Validate(options => options.TimeoutSeconds > 0, "WordPress timeout must be greater than zero.")
+            .Validate(
+                options => options.AllowedSchemes.Length == 1
+                    && string.Equals(options.AllowedSchemes[0], Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase),
+                "WordPress allowed schemes must be https only.");
 
+        services.AddDataProtection();
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
+        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+        services.AddSingleton<IUrlSafetyValidator, DnsUrlSafetyValidator>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
         services.AddScoped<ArticleService>();
         services.AddScoped<IArticleCommandService>(provider => provider.GetRequiredService<ArticleService>());
         services.AddScoped<IArticleQueryService>(provider => provider.GetRequiredService<ArticleService>());
         services.AddScoped<IArticleHeadingService, ArticleHeadingService>();
         services.AddScoped<IArticleContentService, ArticleContentService>();
+        services.AddScoped<WordpressSiteService>();
+        services.AddScoped<IWordpressSiteCommandService>(provider => provider.GetRequiredService<WordpressSiteService>());
+        services.AddScoped<IWordpressSiteQueryService>(provider => provider.GetRequiredService<WordpressSiteService>());
+        services.AddScoped<WordpressPostService>();
+        services.AddScoped<IWordpressPostCommandService>(provider => provider.GetRequiredService<WordpressPostService>());
+        services.AddScoped<IWordpressPostQueryService>(provider => provider.GetRequiredService<WordpressPostService>());
         services.AddScoped<IXPostRehydrationService, XPostRehydrationService>();
         services.AddScoped<SearchCacheCleanupService>();
         services.AddSingleton<IContentRenderingService, ContentRenderingService>();
@@ -137,6 +158,11 @@ internal static class ServiceCollectionExtensions
             var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(searchOptions.X.TimeoutSeconds);
         });
+        services.AddHttpClient<IWordpressClient, WordpressClient>((provider, client) =>
+        {
+            var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
+        });
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
@@ -149,6 +175,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IJobHandler, RewriteJobHandler>();
         services.AddScoped<IJobHandler, WebSearchJobHandler>();
         services.AddScoped<IJobHandler, XFullArchiveSearchJobHandler>();
+        services.AddScoped<IJobHandler, WordpressPostJobHandler>();
         services.AddHostedService<ArticleJobWorker>();
         services.AddHostedService<SearchCacheCleanupWorker>();
 
