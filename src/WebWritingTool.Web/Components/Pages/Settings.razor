@@ -6,6 +6,8 @@
 
 @inject IWordpressSiteCommandService WordpressSiteCommandService
 @inject IWordpressSiteQueryService WordpressSiteQueryService
+@inject INotificationSettingService NotificationSettingService
+@inject INotificationTestService NotificationTestService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>設定</PageTitle>
@@ -26,6 +28,45 @@
     {
         <div class="alert alert-success" role="status">@successMessage</div>
     }
+
+    <section class="article-panel mb-4">
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <h2 class="h5 mb-1">Discord通知</h2>
+                <div class="text-muted small">
+                    現在の送信先: @(notificationSetting.DestinationMasked ?? "未設定")
+                    / @(notificationSetting.Enabled ? "有効" : "無効")
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="LoadNotificationSettingAsync">再読み込み</button>
+        </div>
+
+        @if (isNotificationLoading)
+        {
+            <div class="text-muted">読み込み中</div>
+        }
+        else
+        {
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-7">
+                    <label class="form-label" for="discord-webhook-url">Discord Webhook URL</label>
+                    <input id="discord-webhook-url" class="form-control" type="password" autocomplete="off" @bind="notificationForm.WebhookUrl" />
+                </div>
+                <div class="col-lg-2">
+                    <div class="form-check">
+                        <input id="discord-enabled" class="form-check-input" type="checkbox" @bind="notificationForm.Enabled" />
+                        <label class="form-check-label" for="discord-enabled">有効</label>
+                    </div>
+                </div>
+                <div class="col-lg-3">
+                    <div class="d-flex gap-2 justify-content-lg-end">
+                        <button type="button" class="btn btn-primary" disabled="@isNotificationSubmitting" @onclick="SaveNotificationAsync">保存</button>
+                        <button type="button" class="btn btn-outline-primary" disabled="@isNotificationSubmitting" @onclick="TestNotificationAsync">送信テスト</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </section>
 
     <div class="row g-4">
         <div class="col-lg-5">
@@ -140,9 +181,13 @@
 @code {
     private WordpressSiteListResponse sites = new([]);
     private readonly WordpressSiteForm form = new();
+    private NotificationSettingResponse notificationSetting = new(NotificationProviders.Discord, null, false, null);
+    private readonly NotificationForm notificationForm = new();
     private Guid? editingSiteId;
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool isNotificationLoading = true;
+    private bool isNotificationSubmitting;
     private string? errorMessage;
     private string? successMessage;
 
@@ -153,6 +198,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadSitesAsync();
+        await LoadNotificationSettingAsync();
     }
 
     private async Task LoadSitesAsync()
@@ -167,6 +213,88 @@
         isLoading = true;
         sites = await WordpressSiteQueryService.ListAsync(actor);
         isLoading = false;
+    }
+
+    private async Task LoadNotificationSettingAsync()
+    {
+        var actor = await GetNotificationActorAsync();
+        if (actor is null)
+        {
+            isNotificationLoading = false;
+            return;
+        }
+
+        isNotificationLoading = true;
+        notificationSetting = await NotificationSettingService.GetAsync(actor);
+        notificationForm.Enabled = notificationSetting.Enabled;
+        notificationForm.WebhookUrl = string.Empty;
+        isNotificationLoading = false;
+    }
+
+    private async Task SaveNotificationAsync()
+    {
+        var actor = await GetNotificationActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isNotificationSubmitting = true;
+        ClearMessages();
+
+        var result = await NotificationSettingService.UpdateAsync(
+            new UpdateNotificationSettingCommand(
+                actor,
+                NotificationProviders.Discord,
+                notificationForm.WebhookUrl,
+                notificationForm.Enabled));
+
+        isNotificationSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetNotificationErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        notificationSetting = result.Value;
+        notificationForm.WebhookUrl = string.Empty;
+        successMessage = "Discord通知設定を保存しました。";
+    }
+
+    private async Task TestNotificationAsync()
+    {
+        var actor = await GetNotificationActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isNotificationSubmitting = true;
+        ClearMessages();
+
+        var result = await NotificationTestService.SendTestAsync(
+            new SendTestNotificationCommand(
+                actor,
+                NotificationProviders.Discord,
+                string.IsNullOrWhiteSpace(notificationForm.WebhookUrl) ? null : notificationForm.WebhookUrl));
+
+        isNotificationSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetNotificationErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        if (result.Value.Success)
+        {
+            successMessage = result.Value.Message;
+        }
+        else
+        {
+            errorMessage = result.Value.Message;
+        }
     }
 
     private async Task SaveAsync()
@@ -326,6 +454,16 @@
             : new WordpressActor(userId, user.IsInRole("Admin"));
     }
 
+    private async Task<NotificationActor?> GetNotificationActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId)
+            ? null
+            : new NotificationActor(userId, user.IsInRole("Admin"));
+    }
+
     private static string GetCategoryLabel(WordpressSiteResponse site)
     {
         if (site.DefaultCategoryId.HasValue && !string.IsNullOrWhiteSpace(site.DefaultCategoryName))
@@ -359,6 +497,23 @@
         };
     }
 
+    private static string GetNotificationErrorMessage(
+        NotificationServiceError error,
+        IReadOnlyList<NotificationValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            NotificationServiceError.Disabled => "有効なDiscord通知設定がありません。",
+            NotificationServiceError.ExternalFailure => "Discord通知の送信に失敗しました。",
+            _ => "Discord通知設定の処理に失敗しました。"
+        };
+    }
+
     private sealed class WordpressSiteForm
     {
         public string SiteName { get; set; } = string.Empty;
@@ -380,5 +535,12 @@
         public string? ReaderPersona { get; set; }
 
         public string? RowVersion { get; set; }
+    }
+
+    private sealed class NotificationForm
+    {
+        public string WebhookUrl { get; set; } = string.Empty;
+
+        public bool Enabled { get; set; }
     }
 }

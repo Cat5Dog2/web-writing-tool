@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using WebWritingTool.Application.Notifications;
 using WebWritingTool.Infrastructure.BackgroundJobs;
 
 namespace WebWritingTool.Web.BackgroundJobs;
@@ -47,6 +48,7 @@ public sealed class ArticleJobWorker(
         using var scope = scopeFactory.CreateScope();
         var leaseService = scope.ServiceProvider.GetRequiredService<JobLeaseService>();
         var dispatcher = scope.ServiceProvider.GetRequiredService<JobDispatcher>();
+        var notificationJobService = scope.ServiceProvider.GetRequiredService<INotificationJobService>();
 
         var recoveredCount = await leaseService.RecoverExpiredLocksAsync(stoppingToken);
         if (recoveredCount > 0)
@@ -63,7 +65,7 @@ public sealed class ArticleJobWorker(
                 return;
             }
 
-            await ProcessJobAsync(job, dispatcher, leaseService, stoppingToken);
+            await ProcessJobAsync(job, dispatcher, leaseService, notificationJobService, stoppingToken);
         }
     }
 
@@ -71,6 +73,7 @@ public sealed class ArticleJobWorker(
         LeasedJob job,
         JobDispatcher dispatcher,
         JobLeaseService leaseService,
+        INotificationJobService notificationJobService,
         CancellationToken stoppingToken)
     {
         logger.LogInformation(
@@ -83,6 +86,7 @@ public sealed class ArticleJobWorker(
         {
             var result = await dispatcher.DispatchAsync(job, stoppingToken);
             await leaseService.MarkSucceededAsync(job.Id, result.ResultJson, stoppingToken);
+            await QueueSucceededNotificationAsync(job, result.ResultJson, notificationJobService, stoppingToken);
 
             logger.LogInformation(
                 "Job succeeded. jobId={JobId} jobType={JobType} attemptCount={AttemptCount}",
@@ -117,6 +121,8 @@ public sealed class ArticleJobWorker(
             }
             else
             {
+                await QueueFailedNotificationAsync(job, decision, notificationJobService);
+
                 logger.LogError(
                     ex,
                     "Job failed. jobId={JobId} jobType={JobType} attemptCount={AttemptCount} maxAttempts={MaxAttempts} errorCode={ErrorCode}",
@@ -126,6 +132,52 @@ public sealed class ArticleJobWorker(
                     decision.MaxAttempts,
                     decision.ErrorCode);
             }
+        }
+    }
+
+    private async Task QueueSucceededNotificationAsync(
+        LeasedJob job,
+        string? resultJson,
+        INotificationJobService notificationJobService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await notificationJobService.QueueForSucceededJobAsync(
+                new QueueNotificationForSucceededJobCommand(
+                    job.UserId,
+                    job.Id,
+                    job.ArticleId,
+                    job.JobType,
+                    resultJson),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Notification job enqueue failed after job success. jobId={JobId}", job.Id);
+        }
+    }
+
+    private async Task QueueFailedNotificationAsync(
+        LeasedJob job,
+        JobFailureDecision decision,
+        INotificationJobService notificationJobService)
+    {
+        try
+        {
+            await notificationJobService.QueueForFailedJobAsync(
+                new QueueNotificationForFailedJobCommand(
+                    job.UserId,
+                    job.Id,
+                    job.ArticleId,
+                    job.JobType,
+                    decision.ErrorCode,
+                    decision.ErrorMessage),
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Notification job enqueue failed after job failure. jobId={JobId}", job.Id);
         }
     }
 

@@ -1063,7 +1063,7 @@ Request `UpdateNotificationSettingRequest`:
 | プロパティ | 型 | 必須 | 制約 |
 | --- | --- | --- | --- |
 | `provider` | string | 必須 | `Discord` |
-| `destination` | string | 必須 | Discord Webhook URL |
+| `destination` | string | 条件付き | Discord Webhook URL。初回登録または送信先変更時は必須。省略時は既存の保存済みURLを維持する。 |
 | `enabled` | bool | 必須 | 有効/無効 |
 
 Response `200 OK`: `NotificationSettingResponse`。
@@ -1079,7 +1079,7 @@ Request `SendTestNotificationRequest`:
 | プロパティ | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | `provider` | string | 必須 | `Discord` |
-| `destination` | string | 必須 | Discord Webhook URL |
+| `destination` | string | 任意 | Discord Webhook URL。省略時は保存済みの有効な通知設定を使う。 |
 
 Response `200 OK`:
 

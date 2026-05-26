@@ -9,6 +9,7 @@ using WebWritingTool.Application.Accounts;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
+using WebWritingTool.Application.Notifications;
 using WebWritingTool.Application.Rendering;
 using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
@@ -21,6 +22,7 @@ using WebWritingTool.Infrastructure.Data;
 using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Infrastructure.Jobs;
+using WebWritingTool.Infrastructure.Notifications;
 using WebWritingTool.Infrastructure.Search;
 using WebWritingTool.Infrastructure.Security;
 using WebWritingTool.Infrastructure.Wordpress;
@@ -113,6 +115,13 @@ internal static class ServiceCollectionExtensions
                 options => options.AllowedSchemes.Length == 1
                     && string.Equals(options.AllowedSchemes[0], Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase),
                 "WordPress allowed schemes must be https only.");
+        services
+            .AddOptions<NotificationOptions>()
+            .Bind(configuration.GetSection(NotificationOptions.SectionName))
+            .Validate(
+                options => string.Equals(options.Provider, NotificationProviders.Discord, StringComparison.Ordinal),
+                "Notification provider must be Discord for MVP.")
+            .Validate(options => options.TimeoutSeconds > 0, "Notification timeout must be greater than zero.");
 
         services.AddDataProtection();
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
@@ -130,6 +139,10 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<WordpressPostService>();
         services.AddScoped<IWordpressPostCommandService>(provider => provider.GetRequiredService<WordpressPostService>());
         services.AddScoped<IWordpressPostQueryService>(provider => provider.GetRequiredService<WordpressPostService>());
+        services.AddScoped<NotificationSettingService>();
+        services.AddScoped<INotificationSettingService>(provider => provider.GetRequiredService<NotificationSettingService>());
+        services.AddScoped<INotificationTestService>(provider => provider.GetRequiredService<NotificationSettingService>());
+        services.AddScoped<INotificationJobService, NotificationJobService>();
         services.AddScoped<IXPostRehydrationService, XPostRehydrationService>();
         services.AddScoped<SearchCacheCleanupService>();
         services.AddSingleton<IContentRenderingService, ContentRenderingService>();
@@ -163,6 +176,11 @@ internal static class ServiceCollectionExtensions
             var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
         });
+        services.AddHttpClient<IDiscordNotificationClient, DiscordNotificationClient>((provider, client) =>
+        {
+            var notificationOptions = provider.GetRequiredService<IOptions<NotificationOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(notificationOptions.TimeoutSeconds);
+        });
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
@@ -176,6 +194,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IJobHandler, WebSearchJobHandler>();
         services.AddScoped<IJobHandler, XFullArchiveSearchJobHandler>();
         services.AddScoped<IJobHandler, WordpressPostJobHandler>();
+        services.AddScoped<IJobHandler, NotificationJobHandler>();
         services.AddHostedService<ArticleJobWorker>();
         services.AddHostedService<SearchCacheCleanupWorker>();
 
