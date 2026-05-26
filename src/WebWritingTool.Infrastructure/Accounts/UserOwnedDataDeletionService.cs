@@ -65,6 +65,10 @@ public sealed class UserOwnedDataDeletionService(ApplicationDbContext dbContext)
             .Where(limit => limit.UserId == userId)
             .ExecuteDeleteAsync(cancellationToken);
 
+        // ExecuteDelete bypasses the change tracker. In Blazor Server a scoped DbContext
+        // can still track rows created earlier in the same circuit, so clear stale entries.
+        dbContext.ChangeTracker.Clear();
+
         return new UserOwnedDataDeletionSummary(
             articles,
             childHeadings + remainingHeadings,

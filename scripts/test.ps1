@@ -1,5 +1,6 @@
 param(
-    [string] $Configuration = 'Debug'
+    [string] $Configuration = 'Debug',
+    [switch] $IncludeE2E
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,5 +13,18 @@ if (-not (Test-Path -LiteralPath $solutionPath)) {
     throw "Solution file was not found at $solutionPath"
 }
 
-& (Join-Path $PSScriptRoot 'dotnet.ps1') test $solution --configuration $Configuration
+$arguments = @(
+    'test',
+    $solution,
+    '--configuration',
+    $Configuration,
+    '--artifacts-path',
+    '/tmp/web-writing-tool-test-artifacts'
+)
+
+if (-not $IncludeE2E) {
+    $arguments += @('--filter', 'Category!=E2E')
+}
+
+& (Join-Path $PSScriptRoot 'dotnet.ps1') @arguments
 exit $LASTEXITCODE

@@ -8,5 +8,5 @@ public sealed class WordpressOptions
 
     public int RetryCount { get; init; } = 0;
 
-    public string[] AllowedSchemes { get; init; } = ["https"];
+    public string[] AllowedSchemes { get; init; } = [];
 }

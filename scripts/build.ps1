@@ -12,5 +12,14 @@ if (-not (Test-Path -LiteralPath $solutionPath)) {
     throw "Solution file was not found at $solutionPath"
 }
 
-& (Join-Path $PSScriptRoot 'dotnet.ps1') build $solution --configuration $Configuration
+$arguments = @(
+    'build',
+    $solution,
+    '--configuration',
+    $Configuration,
+    '--artifacts-path',
+    '/tmp/web-writing-tool-build-artifacts'
+)
+
+& (Join-Path $PSScriptRoot 'dotnet.ps1') @arguments
 exit $LASTEXITCODE

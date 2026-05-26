@@ -6,6 +6,7 @@
     <Project Path="src/WebWritingTool.Web/WebWritingTool.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj" />
     <Project Path="tests/WebWritingTool.IntegrationTests/WebWritingTool.IntegrationTests.csproj" />
     <Project Path="tests/WebWritingTool.UnitTests/WebWritingTool.UnitTests.csproj" />
   </Folder>
