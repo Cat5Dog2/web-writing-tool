@@ -294,6 +294,32 @@ h1:focus {
     margin-top: 1rem;
 }
 
+.admin-user-table td {
+    vertical-align: middle;
+}
+
+.admin-user-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.admin-number-input {
+    min-width: 7rem;
+}
+
+.admin-id-cell {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-audit-summary {
+    min-width: 16rem;
+}
+
 @media (max-width: 768px) {
     .article-page-header {
         flex-direction: column;

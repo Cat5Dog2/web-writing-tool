@@ -24,5 +24,15 @@
                 <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span> 設定
             </NavLink>
         </div>
+
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="admin/users">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> ユーザー管理
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 </div>

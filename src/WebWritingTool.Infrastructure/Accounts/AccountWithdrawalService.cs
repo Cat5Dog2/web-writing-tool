@@ -11,7 +11,8 @@ namespace WebWritingTool.Infrastructure.Accounts;
 
 public sealed class AccountWithdrawalService(
     ApplicationDbContext dbContext,
-    UserManager<ApplicationUser> userManager)
+    UserManager<ApplicationUser> userManager,
+    UserOwnedDataDeletionService userOwnedDataDeletionService)
     : IAccountWithdrawalService
 {
     public async Task<WithdrawAccountResult> WithdrawAsync(
@@ -46,7 +47,9 @@ public sealed class AccountWithdrawalService(
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        await DeleteUserOwnedDataAsync(user.Id, cancellationToken);
+        var deletionSummary = await userOwnedDataDeletionService.DeleteOwnedDataAsync(
+            user.Id,
+            cancellationToken);
 
         var deleteResult = await userManager.DeleteAsync(user);
         if (!deleteResult.Succeeded)
@@ -60,7 +63,10 @@ public sealed class AccountWithdrawalService(
             Action = "SelfWithdraw",
             EntityType = "AspNetUsers",
             EntityId = user.Id,
-            Summary = "User withdrew their account."
+            Summary = $"User withdrew their account. Deleted related rows: {deletionSummary.Total}.",
+            MetadataJson = System.Text.Json.JsonSerializer.Serialize(
+                deletionSummary,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -87,61 +93,4 @@ public sealed class AccountWithdrawalService(
             cancellationToken);
     }
 
-    private async Task DeleteUserOwnedDataAsync(string userId, CancellationToken cancellationToken)
-    {
-        var articleIds = dbContext.Articles
-            .IgnoreQueryFilters()
-            .Where(article => article.UserId == userId)
-            .Select(article => article.Id);
-
-        await dbContext.NotificationLogs
-            .Where(log => log.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.WordpressPosts
-            .Where(post => post.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.XSearchPosts
-            .Where(post => post.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.SearchResults
-            .Where(result => result.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.UsageLedgers
-            .Where(ledger => ledger.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.AiGenerationLogs
-            .Where(log => log.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.AuditLogs
-            .Where(log => log.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        await dbContext.ArticleGenerationJobs
-            .Where(job => job.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.ArticleHeadings
-            .IgnoreQueryFilters()
-            .Where(heading => heading.ParentId != null && articleIds.Contains(heading.ArticleId))
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.ArticleHeadings
-            .IgnoreQueryFilters()
-            .Where(heading => articleIds.Contains(heading.ArticleId))
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.Articles
-            .IgnoreQueryFilters()
-            .Where(article => article.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        await dbContext.WordpressSites
-            .IgnoreQueryFilters()
-            .Where(site => site.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.NotificationSettings
-            .IgnoreQueryFilters()
-            .Where(setting => setting.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        await dbContext.UserUsageLimits
-            .Where(limit => limit.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-    }
 }
