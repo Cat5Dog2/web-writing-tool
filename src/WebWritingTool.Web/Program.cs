@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Hosting.StaticWebAssets;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Web.Components;
@@ -10,6 +11,11 @@ using WebWritingTool.Application.Security;
 DevelopmentEnvironmentFileConfiguration.TryLoadAspNetCoreEnvironmentFromDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsEnvironment("Test"))
+{
+    StaticWebAssetsLoader.UseStaticWebAssets(builder.Environment, builder.Configuration);
+}
+
 builder.AddDevelopmentEnvironmentFileConfiguration();
 if (builder.Environment.IsDevelopment() && OperatingSystem.IsWindows())
 {
@@ -108,3 +114,5 @@ static async Task SeedIdentityAsync(WebApplication app)
     var seeder = scope.ServiceProvider.GetRequiredService<IIdentityDataSeeder>();
     await seeder.SeedAsync();
 }
+
+public partial class Program;

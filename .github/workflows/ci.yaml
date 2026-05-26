@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-test:
-    name: Build and test
+    name: Build and non-browser tests
     runs-on: ubuntu-latest
 
     steps:
@@ -37,6 +37,49 @@ jobs:
 
       - name: Test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+
+  e2e-smoke:
+    name: E2E smoke
+    runs-on: ubuntu-latest
+    needs: build-test
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Check Docker
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Restore E2E project
+        run: dotnet restore tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj
+
+      - name: Build E2E project
+        run: dotnet build tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-restore
+
+      - name: Install Playwright Chromium
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/WebWritingTool.E2ETests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run E2E smoke
+        run: dotnet test tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-build --logger "trx;LogFileName=e2e.trx" --results-directory test-results/e2e/trx
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-artifacts
+          path: test-results/e2e
+          if-no-files-found: ignore
 
   docker-production:
     name: Production Docker smoke

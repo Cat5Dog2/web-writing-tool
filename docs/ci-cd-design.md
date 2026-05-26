@@ -13,7 +13,8 @@
 - 外部本番APIはCIで呼ばない。
 - PostgreSQL依存テストにはEF Core InMemory Providerを使わない。
 - DB MigrationはテストPostgreSQLへの適用またはSQL生成で確認する。
-- ローカル開発とPR CIの`dotnet`操作は、共通スクリプト経由で開発用.NET SDKコンテナから実行する。
+- ローカル開発とPR CIの通常`dotnet`操作は、共通スクリプト経由で開発用.NET SDKコンテナから実行する。
+- Playwright E2E smokeはブラウザとOS依存パッケージが必要なため、GitHub-hosted runner上で.NET SDKをセットアップして実行する。
 - 本番デプロイは自動直送せず、手動承認または明示操作を必須にする。
 - `.env`、実APIキー、DBパスワード、Webhook URL、Application PasswordをCIログや成果物へ出さない。
 - 重大脆弱性が検出された場合はリリースを止める。
@@ -85,11 +86,11 @@ PR CIで実行する範囲:
 | restore | solution全体 | 共通スクリプト内でNuGet復元 |
 | format | solution全体 | `scripts/format.ps1` |
 | build | solution全体 | `scripts/build.ps1`。Warningの扱いは実装時に決定 |
-| unit tests | `WebWritingTool.UnitTests` | 常時必須 |
-| integration tests | `WebWritingTool.IntegrationTests` | WebApplicationFactoryと外部APIモック |
-| DB tests | PostgreSQL | Testcontainers for .NETを第一候補 |
-| job tests | BackgroundService関連 | ロック、状態遷移、再試行 |
-| E2E smoke | Playwright Chromium | 最小セットのみ |
+| unit tests | `WebWritingTool.UnitTests` | `scripts/test.ps1`で常時必須 |
+| integration tests | `WebWritingTool.IntegrationTests` | `scripts/test.ps1`でWebApplicationFactoryと外部APIモックを検証 |
+| DB tests | PostgreSQL | `WebWritingTool.IntegrationTests`内でTestcontainers for .NETを使う |
+| job tests | BackgroundService関連 | `WebWritingTool.IntegrationTests`内でロック、状態遷移、再試行を検証 |
+| E2E smoke | `WebWritingTool.E2ETests` | Playwright Chromiumをrunnerへインストールして最小セットのみ実行 |
 | Docker build | 可能なら軽量確認 | main CIで必須、PRでは時間次第 |
 
 PR CIでは性能テスト、全E2E、本番相当Compose確認を必須にしない。
@@ -164,6 +165,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
+`scripts/test.ps1`は既定でブラウザ不要のテストを実行し、`Category=E2E`のテストを除外する。E2E smokeはPlaywright Chromiumをインストールした環境で以下を直接実行する。
+
+```powershell
+dotnet build tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/WebWritingTool.E2ETests/bin/Debug/net10.0/playwright.ps1 install chromium
+dotnet test tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-build
+```
+
 `global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CIの.NET SDKバージョンは一致させる。
 
 ## 10. テスト実行範囲
@@ -183,7 +192,7 @@ PRのE2E smokeは以下を対象にする。
 - `E2E-006` 生成結果編集
 - `E2E-010` 権限不足
 
-外部APIはモック応答を使う。失敗時のみtrace、screenshot、videoを成果物として保存する。
+外部APIはモック応答またはジョブ登録までの検証を使い、通常CIでは実APIを呼ばない。失敗時のみtrace、screenshot、videoを`test-results/e2e`から成果物として保存する。
 
 ## 11. PostgreSQL / Migration確認
 
@@ -381,7 +390,14 @@ DBスキーマ変更を含むリリースでは、前後方互換のある段階
 - 本番Migration前にDBバックアップを取得する手順がある。
 - ロールバック方針が明文化されている。
 
-## 21. 関連ドキュメント
+## 21. Docker 実行時の artifacts
+
+`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1` は開発用 .NET SDK コンテナ内で実行する。
+コンテナ内の NuGet パスがホスト側の `obj` に残ると、ホスト側の `dotnet test --no-build` がテストプロジェクトを認識できない場合がある。
+そのため、SDK コンテナでは `ArtifactsPath` を `/tmp/web-writing-tool-dotnet-artifacts` に設定する。
+Docker 経由の build/test は追加で `--artifacts-path` を指定し、ホスト側の `bin` / `obj` を汚さない。
+
+## 22. 関連ドキュメント
 
 - [テスト設計書](test-design.md)
 - [運用設計書](operation-design.md)

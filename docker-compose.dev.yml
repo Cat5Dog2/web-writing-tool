@@ -31,6 +31,8 @@ services:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
       DOTNET_NUGET_SIGNATURE_VERIFICATION: "false"
       NUGET_CERT_REVOCATION_MODE: "offline"
+      ArtifactsPath: /tmp/web-writing-tool-dotnet-artifacts
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
       HOME: /home/dotnet
       NUGET_PACKAGES: /home/dotnet/.nuget/packages
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
@@ -49,10 +51,13 @@ services:
       SearchProviders__X__BulkMaxResults: ${SearchProviders__X__BulkMaxResults:-500}
       SearchProviders__X__MonthlySafetyLimitPosts: ${SearchProviders__X__MonthlySafetyLimitPosts:-10000}
       SearchCache__Policy: ${SearchCache__Policy:-dev}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5080:8080"
     volumes:
       - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
       - dotnet_nuget_cache:/home/dotnet/.nuget/packages
       - dotnet_usersecrets:/home/dotnet/.microsoft/usersecrets
       - dotnet_aspnet:/home/dotnet/.aspnet

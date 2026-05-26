@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -11,14 +11,14 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.56.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.12.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WebWritingTool.Application\WebWritingTool.Application.csproj" />
-    <ProjectReference Include="..\..\src\WebWritingTool.Domain\WebWritingTool.Domain.csproj" />
-    <ProjectReference Include="..\..\src\WebWritingTool.Infrastructure\WebWritingTool.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\WebWritingTool.Web\WebWritingTool.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>
