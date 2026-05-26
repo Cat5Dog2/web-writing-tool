@@ -126,6 +126,7 @@ public sealed class JobLeaseService(
             job.AttemptCount,
             job.MaxAttempts,
             failure.ErrorCode,
+            job.ErrorMessage,
             shouldRetry,
             job.NextRunAt);
     }
@@ -198,6 +199,7 @@ public sealed record JobFailureDecision(
     int AttemptCount,
     int MaxAttempts,
     string ErrorCode,
+    string? ErrorMessage,
     bool Retried,
     DateTimeOffset? NextRunAt);
 
