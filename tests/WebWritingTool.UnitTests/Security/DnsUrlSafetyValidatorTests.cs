@@ -11,6 +11,7 @@ public class DnsUrlSafetyValidatorTests
     [InlineData("https://10.0.0.5")]
     [InlineData("https://192.168.1.10")]
     [InlineData("https://169.254.169.254")]
+    [InlineData("https://example.com:8443")]
     public async Task ValidateHttpsPublicUrlAsync_WithUnsafeUrl_ReturnsFailure(string url)
     {
         var validator = new DnsUrlSafetyValidator();

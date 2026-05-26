@@ -1,8 +1,11 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using WebWritingTool.Application.Accounts;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.Identity;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -11,10 +14,13 @@ public static class AccountEndpoints
     public static IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/login", LoginFromFormAsync)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.Login)
+            .RequireCsrfToken();
 
         var api = endpoints.MapGroup("/api/account")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("Account");
 
         api.MapDelete("", WithdrawAccountAsync)
@@ -26,10 +32,12 @@ public static class AccountEndpoints
                 await signInManager.SignOutAsync();
                 return Results.Redirect("/login");
             })
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCsrfToken();
 
         endpoints.MapPost("/account/withdraw", WithdrawAccountFromFormAsync)
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCsrfToken();
 
         return endpoints;
     }

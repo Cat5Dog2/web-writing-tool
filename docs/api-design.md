@@ -15,6 +15,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 - IDはUUID文字列を使う。ただしIdentityユーザーIDはASP.NET Core Identityの既定に合わせてstringとする。
 - 認証はCookie認証を基本とする。
 - API境界で認可を必ず行い、UIの表示制御だけに依存しない。
+- Cookie認証で状態変更するAPIはCSRFトークンを検証する。
 - リクエストDTO、レスポンスDTO、DBエンティティは分離する。
 - ジョブ登録系APIは同期実行せず、`202 Accepted`で`jobId`を返す。
 - エラーはProblemDetails形式を基本とする。
@@ -36,6 +37,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 | Usage | `/api/usage` | 利用文字数、上限情報 |
 | Account | `/api/account` | ログインユーザー本人のアカウント操作 |
 | Admin | `/api/admin` | 管理者向け設定 |
+| Security | `/api/security` | CSRFトークン取得など共通セキュリティ補助 |
 
 ## 4. 共通仕様
 
@@ -50,7 +52,22 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 
 所有者または管理者が操作できるAPIでは、Applicationサービス内でも所有者検証を行う。APIルートだけで権限を完結させない。
 
-### 4.2 HTTPステータス
+### 4.2 CSRFとレート制限
+
+`POST`、`PUT`、`DELETE`など状態変更APIはAntiforgery Tokenを必須とする。
+JSON APIクライアントは`GET /api/security/antiforgery-token`で取得した`requestToken`を、レスポンスの`headerName`で返されるヘッダー名へ設定して送信する。
+
+CSRFトークンがない、または不正な場合は`400 Bad Request`を返す。
+
+以下の操作は連打抑制のため`429 Too Many Requests`を返す場合がある。
+
+- ログイン
+- 一括記事登録
+- ジョブ登録、ジョブ再実行
+- Discord通知送信テスト
+- WordPress投稿ジョブ登録
+
+### 4.3 HTTPステータス
 
 | ステータス | 用途 |
 | --- | --- |
@@ -67,7 +84,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 | `429 Too Many Requests` | レート制限 |
 | `500 Internal Server Error` | 予期しないサーバーエラー |
 
-### 4.3 ProblemDetails
+### 4.4 ProblemDetails
 
 エラー応答は以下を基本形とする。
 
@@ -87,7 +104,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 }
 ```
 
-### 4.4 ページング
+### 4.5 ページング
 
 一覧APIは以下のクエリを共通で受け付ける。
 
@@ -112,7 +129,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 }
 ```
 
-### 4.5 ジョブ登録レスポンス
+### 4.6 ジョブ登録レスポンス
 
 ジョブ登録系APIは以下を返す。
 
@@ -123,6 +140,24 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
   "jobType": "OutlineGeneration",
   "status": "Queued",
   "statusUrl": "/api/jobs/2b3a7f7e-5976-4e7e-8c1b-0d3cc15f3e5a"
+}
+```
+
+### 4.7 CSRFトークン取得
+
+```http
+GET /api/security/antiforgery-token
+```
+
+認可: 認証必須。
+
+Response `200 OK`:
+
+```json
+{
+  "headerName": "X-CSRF-TOKEN",
+  "formFieldName": "__RequestVerificationToken",
+  "requestToken": "..."
 }
 ```
 
@@ -1448,6 +1483,7 @@ Response `200 OK`:
 - WordPressサイトURLはHTTPSのみ許可する。
 - 事前学習URLはHTTPSのみ許可する。
 - localhost、プライベートIP、リンクローカル、メタデータIPへのアクセスは禁止する。
+- HTTPS既定ポート以外の明示ポートは拒否する。
 
 ### 16.3 業務バリデーション
 

@@ -3,8 +3,11 @@ namespace WebWritingTool.Web.Configuration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 using WebWritingTool.Application.Accounts;
 using WebWritingTool.Application.Admin;
 using WebWritingTool.Application.Articles;
@@ -126,8 +129,15 @@ internal static class ServiceCollectionExtensions
             .Validate(options => options.TimeoutSeconds > 0, "Notification timeout must be greater than zero.");
 
         services.AddDataProtection();
+        services.AddAntiforgery(options =>
+        {
+            options.HeaderName = CsrfEndpointFilter.HeaderName;
+        });
+        services.AddSecurityRateLimiting();
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+        services.AddSingleton<ISecretMasker, SecretMasker>();
+        services.AddSingleton<ISecurityRateLimiter, InMemorySecurityRateLimiter>();
         services.AddSingleton<IUrlSafetyValidator, DnsUrlSafetyValidator>();
         services.AddScoped<UserOwnedDataDeletionService>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
@@ -203,6 +213,77 @@ internal static class ServiceCollectionExtensions
         services.AddHostedService<SearchCacheCleanupWorker>();
 
         return services;
+    }
+
+    private static IServiceCollection AddSecurityRateLimiting(this IServiceCollection services)
+    {
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.Login,
+                permitLimit: 10,
+                TimeSpan.FromMinutes(1),
+                useAuthenticatedUser: false);
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.BulkArticleRegistration,
+                permitLimit: 3,
+                TimeSpan.FromMinutes(1));
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.JobRegistration,
+                permitLimit: 30,
+                TimeSpan.FromMinutes(1));
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.NotificationTest,
+                permitLimit: 5,
+                TimeSpan.FromMinutes(10));
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.WordpressPost,
+                permitLimit: 10,
+                TimeSpan.FromMinutes(1));
+        });
+
+        return services;
+    }
+
+    private static void AddFixedWindowPolicy(
+        RateLimiterOptions options,
+        string policyName,
+        int permitLimit,
+        TimeSpan window,
+        bool useAuthenticatedUser = true)
+    {
+        options.AddPolicy(policyName, httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                GetRateLimitPartitionKey(httpContext, policyName, useAuthenticatedUser),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    AutoReplenishment = true,
+                    PermitLimit = permitLimit,
+                    QueueLimit = 0,
+                    Window = window
+                }));
+    }
+
+    private static string GetRateLimitPartitionKey(
+        HttpContext httpContext,
+        string policyName,
+        bool useAuthenticatedUser)
+    {
+        var userId = useAuthenticatedUser
+            ? httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            : null;
+
+        var client = string.IsNullOrWhiteSpace(userId)
+            ? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"
+            : userId;
+
+        return $"{policyName}:{client}";
     }
 
     public static IServiceCollection AddWebAuthorization(this IServiceCollection services)

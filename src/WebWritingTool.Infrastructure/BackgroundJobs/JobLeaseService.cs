@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
 
@@ -9,7 +10,8 @@ namespace WebWritingTool.Infrastructure.BackgroundJobs;
 public sealed class JobLeaseService(
     ApplicationDbContext dbContext,
     IOptions<BackgroundJobOptions> options,
-    JobRetryPolicy retryPolicy)
+    JobRetryPolicy retryPolicy,
+    ISecretMasker secretMasker)
 {
     public async Task<LeasedJob?> TryAcquireAsync(
         string workerId,
@@ -183,11 +185,11 @@ public sealed class JobLeaseService(
             job.MaxAttempts);
     }
 
-    private static string SanitizeMessage(string message)
+    private string SanitizeMessage(string message)
     {
         var normalized = string.IsNullOrWhiteSpace(message)
             ? "ジョブ処理に失敗しました。"
-            : message.Trim();
+            : secretMasker.Mask(message).Trim();
 
         return normalized.Length <= 1000 ? normalized : normalized[..1000];
     }

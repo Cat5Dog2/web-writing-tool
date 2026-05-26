@@ -1,11 +1,13 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Jobs;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -17,6 +19,7 @@ public static class ArticleEndpoints
     {
         var api = endpoints.MapGroup("/api/articles")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("Articles");
 
         api.MapGet("", GetArticlesAsync)
@@ -28,6 +31,7 @@ public static class ArticleEndpoints
             .WithSummary("記事を作成します。");
 
         api.MapPost("/bulk", BulkCreateArticlesAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.BulkArticleRegistration)
             .WithName("BulkCreateArticles")
             .WithSummary("複数の記事を一括作成します。");
 
@@ -44,22 +48,27 @@ public static class ArticleEndpoints
             .WithSummary("記事を論理削除します。");
 
         api.MapPost("/{articleId:guid}/generation/title-candidates", GenerateTitleCandidatesAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("GenerateTitleCandidates")
             .WithSummary("タイトル候補生成ジョブを登録します。");
 
         api.MapPost("/{articleId:guid}/generation/outline", GenerateOutlineAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("GenerateOutline")
             .WithSummary("見出し構成生成ジョブを登録します。");
 
         api.MapPost("/{articleId:guid}/generation/headings/{headingId:guid}/body", GenerateHeadingBodyAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("GenerateHeadingBody")
             .WithSummary("見出し本文生成ジョブを登録します。");
 
         api.MapPost("/{articleId:guid}/generation/body", GenerateArticleBodyAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("GenerateArticleBody")
             .WithSummary("本文一括生成ジョブを登録します。");
 
         api.MapPost("/{articleId:guid}/generation/headings/{headingId:guid}/rewrite", RewriteHeadingBodyAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("RewriteHeadingBody")
             .WithSummary("見出し本文リライトジョブを登録します。");
 
@@ -492,6 +501,10 @@ public static class ArticleEndpoints
                 title: "Conflict",
                 detail: "The article was updated by another request.",
                 statusCode: StatusCodes.Status409Conflict),
+            ArticleServiceError.RateLimited => Results.Problem(
+                title: "RateLimited",
+                detail: "Too many requests.",
+                statusCode: StatusCodes.Status429TooManyRequests),
             _ => Results.Problem(
                 title: "Bad Request",
                 detail: "Article operation failed.",

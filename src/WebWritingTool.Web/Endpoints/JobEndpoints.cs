@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.RateLimiting;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -10,6 +12,7 @@ public static class JobEndpoints
     {
         var api = endpoints.MapGroup("/api/jobs")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("Jobs");
 
         api.MapGet("/{jobId:guid}", GetJobAsync)
@@ -21,6 +24,7 @@ public static class JobEndpoints
             .WithSummary("Queuedジョブをキャンセルします。");
 
         api.MapPost("/{jobId:guid}/retry", RetryJobAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("RetryJob")
             .WithSummary("Failedジョブを再実行します。");
 
@@ -112,6 +116,10 @@ public static class JobEndpoints
                 title: "Conflict",
                 detail: "Only failed jobs with retryable errors can be retried.",
                 statusCode: StatusCodes.Status409Conflict),
+            JobServiceError.RateLimited => Results.Problem(
+                title: "RateLimited",
+                detail: "Too many requests.",
+                statusCode: StatusCodes.Status429TooManyRequests),
             _ => Results.Problem(
                 title: "Bad Request",
                 detail: "Job operation failed.",

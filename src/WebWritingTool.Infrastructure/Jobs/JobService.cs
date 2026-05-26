@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Jobs;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.BackgroundJobs;
@@ -10,7 +11,8 @@ namespace WebWritingTool.Infrastructure.Jobs;
 
 public sealed class JobService(
     ApplicationDbContext dbContext,
-    JobRetryPolicy retryPolicy)
+    JobRetryPolicy retryPolicy,
+    ISecurityRateLimiter securityRateLimiter)
     : IJobCommandService, IJobQueryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -25,6 +27,14 @@ public sealed class JobService(
             return JobServiceResult<JobAcceptedResponse>.Failure(
                 JobServiceError.ValidationFailed,
                 validationErrors);
+        }
+
+        if (!await securityRateLimiter.IsAllowedAsync(
+                SecurityRateLimitPolicyNames.JobRegistration,
+                command.Actor.UserId,
+                cancellationToken))
+        {
+            return JobServiceResult<JobAcceptedResponse>.Failure(JobServiceError.RateLimited);
         }
 
         var target = await ResolveTargetAsync(command, cancellationToken);

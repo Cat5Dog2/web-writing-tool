@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using WebWritingTool.Application.Notifications;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -11,6 +13,7 @@ public static class NotificationEndpoints
     {
         var notifications = endpoints.MapGroup("/api/notifications")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("Notifications");
 
         notifications.MapGet("/settings", GetSettingAsync)
@@ -22,6 +25,7 @@ public static class NotificationEndpoints
             .WithSummary("通知設定を保存します。");
 
         notifications.MapPost("/test", SendTestAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.NotificationTest)
             .WithName("SendTestNotification")
             .WithSummary("通知送信テストを実行します。");
 
@@ -116,6 +120,10 @@ public static class NotificationEndpoints
                 title: "NotificationDisabled",
                 detail: validationErrors.FirstOrDefault()?.Message ?? "Discord notification is not enabled.",
                 statusCode: StatusCodes.Status422UnprocessableEntity),
+            NotificationServiceError.RateLimited => Results.Problem(
+                title: "RateLimited",
+                detail: "Too many requests.",
+                statusCode: StatusCodes.Status429TooManyRequests),
             _ => Results.Problem(
                 title: "Bad Request",
                 detail: "Notification operation failed.",

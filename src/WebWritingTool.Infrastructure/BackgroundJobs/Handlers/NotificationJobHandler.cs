@@ -13,6 +13,7 @@ namespace WebWritingTool.Infrastructure.BackgroundJobs.Handlers;
 public sealed class NotificationJobHandler(
     ApplicationDbContext dbContext,
     ISecretProtector secretProtector,
+    ISecretMasker secretMasker,
     IDiscordNotificationClient discordNotificationClient)
     : IJobHandler
 {
@@ -145,7 +146,7 @@ public sealed class NotificationJobHandler(
             Status = success ? NotificationStatuses.Succeeded : NotificationStatuses.Failed,
             Message = Truncate(message, 1000),
             ErrorCode = errorCode,
-            ErrorMessage = Truncate(errorMessage, 1000),
+            ErrorMessage = Truncate(secretMasker.Mask(errorMessage), 1000),
             CreatedAt = sentAt
         };
 

@@ -222,7 +222,8 @@ public enum ArticleServiceError
     NotFound,
     ConflictRunningJob,
     ConcurrencyConflict,
-    ConflictGeneratingHeading
+    ConflictGeneratingHeading,
+    RateLimited
 }
 
 public sealed record ArticleValidationError(string Field, string Message);

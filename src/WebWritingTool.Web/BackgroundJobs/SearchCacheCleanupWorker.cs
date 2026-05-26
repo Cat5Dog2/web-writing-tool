@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.BackgroundJobs;
 using WebWritingTool.Infrastructure.Search;
 
@@ -7,7 +8,8 @@ namespace WebWritingTool.Web.BackgroundJobs;
 public sealed class SearchCacheCleanupWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<BackgroundJobOptions> options,
-    ILogger<SearchCacheCleanupWorker> logger)
+    ILogger<SearchCacheCleanupWorker> logger,
+    ISecretMasker secretMasker)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,7 +34,10 @@ public sealed class SearchCacheCleanupWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Search cache cleanup worker loop failed.");
+                logger.LogError(
+                    "Search cache cleanup worker loop failed. exceptionType={ExceptionType} message={Message}",
+                    ex.GetType().Name,
+                    secretMasker.Mask(ex.Message));
             }
 
             await DelayAsync(stoppingToken);

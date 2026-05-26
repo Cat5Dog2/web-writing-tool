@@ -57,6 +57,7 @@ public sealed partial class ContentRenderingService : IContentRenderingService
 
         var sanitized = CommentPattern().Replace(html, string.Empty);
         sanitized = ForbiddenBlockPattern().Replace(sanitized, string.Empty);
+        sanitized = ForbiddenStandaloneTagPattern().Replace(sanitized, string.Empty);
         sanitized = TagPattern().Replace(sanitized, SanitizeTag);
         sanitized = ControlCharacterPattern().Replace(sanitized, string.Empty);
 
@@ -360,9 +361,14 @@ public sealed partial class ContentRenderingService : IContentRenderingService
     private static partial Regex CommentPattern();
 
     [GeneratedRegex(
-        @"<\s*(script|style|iframe|object|embed|form|input|button|textarea|select|img|video|audio|svg|math|link|meta)\b[^>]*>.*?<\s*/\s*\1\s*>",
+        @"<\s*(script|style|iframe|object|embed|form|textarea|select|video|audio|svg|math|template)\b[^>]*>.*?<\s*/\s*\1\s*>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex ForbiddenBlockPattern();
+
+    [GeneratedRegex(
+        @"<\s*/?\s*(script|style|iframe|object|embed|form|input|button|textarea|select|img|picture|source|track|video|audio|svg|math|link|meta|base|template)\b[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex ForbiddenStandaloneTagPattern();
 
     [GeneratedRegex(@"<\s*(?<end>/)?\s*(?<tag>[a-zA-Z0-9]+)\b(?<attributes>[^>]*)>", RegexOptions.IgnoreCase)]
     private static partial Regex TagPattern();

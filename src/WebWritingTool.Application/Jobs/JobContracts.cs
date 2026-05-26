@@ -45,7 +45,8 @@ public enum JobServiceError
     NotFound,
     RunningJobExists,
     JobNotCancelable,
-    JobNotRetryable
+    JobNotRetryable,
+    RateLimited
 }
 
 public sealed record JobValidationError(string Field, string Message);

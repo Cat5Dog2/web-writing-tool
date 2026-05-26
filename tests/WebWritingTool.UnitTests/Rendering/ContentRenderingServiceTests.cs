@@ -58,12 +58,15 @@ public class ContentRenderingServiceTests
     public void SanitizeHtml_RemovesScriptTagsAndEventAttributes()
     {
         var html = renderer.SanitizeHtml(
-            "<h2 onclick=\"alert(1)\">概要</h2><script>alert(1)</script><p onload=\"alert(2)\">本文</p>");
+            "<h2 onclick=\"alert(1)\">概要</h2><script>alert(1)</script><p onload=\"alert(2)\">本文</p><img src=\"x\" onerror=\"alert(3)\"><iframe src=\"https://example.com\">危険</iframe>");
 
         Assert.Equal("<h2>概要</h2><p>本文</p>", html);
         Assert.DoesNotContain("script", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("iframe", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("img", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("onclick", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("onload", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("onerror", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -750,6 +750,7 @@
             ArticleServiceError.NotFound => "対象データが見つかりません。",
             ArticleServiceError.ConflictRunningJob => "実行中ジョブがあるため削除できません。",
             ArticleServiceError.ConcurrencyConflict => "他の操作により記事が更新されています。",
+            ArticleServiceError.RateLimited => "短時間に連続して実行されています。時間をおいて再実行してください。",
             _ => "処理に失敗しました。"
         };
     }
@@ -770,6 +771,7 @@
             WordpressServiceError.HumanReviewRequired => "人間確認前の記事は公開投稿できません。",
             WordpressServiceError.NotPostable => "投稿可能な記事状態ではありません。",
             WordpressServiceError.ExternalFailure => "WordPress連携に失敗しました。",
+            WordpressServiceError.RateLimited => "短時間に連続して実行されています。時間をおいて再実行してください。",
             _ => "WordPress投稿に失敗しました。"
         };
     }
