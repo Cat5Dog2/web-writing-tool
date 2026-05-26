@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "0 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -35,3 +37,72 @@ jobs:
 
       - name: Test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+
+  docker-production:
+    name: Production Docker smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 25
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      APP_IMAGE: web-writing-tool-app:ci
+      App__BaseUrl: http://localhost:8080
+      CADDY_SITE_ADDRESS: :80
+      CADDY_HTTP_PORT: 8080
+      CADDY_HTTPS_PORT: 8443
+      POSTGRES_DB: web_writing_tool
+      POSTGRES_USER: web_writing_tool
+      POSTGRES_PASSWORD: ci-postgres-password
+      Security__RequireHttps: "false"
+      Security__AllowedForwardedHosts__0: localhost
+      AdminSeed__Email: admin@example.test
+      AdminSeed__Password: Change-this-CI-password-123!
+      AiProviders__Gemini__ApiKey: ci-placeholder
+      SearchProviders__Tavily__ApiKey: ci-placeholder
+      SearchProviders__X__BearerToken: ci-placeholder
+      SearchCache__Policy: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check Docker
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Build production image
+        run: docker build -f Dockerfile -t web-writing-tool-app:ci .
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Apply migrations
+        run: |
+          docker run --rm \
+            --network web-writing-tool_default \
+            -v "${{ github.workspace }}:/src" \
+            -w /src \
+            -e "ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}" \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            sh -lc 'dotnet restore WebWritingTool.slnx && dotnet tool install --global dotnet-ef --version 10.0.8 && /root/.dotnet/tools/dotnet-ef database update --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj --context ApplicationDbContext'
+
+      - name: Start production compose
+        run: docker compose up -d --build app caddy
+
+      - name: Check health through Caddy
+        run: |
+          curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:8080/health/live
+          curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:8080/health/ready
+
+      - name: Show compose status on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail=200 app
+          docker compose logs --tail=200 caddy
+          docker compose logs --tail=200 postgres
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

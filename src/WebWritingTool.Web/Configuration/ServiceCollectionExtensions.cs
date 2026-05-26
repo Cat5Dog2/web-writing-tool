@@ -1,7 +1,9 @@
 namespace WebWritingTool.Web.Configuration;
 
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +35,7 @@ using WebWritingTool.Infrastructure.Security;
 using WebWritingTool.Infrastructure.Wordpress;
 using WebWritingTool.Web.Authorization;
 using WebWritingTool.Web.BackgroundJobs;
+using WebWritingTool.Web.HealthChecks;
 using WebWritingTool.Web.Security;
 
 internal static class ServiceCollectionExtensions
@@ -127,8 +130,17 @@ internal static class ServiceCollectionExtensions
                 options => string.Equals(options.Provider, NotificationProviders.Discord, StringComparison.Ordinal),
                 "Notification provider must be Discord for MVP.")
             .Validate(options => options.TimeoutSeconds > 0, "Notification timeout must be greater than zero.");
+        services
+            .AddOptions<SecurityOptions>()
+            .Bind(configuration.GetSection(SecurityOptions.SectionName))
+            .Validate(
+                options => !environment.IsProduction() || !string.IsNullOrWhiteSpace(options.DataProtectionKeysPath),
+                "Security:DataProtectionKeysPath is required in Production.")
+            .ValidateOnStart();
 
-        services.AddDataProtection();
+        ConfigureForwardedHeaders(services, configuration, environment);
+        ConfigureDataProtection(services, configuration, environment);
+        services.AddOperationalHealthChecks();
         services.AddAntiforgery(options =>
         {
             options.HeaderName = CsrfEndpointFilter.HeaderName;
@@ -159,6 +171,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<INotificationJobService, NotificationJobService>();
         services.AddScoped<IXPostRehydrationService, XPostRehydrationService>();
         services.AddScoped<SearchCacheCleanupService>();
+        services.AddSingleton<BackgroundWorkerHealthState>();
         services.AddSingleton<IContentRenderingService, ContentRenderingService>();
         services.AddSingleton<TitleGenerationPromptBuilder>();
         services.AddSingleton<OutlineGenerationPromptBuilder>();
@@ -213,6 +226,76 @@ internal static class ServiceCollectionExtensions
         services.AddHostedService<SearchCacheCleanupWorker>();
 
         return services;
+    }
+
+    private static IServiceCollection AddOperationalHealthChecks(this IServiceCollection services)
+    {
+        services.AddHealthChecks()
+            .AddCheck<PostgresHealthCheck>(
+                "postgres",
+                tags: ["ready"])
+            .AddCheck<BackgroundWorkerHealthCheck>(
+                "background_workers",
+                tags: ["ready"])
+            .AddCheck<ExternalDependencyConfigurationHealthCheck>(
+                "external_dependency_configuration",
+                tags: ["deps"]);
+
+        return services;
+    }
+
+    private static void ConfigureForwardedHeaders(
+        IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
+    {
+        var securityOptions = GetSecurityOptions(configuration);
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor
+                | ForwardedHeaders.XForwardedProto
+                | ForwardedHeaders.XForwardedHost;
+            options.ForwardLimit = 1;
+
+            if (securityOptions.ShouldUseForwardedHeaders(environment))
+            {
+                options.KnownIPNetworks.Clear();
+                options.KnownProxies.Clear();
+            }
+
+            foreach (var host in securityOptions.AllowedForwardedHosts.Where(host => !string.IsNullOrWhiteSpace(host)))
+            {
+                options.AllowedHosts.Add(host.Trim());
+            }
+        });
+    }
+
+    private static void ConfigureDataProtection(
+        IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
+    {
+        var securityOptions = GetSecurityOptions(configuration);
+        if (environment.IsProduction() && string.IsNullOrWhiteSpace(securityOptions.DataProtectionKeysPath))
+        {
+            throw new InvalidOperationException("Security:DataProtectionKeysPath is required in Production.");
+        }
+
+        var dataProtectionBuilder = services
+            .AddDataProtection()
+            .SetApplicationName(SecurityOptions.DataProtectionApplicationName);
+
+        if (!string.IsNullOrWhiteSpace(securityOptions.DataProtectionKeysPath))
+        {
+            var keyDirectory = Directory.CreateDirectory(securityOptions.DataProtectionKeysPath);
+            dataProtectionBuilder.PersistKeysToFileSystem(keyDirectory);
+        }
+    }
+
+    private static SecurityOptions GetSecurityOptions(IConfiguration configuration)
+    {
+        return configuration.GetSection(SecurityOptions.SectionName).Get<SecurityOptions>()
+            ?? new SecurityOptions();
     }
 
     private static IServiceCollection AddSecurityRateLimiting(this IServiceCollection services)

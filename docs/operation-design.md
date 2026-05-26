@@ -631,13 +631,100 @@ docker compose restart app
 docker compose restart caddy
 ```
 
-### 19.3 バックアップ
+### 19.3 PostgreSQLバックアップ
 
 ```bash
-docker compose exec postgres pg_dump -U app_user app_db > backups/app_db_$(date +%Y%m%d_%H%M%S).sql
+mkdir -p backups
+chmod 700 backups
+
+BACKUP_FILE="backups/web_writing_tool_$(date +%Y%m%d_%H%M%S).dump"
+docker compose exec -T postgres \
+  sh -c 'pg_dump \
+    --format=custom \
+    --no-owner \
+    --no-privileges \
+    --username "$POSTGRES_USER" \
+    "$POSTGRES_DB"' > "$BACKUP_FILE"
+
+sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
+ls -lh "$BACKUP_FILE" "$BACKUP_FILE.sha256"
 ```
 
-### 19.4 ヘルスチェック
+注意:
+
+- 本番Migration前とデプロイ前には必ずバックアップを取得する。
+- `.env`に定義した`POSTGRES_DB`、`POSTGRES_USER`を使う。
+- バックアップファイルはDB内容を含むため、VPS上では権限を制限し、外部ストレージへ退避する。
+- `app_keys`もCookieと暗号化済みデータの復号に必要なため、DBバックアップと同じタイミングで退避する。
+
+Data Protectionキーのバックアップ:
+
+```bash
+KEYS_BACKUP_FILE="backups/app_keys_$(date +%Y%m%d_%H%M%S).tar.gz"
+docker run --rm \
+  -v web-writing-tool_app_keys:/source:ro \
+  -v "$(pwd)/backups:/backup" \
+  alpine:3.20 \
+  tar -czf "/backup/$(basename "$KEYS_BACKUP_FILE")" -C /source .
+
+sha256sum "$KEYS_BACKUP_FILE" > "$KEYS_BACKUP_FILE.sha256"
+```
+
+### 19.4 PostgreSQLリストア
+
+リストアは既存DBを書き換えるため、必ず対象バックアップ、Gitリビジョン、現在のサービス状態を確認してから実行する。
+
+```bash
+RESTORE_FILE="backups/web_writing_tool_YYYYMMDD_HHMMSS.dump"
+sha256sum -c "$RESTORE_FILE.sha256"
+
+docker compose ps
+docker compose stop app
+
+SAFETY_BACKUP_FILE="backups/pre_restore_$(date +%Y%m%d_%H%M%S).dump"
+docker compose exec -T postgres \
+  sh -c 'pg_dump \
+    --format=custom \
+    --no-owner \
+    --no-privileges \
+    --username "$POSTGRES_USER" \
+    "$POSTGRES_DB"' > "$SAFETY_BACKUP_FILE"
+
+docker compose exec -T postgres \
+  sh -c 'pg_restore \
+    --clean \
+    --if-exists \
+    --no-owner \
+    --no-privileges \
+    --username "$POSTGRES_USER" \
+    --dbname "$POSTGRES_DB"' < "$RESTORE_FILE"
+
+docker compose up -d app
+curl -fsS https://example.com/health/ready
+```
+
+復元後確認:
+
+- `/health/ready`が成功する。
+- 管理者ログイン、記事一覧、記事詳細、ジョブ一覧が確認できる。
+- WordPress設定とDiscord通知設定が暗号化データとして復号できる。
+- 復元対象時点以降のデータが失われることを関係者へ共有済みである。
+
+Data Protectionキーのリストアが必要な場合:
+
+```bash
+KEYS_RESTORE_FILE="backups/app_keys_YYYYMMDD_HHMMSS.tar.gz"
+docker compose stop app
+docker run --rm \
+  -v web-writing-tool_app_keys:/target \
+  -v "$(pwd)/backups:/backup:ro" \
+  alpine:3.20 \
+  tar -xzf "/backup/$(basename "$KEYS_RESTORE_FILE")" -C /target
+docker compose up -d app
+curl -fsS https://example.com/health/ready
+```
+
+### 19.5 ヘルスチェック
 
 ```bash
 curl -fsS https://example.com/health/live

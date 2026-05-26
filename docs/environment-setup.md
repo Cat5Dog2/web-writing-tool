@@ -115,7 +115,7 @@ VPS要件の目安:
 - ローカル開発ではUser Secrets、ローカル環境変数、またはGit管理外の`.env`を使う。
 - 開発用.NET SDKコンテナでUser Secretsを使う場合は、User Secrets保存先を永続volumeまたはホストディレクトリへマウントする。
 - Docker Composeでは`.env`を使えるが、`.env`はGit管理しない。
-- `.env.example`にはダミー値のみ置く。
+- `.env.example`と`.env.production.example`にはダミー値のみ置く。
 - WordPress Application PasswordとDiscord Webhook URLはアプリ上ではDB暗号化保存する。
 - Gemini、Tavily、X APIキーはDBへ保存しない。
 
@@ -141,13 +141,26 @@ VPS要件の目安:
 | `AdminSeed__Email` | 初期Adminメール | 初回のみ | 初回のみ |
 | `AdminSeed__Password` | 初期Adminパスワード | 初回のみ | 初回のみ |
 
-### 4.3 `.env.example`
+### 4.3 `.env.example` / `.env.production.example`
 
-`.env.example`には以下のようなキーだけを置く。
-実値は入れない。
+`.env.example`はローカル開発用、`.env.production.example`は本番/配置用Docker Compose用とする。
+どちらにも実値は入れず、キーとダミー値のみを置く。
+
+```dotenv
+ASPNETCORE_ENVIRONMENT=Development
+App__BaseUrl=http://localhost:5080
+SearchCache__Policy=dev
+Security__RequireHttps=false
+Security__ForwardedHeadersEnabled=false
+```
+
+本番/配置用は以下を基準にする。
 
 ```dotenv
 ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=http://+:8080
+App__BaseUrl=https://example.com
+CADDY_SITE_ADDRESS=example.com
 
 POSTGRES_DB=web_writing_tool
 POSTGRES_USER=web_writing_tool
@@ -171,7 +184,9 @@ SearchProviders__X__MonthlySafetyLimitPosts=10000
 SearchCache__Policy=production
 
 Security__DataProtectionKeysPath=/var/app/keys
-App__BaseUrl=https://example.com
+Security__RequireHttps=true
+Security__ForwardedHeadersEnabled=true
+Security__AllowedForwardedHosts__0=example.com
 
 AdminSeed__Email=admin@example.com
 AdminSeed__Password=change-me
@@ -412,7 +427,7 @@ Gitを使わずに配置する場合は、CIで生成した成果物またはCom
 ### 7.6 `.env`配置
 
 ```bash
-cp .env.example .env
+cp .env.production.example .env
 chmod 600 .env
 ```
 

@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
 using WebWritingTool.Web.Components;
 using WebWritingTool.Web.Configuration;
 using WebWritingTool.Web.Endpoints;
@@ -24,16 +27,27 @@ builder.Services
     .AddWebAuthorization();
 
 var app = builder.Build();
+var securityOptions = app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value;
 
 // Configure the HTTP request pipeline.
+if (securityOptions.ShouldUseForwardedHeaders(app.Environment))
+{
+    app.UseForwardedHeaders();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    if (securityOptions.RequireHttps)
+    {
+        app.UseHsts();
+    }
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+if (securityOptions.RequireHttps)
+{
+    app.UseHttpsRedirection();
+}
 app.UseStaticFiles();
 
 app.UseAuthentication();
@@ -42,6 +56,18 @@ app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+}).AllowAnonymous();
+app.MapHealthChecks("/health/deps", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("deps")
+}).RequireAuthorization(ApplicationPolicies.RequireAdmin);
 app.MapSecurityEndpoints();
 app.MapAccountEndpoints();
 app.MapArticleEndpoints();

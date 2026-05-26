@@ -368,29 +368,29 @@
 
 ## 16. P12 運用
 
-- [ ] `T-1201` 本番/配置用Dockerfileを作成する。
+- [x] `T-1201` 本番/配置用Dockerfileを作成する。
   - 完了条件: 本番/配置用appコンテナが起動する。
 
-- [ ] `T-1202` 本番/配置用Docker Composeを作成する。
+- [x] `T-1202` 本番/配置用Docker Composeを作成する。
   - 対象: app, postgres, caddy
   - 条件: P0の開発用Docker Composeとは用途を分ける。
   - 完了条件: Caddy経由でappにアクセスできる。
 
-- [ ] `T-1203` Caddy設定を作成する。
+- [x] `T-1203` Caddy設定を作成する。
   - 条件: HTTPS、HTTP to HTTPS、Reverse Proxy
   - 完了条件: Forwarded Headersが正しく動く。
 
-- [ ] `T-1204` Data Protection Key永続化を実装する。
+- [x] `T-1204` Data Protection Key永続化を実装する。
   - 完了条件: コンテナ再作成後もCookieと暗号化データが扱える。
 
-- [ ] `T-1205` ヘルスチェックを実装する。
+- [x] `T-1205` ヘルスチェックを実装する。
   - Endpoint: `/health/live`, `/health/ready`, `/health/deps`
   - 完了条件: readyでPostgreSQLとBackgroundService状態を確認できる。
 
-- [ ] `T-1206` バックアップ、リストア手順を整備する。
+- [x] `T-1206` バックアップ、リストア手順を整備する。
   - 完了条件: PostgreSQLバックアップと復元手順が確認できる。
 
-- [ ] `T-1207` 本番/配置用Docker CI確認を整備する。
+- [x] `T-1207` 本番/配置用Docker CI確認を整備する。
   - 参照: `docs/ci-cd-design.md`, `docs/environment-setup.md`
   - 対象: 本番/配置用Dockerfile、Docker Compose、Caddy、ヘルスチェック
   - 条件: P0の開発用Docker Composeではなく、本番/配置用構成を対象にする。

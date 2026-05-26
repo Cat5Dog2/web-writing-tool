@@ -1,0 +1,99 @@
+name: web-writing-tool
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-web_writing_tool}
+      POSTGRES_USER: ${POSTGRES_USER:-web_writing_tool}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
+
+  app:
+    image: ${APP_IMAGE:-web-writing-tool-app:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:8080
+      App__BaseUrl: ${App__BaseUrl:-https://localhost}
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      Security__DataProtectionKeysPath: ${Security__DataProtectionKeysPath:-/var/app/keys}
+      Security__RequireHttps: ${Security__RequireHttps:-true}
+      Security__ForwardedHeadersEnabled: ${Security__ForwardedHeadersEnabled:-true}
+      Security__AllowedForwardedHosts__0: ${Security__AllowedForwardedHosts__0:-localhost}
+      AdminSeed__Email: ${AdminSeed__Email:-}
+      AdminSeed__Password: ${AdminSeed__Password:-}
+      AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
+      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.5-flash}
+      AiProviders__Gemini__Region: ${AiProviders__Gemini__Region:-Japan}
+      AiProviders__Gemini__TimeoutSeconds: ${AiProviders__Gemini__TimeoutSeconds:-120}
+      SearchProviders__DefaultRegion: ${SearchProviders__DefaultRegion:-Japan}
+      SearchProviders__Tavily__ApiKey: ${SearchProviders__Tavily__ApiKey:-}
+      SearchProviders__Tavily__TimeoutSeconds: ${SearchProviders__Tavily__TimeoutSeconds:-30}
+      SearchProviders__X__BearerToken: ${SearchProviders__X__BearerToken:-}
+      SearchProviders__X__TimeoutSeconds: ${SearchProviders__X__TimeoutSeconds:-30}
+      SearchProviders__X__DefaultMaxResults: ${SearchProviders__X__DefaultMaxResults:-100}
+      SearchProviders__X__BulkMaxResults: ${SearchProviders__X__BulkMaxResults:-500}
+      SearchProviders__X__MonthlySafetyLimitPosts: ${SearchProviders__X__MonthlySafetyLimitPosts:-10000}
+      SearchCache__Policy: ${SearchCache__Policy:-production}
+      Wordpress__TimeoutSeconds: ${Wordpress__TimeoutSeconds:-60}
+      Notifications__Provider: ${Notifications__Provider:-Discord}
+      Notifications__TimeoutSeconds: ${Notifications__TimeoutSeconds:-30}
+      BackgroundJobs__IdleDelaySeconds: ${BackgroundJobs__IdleDelaySeconds:-3}
+      BackgroundJobs__LockTimeoutMinutes: ${BackgroundJobs__LockTimeoutMinutes:-30}
+      BackgroundJobs__MaxJobsPerLoop: ${BackgroundJobs__MaxJobsPerLoop:-1}
+      BackgroundJobs__WorkerIdPrefix: ${BackgroundJobs__WorkerIdPrefix:-app}
+      BackgroundJobs__SearchCacheCleanupIntervalMinutes: ${BackgroundJobs__SearchCacheCleanupIntervalMinutes:-60}
+    expose:
+      - "8080"
+    volumes:
+      - app_keys:/var/app/keys
+      - app_storage:/var/app/storage
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-localhost}
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  app_keys:
+  app_storage:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

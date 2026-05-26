@@ -142,7 +142,7 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 - Migration差分を確認済み。
 - 破壊的DB変更がない、または段階的Migrationになっている。
 - 本番DBバックアップ手順を確認済み。
-- `.env.example` と [設定リファレンス](configuration-reference.md) が最新。
+- `.env.example`、`.env.production.example` と [設定リファレンス](configuration-reference.md) が最新。
 - 外部API仕様変更や設定追加が反映済み。
 - 秘密情報がログ、成果物、テストデータに含まれていない。
 - NuGetとDockerイメージの重大脆弱性がない。

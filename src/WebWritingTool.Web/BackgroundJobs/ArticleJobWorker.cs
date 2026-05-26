@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Notifications;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.BackgroundJobs;
+using WebWritingTool.Web.HealthChecks;
 
 namespace WebWritingTool.Web.BackgroundJobs;
 
@@ -9,23 +10,29 @@ public sealed class ArticleJobWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<BackgroundJobOptions> options,
     ILogger<ArticleJobWorker> logger,
-    ISecretMasker secretMasker)
+    ISecretMasker secretMasker,
+    BackgroundWorkerHealthState healthState)
     : BackgroundService
 {
+    private const string WorkerName = nameof(ArticleJobWorker);
+
     private readonly string _workerId = CreateWorkerId(options.Value.WorkerIdPrefix);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled)
         {
+            healthState.MarkDisabled(WorkerName);
             logger.LogInformation("Background job worker is disabled.");
             return;
         }
 
+        healthState.MarkStarted(WorkerName);
         logger.LogInformation("Background job worker started. workerId={WorkerId}", _workerId);
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            healthState.MarkHeartbeat(WorkerName);
             try
             {
                 await ProcessAvailableJobsAsync(stoppingToken);
@@ -45,6 +52,7 @@ public sealed class ArticleJobWorker(
             await DelayAsync(stoppingToken);
         }
 
+        healthState.MarkStopped(WorkerName);
         logger.LogInformation("Background job worker stopped. workerId={WorkerId}", _workerId);
     }
 

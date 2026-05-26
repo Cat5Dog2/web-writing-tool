@@ -40,6 +40,7 @@ ScaffoldingReadMe.txt
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Others
 ~$*

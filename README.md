@@ -149,7 +149,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 
 - 実APIキー、DBパスワード、Webhook URL、WordPress Application PasswordをGit管理しない。
 - `.env` はGit管理しない。
-- `.env.example` にはダミー値のみを置く。
+- `.env.example` と `.env.production.example` にはダミー値のみを置く。
 - ローカル開発ではUser Secrets、ローカル環境変数、またはGit管理外の`.env`を使う。
 - 開発用.NET SDKコンテナでUser Secretsを使う場合は、保存先を永続volumeまたはホストディレクトリへマウントする。
 - WordPress Application PasswordとDiscord Webhook URLはDB暗号化保存する。
@@ -169,6 +169,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 ## 運用方針
 
 本番運用は Linux VPS + Docker Compose + Caddy を想定する。
+本番/配置用Composeでは `.env.production.example` を `.env` へコピーしてから、実値へ変更する。
 
 - `caddy`: HTTPS終端、リバースプロキシ
 - `app`: Blazor UI、API、BackgroundService
