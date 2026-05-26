@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Application.Wordpress;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -12,6 +14,7 @@ public static class WordpressEndpoints
     {
         var sites = endpoints.MapGroup("/api/wordpress-sites")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("WordPress Sites");
 
         sites.MapGet("", ListSitesAsync)
@@ -40,6 +43,7 @@ public static class WordpressEndpoints
 
         var posts = endpoints.MapGroup("/api/articles/{articleId:guid}/wordpress-posts")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("WordPress Posts");
 
         posts.MapGet("/preview", GetPostPreviewAsync)
@@ -51,6 +55,7 @@ public static class WordpressEndpoints
             .WithSummary("WordPress投稿履歴を取得します。");
 
         posts.MapPost("", CreatePostJobAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.WordpressPost)
             .WithName("CreateWordpressPostJob")
             .WithSummary("WordPress投稿ジョブを登録します。");
 
@@ -293,6 +298,10 @@ public static class WordpressEndpoints
                 title: "NotPostable",
                 detail: "投稿可能な記事状態ではありません。",
                 statusCode: StatusCodes.Status422UnprocessableEntity),
+            WordpressServiceError.RateLimited => Results.Problem(
+                title: "RateLimited",
+                detail: "Too many requests.",
+                statusCode: StatusCodes.Status429TooManyRequests),
             _ => Results.Problem(
                 title: "Bad Request",
                 detail: "WordPress operation failed.",

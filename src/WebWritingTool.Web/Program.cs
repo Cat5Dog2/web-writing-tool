@@ -2,6 +2,7 @@ using WebWritingTool.Web.Components;
 using WebWritingTool.Web.Configuration;
 using WebWritingTool.Web.Endpoints;
 using WebWritingTool.Infrastructure.Identity;
+using WebWritingTool.Application.Security;
 
 DevelopmentEnvironmentFileConfiguration.TryLoadAspNetCoreEnvironmentFromDotEnv();
 
@@ -37,9 +38,11 @@ app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapSecurityEndpoints();
 app.MapAccountEndpoints();
 app.MapArticleEndpoints();
 app.MapHeadingEndpoints();
@@ -59,7 +62,11 @@ catch (Exception exception)
 {
     try
     {
-        app.Logger.LogCritical(exception, "Application terminated unexpectedly.");
+        var masker = app.Services.GetService<ISecretMasker>();
+        app.Logger.LogCritical(
+            "Application terminated unexpectedly. exceptionType={ExceptionType} message={Message}",
+            exception.GetType().Name,
+            masker?.Mask(exception.Message) ?? "Application startup failed.");
     }
     catch
     {

@@ -510,6 +510,7 @@
         {
             NotificationServiceError.Disabled => "有効なDiscord通知設定がありません。",
             NotificationServiceError.ExternalFailure => "Discord通知の送信に失敗しました。",
+            NotificationServiceError.RateLimited => "短時間に連続して送信されています。時間をおいて再実行してください。",
             _ => "Discord通知設定の処理に失敗しました。"
         };
     }

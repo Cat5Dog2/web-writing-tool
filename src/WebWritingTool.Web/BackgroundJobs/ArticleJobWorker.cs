@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Notifications;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.BackgroundJobs;
 
 namespace WebWritingTool.Web.BackgroundJobs;
@@ -7,7 +8,8 @@ namespace WebWritingTool.Web.BackgroundJobs;
 public sealed class ArticleJobWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<BackgroundJobOptions> options,
-    ILogger<ArticleJobWorker> logger)
+    ILogger<ArticleJobWorker> logger,
+    ISecretMasker secretMasker)
     : BackgroundService
 {
     private readonly string _workerId = CreateWorkerId(options.Value.WorkerIdPrefix);
@@ -34,7 +36,10 @@ public sealed class ArticleJobWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Background job worker loop failed.");
+                logger.LogError(
+                    "Background job worker loop failed. exceptionType={ExceptionType} message={Message}",
+                    ex.GetType().Name,
+                    MaskExceptionMessage(ex));
             }
 
             await DelayAsync(stoppingToken);
@@ -110,27 +115,29 @@ public sealed class ArticleJobWorker(
             if (decision.Retried)
             {
                 logger.LogWarning(
-                    ex,
-                    "Job retry scheduled. jobId={JobId} jobType={JobType} attemptCount={AttemptCount} maxAttempts={MaxAttempts} errorCode={ErrorCode} nextRunAt={NextRunAt}",
+                    "Job retry scheduled. jobId={JobId} jobType={JobType} attemptCount={AttemptCount} maxAttempts={MaxAttempts} errorCode={ErrorCode} nextRunAt={NextRunAt} exceptionType={ExceptionType} message={Message}",
                     decision.JobId,
                     decision.JobType,
                     decision.AttemptCount,
                     decision.MaxAttempts,
                     decision.ErrorCode,
-                    decision.NextRunAt);
+                    decision.NextRunAt,
+                    ex.GetType().Name,
+                    MaskExceptionMessage(ex));
             }
             else
             {
                 await QueueFailedNotificationAsync(job, decision, notificationJobService);
 
                 logger.LogError(
-                    ex,
-                    "Job failed. jobId={JobId} jobType={JobType} attemptCount={AttemptCount} maxAttempts={MaxAttempts} errorCode={ErrorCode}",
+                    "Job failed. jobId={JobId} jobType={JobType} attemptCount={AttemptCount} maxAttempts={MaxAttempts} errorCode={ErrorCode} exceptionType={ExceptionType} message={Message}",
                     decision.JobId,
                     decision.JobType,
                     decision.AttemptCount,
                     decision.MaxAttempts,
-                    decision.ErrorCode);
+                    decision.ErrorCode,
+                    ex.GetType().Name,
+                    MaskExceptionMessage(ex));
             }
         }
     }
@@ -154,7 +161,11 @@ public sealed class ArticleJobWorker(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Notification job enqueue failed after job success. jobId={JobId}", job.Id);
+            logger.LogWarning(
+                "Notification job enqueue failed after job success. jobId={JobId} exceptionType={ExceptionType} message={Message}",
+                job.Id,
+                ex.GetType().Name,
+                MaskExceptionMessage(ex));
         }
     }
 
@@ -177,7 +188,11 @@ public sealed class ArticleJobWorker(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Notification job enqueue failed after job failure. jobId={JobId}", job.Id);
+            logger.LogWarning(
+                "Notification job enqueue failed after job failure. jobId={JobId} exceptionType={ExceptionType} message={Message}",
+                job.Id,
+                ex.GetType().Name,
+                MaskExceptionMessage(ex));
         }
     }
 
@@ -196,5 +211,10 @@ public sealed class ArticleJobWorker(
     {
         var safePrefix = string.IsNullOrWhiteSpace(prefix) ? "app" : prefix.Trim();
         return $"{safePrefix}:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+    }
+
+    private string MaskExceptionMessage(Exception exception)
+    {
+        return secretMasker.Mask(exception.Message);
     }
 }

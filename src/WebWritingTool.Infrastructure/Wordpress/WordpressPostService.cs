@@ -4,6 +4,7 @@ using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
@@ -16,7 +17,8 @@ namespace WebWritingTool.Infrastructure.Wordpress;
 public sealed class WordpressPostService(
     ApplicationDbContext dbContext,
     IContentRenderingService contentRenderingService,
-    JobRetryPolicy retryPolicy)
+    JobRetryPolicy retryPolicy,
+    ISecurityRateLimiter securityRateLimiter)
     : IWordpressPostCommandService, IWordpressPostQueryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -55,6 +57,14 @@ public sealed class WordpressPostService(
         CreateWordpressPostJobCommand command,
         CancellationToken cancellationToken = default)
     {
+        if (!await securityRateLimiter.IsAllowedAsync(
+                SecurityRateLimitPolicyNames.WordpressPost,
+                command.Actor.UserId,
+                cancellationToken))
+        {
+            return WordpressServiceResult<JobAcceptedResponse>.Failure(WordpressServiceError.RateLimited);
+        }
+
         var article = await dbContext.Articles
             .FirstOrDefaultAsync(item => item.Id == command.ArticleId, cancellationToken);
 

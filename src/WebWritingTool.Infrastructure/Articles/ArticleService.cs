@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Domain.Wordpress;
@@ -11,7 +12,9 @@ namespace WebWritingTool.Infrastructure.Articles;
 
 public sealed class ArticleService(
     ApplicationDbContext dbContext,
-    IContentRenderingService contentRenderingService)
+    IContentRenderingService contentRenderingService,
+    IUrlSafetyValidator urlSafetyValidator,
+    ISecurityRateLimiter securityRateLimiter)
     : IArticleCommandService, IArticleQueryService
 {
     private const int DefaultPage = 1;
@@ -225,6 +228,14 @@ public sealed class ArticleService(
         BulkCreateArticlesCommand command,
         CancellationToken cancellationToken = default)
     {
+        if (!await securityRateLimiter.IsAllowedAsync(
+                SecurityRateLimitPolicyNames.BulkArticleRegistration,
+                command.UserId,
+                cancellationToken))
+        {
+            return ArticleServiceResult<BulkCreateArticlesResponse>.Failure(ArticleServiceError.RateLimited);
+        }
+
         var validationErrors = await ValidateBulkCreateAsync(command, cancellationToken);
         if (validationErrors.Count > 0)
         {
@@ -475,6 +486,7 @@ public sealed class ArticleService(
             command.NotificationMode);
 
         await ValidateGenerationModelAsync(command.GenerationModel, errors, cancellationToken);
+        await ValidateLearningUrlAsync(command.LearningType, command.LearningText, errors, cancellationToken);
         return errors;
     }
 
@@ -546,6 +558,7 @@ public sealed class ArticleService(
             await ValidateGenerationModelAsync(command.GenerationModel, errors, cancellationToken);
         }
 
+        await ValidateLearningUrlAsync(command.LearningType, command.LearningText, errors, cancellationToken);
         return errors;
     }
 
@@ -708,6 +721,27 @@ public sealed class ArticleService(
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri)
             && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ValidateLearningUrlAsync(
+        string? learningType,
+        string? learningText,
+        ICollection<ArticleValidationError> errors,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(learningType, "Url", StringComparison.OrdinalIgnoreCase)
+            || !IsHttpsUrl(learningText))
+        {
+            return;
+        }
+
+        var result = await urlSafetyValidator.ValidateHttpsPublicUrlAsync(learningText, cancellationToken);
+        if (!result.Succeeded)
+        {
+            errors.Add(new ArticleValidationError(
+                nameof(learningText),
+                result.ErrorMessage ?? "事前学習URLが不正です。"));
+        }
     }
 
     private static IQueryable<Article> ApplySort(

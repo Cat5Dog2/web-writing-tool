@@ -26,6 +26,11 @@ public sealed class DnsUrlSafetyValidator : IUrlSafetyValidator
             return UrlSafetyValidationResult.Failure("HTTPS URLのみ指定できます。");
         }
 
+        if (!uri.IsDefaultPort && uri.Port != 443)
+        {
+            return UrlSafetyValidationResult.Failure("許可されていないポート番号は指定できません。");
+        }
+
         if (string.IsNullOrWhiteSpace(uri.Host)
             || ForbiddenHosts.Contains(uri.Host)
             || uri.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase))

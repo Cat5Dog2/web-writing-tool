@@ -10,6 +10,8 @@ namespace WebWritingTool.Infrastructure.Notifications;
 public sealed class NotificationSettingService(
     ApplicationDbContext dbContext,
     ISecretProtector secretProtector,
+    ISecretMasker secretMasker,
+    ISecurityRateLimiter securityRateLimiter,
     IDiscordNotificationClient discordNotificationClient)
     : INotificationSettingService, INotificationTestService
 {
@@ -90,6 +92,14 @@ public sealed class NotificationSettingService(
             return NotificationServiceResult<NotificationTestResponse>.Failure(
                 NotificationServiceError.ValidationFailed,
                 validationErrors);
+        }
+
+        if (!await securityRateLimiter.IsAllowedAsync(
+                SecurityRateLimitPolicyNames.NotificationTest,
+                command.Actor.UserId,
+                cancellationToken))
+        {
+            return NotificationServiceResult<NotificationTestResponse>.Failure(NotificationServiceError.RateLimited);
         }
 
         var destination = await ResolveDestinationAsync(command, cancellationToken);
@@ -255,7 +265,7 @@ public sealed class NotificationSettingService(
             Status = success ? NotificationStatuses.Succeeded : NotificationStatuses.Failed,
             Message = Truncate(message, 1000),
             ErrorCode = errorCode,
-            ErrorMessage = Truncate(errorMessage, 1000),
+            ErrorMessage = Truncate(secretMasker.Mask(errorMessage), 1000),
             CreatedAt = sentAt
         });
     }

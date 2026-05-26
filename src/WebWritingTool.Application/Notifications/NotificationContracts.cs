@@ -75,7 +75,8 @@ public enum NotificationServiceError
     NotFound,
     ConcurrencyConflict,
     ExternalFailure,
-    Disabled
+    Disabled,
+    RateLimited
 }
 
 public sealed record NotificationValidationError(string Field, string Message);

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -11,6 +12,7 @@ public static class HeadingEndpoints
     {
         var api = endpoints.MapGroup("/api/articles/{articleId:guid}/headings")
             .RequireAuthorization()
+            .RequireCsrfToken()
             .WithTags("Headings");
 
         api.MapGet("", GetHeadingsAsync)

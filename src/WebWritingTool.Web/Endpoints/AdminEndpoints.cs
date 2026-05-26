@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using WebWritingTool.Application.Admin;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Web.Security;
 
 namespace WebWritingTool.Web.Endpoints;
 
@@ -11,6 +12,7 @@ public static class AdminEndpoints
     {
         var api = endpoints.MapGroup("/api/admin")
             .RequireAuthorization(ApplicationPolicies.RequireAdmin)
+            .RequireCsrfToken()
             .WithTags("Admin");
 
         api.MapGet("/users", GetUsersAsync)

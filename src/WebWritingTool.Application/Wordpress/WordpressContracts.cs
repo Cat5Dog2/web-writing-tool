@@ -114,7 +114,8 @@ public enum WordpressServiceError
     ConcurrencyConflict,
     ExternalFailure,
     HumanReviewRequired,
-    NotPostable
+    NotPostable,
+    RateLimited
 }
 
 public sealed record WordpressValidationError(string Field, string Message);
