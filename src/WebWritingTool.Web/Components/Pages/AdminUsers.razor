@@ -1,0 +1,618 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+
+@inject IAdminUserService AdminUserService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>ユーザー管理</PageTitle>
+
+<div class="article-page">
+    <header class="article-page-header">
+        <div>
+            <h1>ユーザー管理</h1>
+        </div>
+        <div class="article-actions">
+            <button type="button" class="btn btn-outline-primary" @onclick="LoadUsersAsync">再読み込み</button>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="status">@successMessage</div>
+    }
+
+    <section class="article-panel mb-4">
+        <h2 class="h5 mb-3">ユーザー追加</h2>
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label" for="new-email">メールアドレス</label>
+                <input id="new-email" class="form-control" type="email" autocomplete="off" @bind="createForm.Email" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="new-display-name">表示名</label>
+                <input id="new-display-name" class="form-control" @bind="createForm.DisplayName" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="new-password">初期パスワード</label>
+                <input id="new-password" class="form-control" type="password" autocomplete="new-password" @bind="createForm.Password" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="new-role">ロール</label>
+                <select id="new-role" class="form-select" @bind="createForm.Role">
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check">
+                    <input id="new-enabled" class="form-check-input" type="checkbox" @bind="createForm.IsEnabled" />
+                    <label class="form-check-label" for="new-enabled">有効</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="new-monthly-limit">月間上限</label>
+                <input id="new-monthly-limit" class="form-control" type="number" min="0" @bind="createForm.MonthlyLimitChars" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="new-outline-count">残り構成数</label>
+                <input id="new-outline-count" class="form-control" type="number" min="0" @bind="createForm.RemainingOutlineCount" />
+            </div>
+            <div class="col-md-3">
+                <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="CreateUserAsync">追加</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="article-panel mb-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="admin-user-search">検索</label>
+                <input id="admin-user-search" class="form-control" @bind="searchQuery" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="admin-role-filter">ロール</label>
+                <select id="admin-role-filter" class="form-select" @bind="roleFilter">
+                    <option value="">すべて</option>
+                    <option value="Admin">Admin</option>
+                    <option value="User">User</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="admin-enabled-filter">有効状態</label>
+                <select id="admin-enabled-filter" class="form-select" @bind="enabledFilter">
+                    <option value="">すべて</option>
+                    <option value="true">有効</option>
+                    <option value="false">無効</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="admin-page-size">表示件数</label>
+                <select id="admin-page-size" class="form-select" @bind="pageSize">
+                    <option value="10">10件</option>
+                    <option value="30">30件</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-primary w-100" @onclick="SearchAsync">検索</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="text-muted">@users.TotalCount 件</div>
+        @if (isLoading)
+        {
+            <div class="text-muted">読み込み中</div>
+        }
+    </div>
+
+    <div class="table-responsive article-table-wrap mb-3">
+        <table class="table table-sm align-middle article-table admin-user-table">
+            <thead>
+                <tr>
+                    <th>メールアドレス</th>
+                    <th>表示名</th>
+                    <th>ロール</th>
+                    <th>有効</th>
+                    <th>月間上限</th>
+                    <th>残り構成数</th>
+                    <th>最終ログイン</th>
+                    <th class="text-end">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (rows.Count == 0 && !isLoading)
+                {
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">ユーザーはありません</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var row in rows)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@row.Email</div>
+                                <div class="text-muted small">@row.Id</div>
+                            </td>
+                            <td><input class="form-control form-control-sm" @bind="row.DisplayName" /></td>
+                            <td>
+                                <select class="form-select form-select-sm" @bind="row.Role">
+                                    <option value="User">User</option>
+                                    <option value="Admin">Admin</option>
+                                </select>
+                            </td>
+                            <td class="text-center">
+                                <input class="form-check-input" type="checkbox" @bind="row.IsEnabled" />
+                            </td>
+                            <td><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.MonthlyLimitChars" /></td>
+                            <td><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.RemainingOutlineCount" /></td>
+                            <td class="text-nowrap">@ToDisplayDate(row.LastLoginAt)</td>
+                            <td>
+                                <div class="admin-user-actions">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" disabled="@isSubmitting" @onclick="() => SaveUserAsync(row)">保存</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@isSubmitting" @onclick="() => ChangeRoleAsync(row)">ロール保存</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" disabled="@IsDeleteDisabled(row)" @onclick="() => ConfirmDelete(row)">削除</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <button type="button" class="btn btn-outline-secondary" disabled="@(!users.HasPrevious)" @onclick="() => GoToPage(users.Page - 1)">前へ</button>
+        <span>@users.Page / @Math.Max(users.TotalPages, 1)</span>
+        <button type="button" class="btn btn-outline-secondary" disabled="@(!users.HasNext)" @onclick="() => GoToPage(users.Page + 1)">次へ</button>
+    </div>
+
+    <section class="article-panel">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 mb-0">監査ログ</h2>
+            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="LoadAuditLogsAsync">再読み込み</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>日時</th>
+                        <th>操作</th>
+                        <th>実行者</th>
+                        <th>対象</th>
+                        <th>概要</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (auditLogs.Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">監査ログはありません</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var log in auditLogs.Items)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@ToDisplayDate(log.CreatedAt)</td>
+                                <td><span class="badge text-bg-light">@log.Action</span></td>
+                                <td class="admin-id-cell">@log.AdminUserId</td>
+                                <td class="admin-id-cell">@(log.TargetUserId ?? log.TargetUserIdSnapshot)</td>
+                                <td class="admin-audit-summary">@log.Summary</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    @if (deleteTarget is not null)
+    {
+        <div class="article-dialog-backdrop">
+            <section class="article-dialog" role="dialog" aria-modal="true">
+                <h2 class="h5">ユーザーを削除</h2>
+                <p class="mb-2">@deleteTarget.Email</p>
+                <p class="text-muted">
+                    対象ユーザーに紐づく記事、ジョブ、検索結果、WordPress連携、通知設定、利用履歴、監査ログを物理削除します。
+                </p>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete">キャンセル</button>
+                    <button type="button" class="btn btn-danger" disabled="@isSubmitting" @onclick="DeleteUserAsync">削除</button>
+                </div>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? QueryPage { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pageSize")]
+    public int? QueryPageSize { get; set; }
+
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? QuerySearch { get; set; }
+
+    [SupplyParameterFromQuery(Name = "role")]
+    public string? QueryRole { get; set; }
+
+    [SupplyParameterFromQuery(Name = "enabled")]
+    public string? QueryEnabled { get; set; }
+
+    private AdminUserListResponse users = new([], 1, 10, 0, 0, false, false);
+    private AdminAuditLogListResponse auditLogs = new([], 1, 10, 0, 0, false, false);
+    private readonly CreateUserForm createForm = new();
+    private readonly List<UserRowState> rows = [];
+    private string? currentUserId;
+    private string? searchQuery;
+    private string? roleFilter;
+    private string? enabledFilter;
+    private int pageSize = 10;
+    private bool isLoading;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string? successMessage;
+    private UserRowState? deleteTarget;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        searchQuery = QuerySearch;
+        roleFilter = QueryRole;
+        enabledFilter = QueryEnabled;
+        pageSize = QueryPageSize is 30 ? 30 : 10;
+
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        await LoadUsersAsync(QueryPage ?? 1);
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        await LoadUsersAsync(users.Page);
+    }
+
+    private async Task LoadUsersAsync(int page)
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            users = await AdminUserService.ListUsersAsync(
+                new AdminUserListQuery(
+                    page,
+                    pageSize,
+                    searchQuery,
+                    roleFilter,
+                    ParseEnabled(enabledFilter),
+                    Sort: "createdAt",
+                    Direction: "desc"));
+
+            rows.Clear();
+            rows.AddRange(users.Items.Select(UserRowState.FromResponse));
+        }
+        catch (Exception)
+        {
+            errorMessage = "ユーザー一覧を取得できませんでした。";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadAuditLogsAsync()
+    {
+        auditLogs = await AdminUserService.ListAuditLogsAsync(
+            new AdminAuditLogQuery(
+                Page: 1,
+                PageSize: 10,
+                TargetUserId: null,
+                Action: null,
+                From: null,
+                To: null));
+    }
+
+    private Task SearchAsync()
+    {
+        NavigationManager.NavigateTo(BuildListUrl(1));
+        return Task.CompletedTask;
+    }
+
+    private void GoToPage(int page)
+    {
+        NavigationManager.NavigateTo(BuildListUrl(page));
+    }
+
+    private string BuildListUrl(int page)
+    {
+        var query = new List<string>
+        {
+            $"page={page}",
+            $"pageSize={pageSize}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            query.Add($"q={Uri.EscapeDataString(searchQuery)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(roleFilter))
+        {
+            query.Add($"role={Uri.EscapeDataString(roleFilter)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enabledFilter))
+        {
+            query.Add($"enabled={Uri.EscapeDataString(enabledFilter)}");
+        }
+
+        return $"/admin/users?{string.Join("&", query)}";
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var actor = GetActor();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var result = await AdminUserService.CreateUserAsync(
+            new CreateAdminUserCommand(
+                actor,
+                createForm.Email,
+                createForm.DisplayName,
+                createForm.Password,
+                createForm.Role,
+                createForm.IsEnabled,
+                createForm.MonthlyLimitChars,
+                createForm.RemainingOutlineCount));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        successMessage = "ユーザーを作成しました。";
+        createForm.Reset();
+        await LoadUsersAsync(1);
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task SaveUserAsync(UserRowState row)
+    {
+        var actor = GetActor();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var updateResult = await AdminUserService.UpdateUserAsync(
+            new UpdateAdminUserCommand(actor, row.Id, row.DisplayName, row.IsEnabled));
+
+        if (!updateResult.Succeeded)
+        {
+            isSubmitting = false;
+            errorMessage = GetServiceErrorMessage(updateResult.Error, updateResult.ValidationErrors);
+            return;
+        }
+
+        var usageResult = await AdminUserService.UpdateUsageLimitAsync(
+            new UpdateAdminUserUsageLimitCommand(
+                actor,
+                row.Id,
+                row.MonthlyLimitChars,
+                row.RemainingOutlineCount));
+
+        isSubmitting = false;
+
+        if (!usageResult.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(usageResult.Error, usageResult.ValidationErrors);
+            return;
+        }
+
+        successMessage = "ユーザー情報を保存しました。";
+        await LoadUsersAsync(users.Page);
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task ChangeRoleAsync(UserRowState row)
+    {
+        var actor = GetActor();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var result = await AdminUserService.UpdateRoleAsync(
+            new UpdateAdminUserRoleCommand(actor, row.Id, row.Role));
+
+        isSubmitting = false;
+
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        successMessage = "ロールを保存しました。";
+        await LoadUsersAsync(users.Page);
+        await LoadAuditLogsAsync();
+    }
+
+    private void ConfirmDelete(UserRowState row)
+    {
+        deleteTarget = row;
+    }
+
+    private void CancelDelete()
+    {
+        deleteTarget = null;
+    }
+
+    private async Task DeleteUserAsync()
+    {
+        var actor = GetActor();
+        if (actor is null || deleteTarget is null)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearMessages();
+
+        var result = await AdminUserService.DeleteUserAsync(actor, deleteTarget.Id);
+        isSubmitting = false;
+        deleteTarget = null;
+
+        if (!result.Succeeded)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        successMessage = "ユーザーを削除しました。";
+        await LoadUsersAsync(users.Page);
+        await LoadAuditLogsAsync();
+    }
+
+    private bool IsDeleteDisabled(UserRowState row)
+    {
+        return isSubmitting
+            || string.Equals(currentUserId, row.Id, StringComparison.Ordinal)
+            || (row.Role == "Admin" && users.Items.Count(item => item.Role == "Admin" && item.IsEnabled) <= 1);
+    }
+
+    private AdminUserActor? GetActor()
+    {
+        return string.IsNullOrWhiteSpace(currentUserId) ? null : new AdminUserActor(currentUserId);
+    }
+
+    private void ClearMessages()
+    {
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private static bool? ParseEnabled(string? value)
+    {
+        return bool.TryParse(value, out var enabled) ? enabled : null;
+    }
+
+    private static string ToDisplayDate(DateTimeOffset? value)
+    {
+        return value.HasValue ? $"{value.Value.ToLocalTime():yyyy/M/d HH:mm}" : "-";
+    }
+
+    private static string GetServiceErrorMessage(
+        AdminUserServiceError error,
+        IReadOnlyList<AdminUserValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            AdminUserServiceError.NotFound => "対象ユーザーが見つかりません。",
+            AdminUserServiceError.LastAdminUser => "最後のAdminユーザーは降格、無効化、削除できません。",
+            AdminUserServiceError.SelfOperationNotAllowed => "管理画面から自分自身は削除できません。",
+            AdminUserServiceError.RunningJobExists => "実行中ジョブがあるため削除できません。",
+            AdminUserServiceError.RoleNotFound => "ロール設定が見つかりません。",
+            _ => "ユーザー管理操作に失敗しました。"
+        };
+    }
+
+    private sealed class CreateUserForm
+    {
+        public string Email { get; set; } = string.Empty;
+
+        public string? DisplayName { get; set; }
+
+        public string Password { get; set; } = string.Empty;
+
+        public string Role { get; set; } = "User";
+
+        public bool IsEnabled { get; set; } = true;
+
+        public int MonthlyLimitChars { get; set; } = 200000;
+
+        public int RemainingOutlineCount { get; set; } = 40;
+
+        public void Reset()
+        {
+            Email = string.Empty;
+            DisplayName = null;
+            Password = string.Empty;
+            Role = "User";
+            IsEnabled = true;
+            MonthlyLimitChars = 200000;
+            RemainingOutlineCount = 40;
+        }
+    }
+
+    private sealed class UserRowState
+    {
+        public string Id { get; init; } = string.Empty;
+
+        public string? Email { get; init; }
+
+        public string? DisplayName { get; set; }
+
+        public string Role { get; set; } = "User";
+
+        public bool IsEnabled { get; set; }
+
+        public int MonthlyLimitChars { get; set; }
+
+        public int RemainingOutlineCount { get; set; }
+
+        public DateTimeOffset? LastLoginAt { get; init; }
+
+        public static UserRowState FromResponse(AdminUserResponse response)
+        {
+            return new UserRowState
+            {
+                Id = response.Id,
+                Email = response.Email,
+                DisplayName = response.DisplayName,
+                Role = response.Role,
+                IsEnabled = response.IsEnabled,
+                MonthlyLimitChars = response.MonthlyLimitChars,
+                RemainingOutlineCount = response.RemainingOutlineCount,
+                LastLoginAt = response.LastLoginAt
+            };
+        }
+    }
+}
