@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Infrastructure.BackgroundJobs;
 using WebWritingTool.Infrastructure.Search;
+using WebWritingTool.Web.HealthChecks;
 
 namespace WebWritingTool.Web.BackgroundJobs;
 
@@ -9,21 +10,27 @@ public sealed class SearchCacheCleanupWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<BackgroundJobOptions> options,
     ILogger<SearchCacheCleanupWorker> logger,
-    ISecretMasker secretMasker)
+    ISecretMasker secretMasker,
+    BackgroundWorkerHealthState healthState)
     : BackgroundService
 {
+    private const string WorkerName = nameof(SearchCacheCleanupWorker);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled)
         {
+            healthState.MarkDisabled(WorkerName);
             logger.LogInformation("Search cache cleanup worker is disabled.");
             return;
         }
 
+        healthState.MarkStarted(WorkerName);
         logger.LogInformation("Search cache cleanup worker started.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            healthState.MarkHeartbeat(WorkerName);
             try
             {
                 await CleanupAsync(stoppingToken);
@@ -43,6 +50,7 @@ public sealed class SearchCacheCleanupWorker(
             await DelayAsync(stoppingToken);
         }
 
+        healthState.MarkStopped(WorkerName);
         logger.LogInformation("Search cache cleanup worker stopped.");
     }
 

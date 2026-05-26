@@ -218,14 +218,18 @@ Data ProtectionキーはCookie認証と暗号化保存に影響する。producti
 | AIモデル設定 | `AiModelSettings` | No | 利用可能モデルの管理 |
 | ユーザー利用上限 | `UserUsageLimits` | No | 管理者が更新 |
 
-## 8. `.env.example`
+## 8. `.env.example` / `.env.production.example`
 
-`.env.example` にはキーとダミー値のみを置く。
+`.env.example` はローカル開発用、`.env.production.example` は本番/配置用Docker Compose用とする。
+どちらにもキーとダミー値のみを置き、実値を含めない。
 
 ```dotenv
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:8080
 App__BaseUrl=https://example.com
+CADDY_SITE_ADDRESS=example.com
+CADDY_HTTP_PORT=80
+CADDY_HTTPS_PORT=443
 
 POSTGRES_DB=web_writing_tool
 POSTGRES_USER=web_writing_tool
@@ -261,12 +265,14 @@ BackgroundJobs__SearchCacheCleanupIntervalMinutes=60
 
 Security__DataProtectionKeysPath=/var/app/keys
 Security__RequireHttps=true
-Security__CookieSecurePolicy=Always
+Security__ForwardedHeadersEnabled=true
+Security__AllowedForwardedHosts__0=example.com
 
 AdminSeed__Email=admin@example.com
 AdminSeed__Password=change-me
 ```
 
+ローカル開発用 `.env.example` では `ASPNETCORE_ENVIRONMENT=Development`、`SearchCache__Policy=dev`、`Security__RequireHttps=false` を既定にする。
 実値を含む `.env` はGit管理しない。
 
 ## 9. `appsettings.json` に置いてよい値
@@ -348,6 +354,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secr
 - `Program.cs` の設定バインド
 - `appsettings*.json`
 - `.env.example`
+- `.env.production.example`
 - Docker Compose
 - CI設定
 - [docs/environment-setup.md](environment-setup.md)
