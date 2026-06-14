@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
+using WebWritingTool.Domain.Jobs;
 using WebWritingTool.E2ETests.Support;
 using static Microsoft.Playwright.Assertions;
 
@@ -10,6 +11,248 @@ namespace WebWritingTool.E2ETests.Flows;
 [Trait("Category", "E2E")]
 public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
 {
+    [Fact]
+    public async Task E2E001_Login_WithAdminCredentials_NavigatesToArticleList()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E001_Login_WithAdminCredentials_NavigatesToArticleList));
+        var page = session.Page;
+
+        try
+        {
+            await LoginAsync(page);
+
+            Assert.Contains("/articles", page.Url, StringComparison.Ordinal);
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "記事作成" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Link, new() { Name = "記事を作成" })).ToBeVisibleAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E002_ArticleListSearch_FiltersMatchingArticles()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E002_ArticleListSearch_FiltersMatchingArticles));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var scenario = await fixture.SeedArticleSearchScenarioAsync(suffix);
+
+        try
+        {
+            await LoginAsync(page);
+            await SearchArticleAsync(page, scenario.MatchingTitle);
+
+            await Expect(page.Locator("tbody tr").Filter(new LocatorFilterOptions { HasText = scenario.MatchingTitle }))
+                .ToHaveCountAsync(1);
+            await Expect(page.GetByText(scenario.OtherTitle)).ToHaveCountAsync(0);
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E003_BulkCreate_CreatesMultipleArticles()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E003_BulkCreate_CreatesMultipleArticles));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keywordOnly = $"e2e-bulk-keyword-{suffix}";
+        var titledKeyword = $"e2e-bulk-titled-{suffix}";
+        var title = $"E2E一括登録タイトル {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles");
+            await WaitForInteractiveRenderAsync(page);
+
+            await page.GetByRole(AriaRole.Button, new() { Name = "一括作成" }).ClickAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "一括作成" })).ToBeVisibleAsync();
+            await FillAndChangeAsync(page.Locator("#bulk-lines"), $"{keywordOnly}\n{titledKeyword}|{title}");
+            await page.Locator("#bulk-outline-method").SelectOptionAsync("Keyword");
+            await page.Locator("#bulk-search").SetCheckedAsync(false);
+            await page.GetByRole(AriaRole.Button, new() { Name = "登録" }).ClickAsync();
+
+            await Expect(page.GetByText("2件の記事を登録しました。")).ToBeVisibleAsync();
+
+            await SearchArticleAsync(page, title);
+            await Expect(page.GetByText(title)).ToBeVisibleAsync();
+
+            await SearchArticleAsync(page, keywordOnly);
+            await Expect(page.GetByText(keywordOnly)).ToBeVisibleAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E004_CreateArticle_ThenRegistersOutlineGenerationJob()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E004_CreateArticle_ThenRegistersOutlineGenerationJob));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-create-keyword-{suffix}";
+        var title = $"E2E記事作成 {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            var articleId = await CreateArticleAsync(page, keyword, title);
+            await EnqueueOutlineGenerationAsync(page, articleId, keyword, title);
+
+            Assert.Equal(1, await fixture.GetJobCountAsync(articleId, JobType.OutlineGeneration));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005_TitleCandidates_RegistersGenerationJobAndPinsCurrentDisabledUi()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005_TitleCandidates_RegistersGenerationJobAndPinsCurrentDisabledUi));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-keyword-{suffix}";
+        var title = $"E2Eタイトル候補元 {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" })).ToBeDisabledAsync();
+
+            var articleId = await CreateArticleAsync(page, keyword, title);
+            var response = await PostJsonAsync(
+                page,
+                $"/api/articles/{articleId}/generation/title-candidates",
+                new
+                {
+                    keyword,
+                    titleMethod = "Ai",
+                    generationModel = "gemini-3.5-flash",
+                    candidateCount = 3,
+                    suggestedKeywords = (string?)null,
+                    relatedKeywords = (string?)null,
+                    additionalPrompt = (string?)null
+                });
+
+            Assert.Equal(202, response.Status);
+            using var payload = JsonDocument.Parse(response.Body);
+            Assert.Equal("TitleGeneration", payload.RootElement.GetProperty("jobType").GetString());
+            Assert.Equal("Queued", payload.RootElement.GetProperty("status").GetString());
+            Assert.Equal(1, await fixture.GetJobCountAsync(articleId, JobType.TitleGeneration));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E006And007_EditGeneratedContentAndConvertHtml_ShowsPreview()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E006And007_EditGeneratedContentAndConvertHtml_ShowsPreview));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-edit-keyword-{suffix}";
+        var title = $"E2E編集記事 {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            var articleId = await CreateArticleAsync(page, keyword, title);
+            await EditGeneratedContentAsync(page);
+
+            await page.GotoAsync($"/articles/{articleId}/preview");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = title })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "E2E見出し" })).ToBeVisibleAsync();
+            await Expect(page.GetByText("E2E本文です。ブラウザ経由で保存される本文です。")).ToBeVisibleAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E008_WordpressPostDialog_RegistersPostJob()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E008_WordpressPostDialog_RegistersPostJob));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var scenario = await fixture.SeedWordpressPostScenarioAsync(suffix);
+
+        try
+        {
+            await LoginAsync(page);
+            await CreateWordpressSiteViaSettingsAsync(page, suffix);
+            await SearchArticleAsync(page, scenario.ArticleTitle);
+
+            var articleRow = page.Locator("tbody tr").Filter(new LocatorFilterOptions { HasText = scenario.ArticleTitle });
+            await articleRow.GetByRole(AriaRole.Button, new() { Name = "投稿" }).ClickAsync();
+
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(dialog.GetByRole(AriaRole.Heading, new() { Name = "WordPress投稿" })).ToBeVisibleAsync();
+            await Expect(dialog.Locator("#post-title")).ToHaveValueAsync(scenario.ArticleTitle);
+            await Expect(dialog.Locator("#post-status")).ToHaveValueAsync("Draft");
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "投稿ジョブ登録" }).ClickAsync();
+
+            await Expect(page.GetByText("WordPress投稿ジョブを登録しました。")).ToBeVisibleAsync();
+            Assert.Equal(1, await fixture.GetJobCountAsync(scenario.ArticleId, JobType.WordpressPost));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E009_NotificationSettings_SavesAndSendsTestNotification()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E009_NotificationSettings_SavesAndSendsTestNotification));
+        var page = session.Page;
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/settings");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "設定" })).ToBeVisibleAsync();
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(
+                page.Locator("#discord-webhook-url"),
+                "https://discord.com/api/webhooks/e2e-token/e2e-secret");
+            await page.Locator("#discord-enabled").SetCheckedAsync(true);
+            await page.GetByRole(AriaRole.Button, new() { Name = "保存" }).ClickAsync();
+            await Expect(page.GetByText("Discord通知設定を保存しました。")).ToBeVisibleAsync();
+
+            await page.GetByRole(AriaRole.Button, new() { Name = "送信テスト" }).ClickAsync();
+            await Expect(page.GetByText("通知を送信しました。")).ToBeVisibleAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
     [Fact]
     public async Task MajorScreens_CompleteSmokeFlow()
     {
@@ -42,16 +285,159 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task E2E010_Authorization_NonAdminUserOpensAnotherUsersArticle_ShowsNotFound()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E010_Authorization_NonAdminUserOpensAnotherUsersArticle_ShowsNotFound));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var scenario = await fixture.SeedArticleAccessScenarioAsync(suffix);
+
+        try
+        {
+            await LoginAsync(page, scenario.ViewerEmail, E2ETestFixture.StandardUserPassword);
+
+            await Expect(page.GetByRole(AriaRole.Link, new() { Name = "ユーザー管理" })).ToHaveCountAsync(0);
+
+            await page.GotoAsync("/articles");
+            await WaitForInteractiveRenderAsync(page);
+            await FillAndChangeAsync(page.Locator("#search-q"), scenario.ArticleTitle);
+            await page.GetByRole(AriaRole.Button, new() { Name = "検索" }).ClickAsync();
+
+            await Expect(page.GetByText("該当する記事はありません")).ToBeVisibleAsync();
+            await Expect(page.GetByText(scenario.ArticleTitle)).ToHaveCountAsync(0);
+
+            await page.GotoAsync($"/articles/{scenario.ArticleId}");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            await Expect(page.GetByText("記事が見つかりません。")).ToBeVisibleAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E011_WritingProfileSettings_CanBeSelectedWhenCreatingArticle()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(E2E011_WritingProfileSettings_CanBeSelectedWhenCreatingArticle));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var siteName = $"E2E Writing Profile {suffix}";
+        var keyword = $"e2e-profile-keyword-{suffix}";
+        var title = $"E2Eプロフィール記事 {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await CreateWordpressSiteViaSettingsAsync(
+                page,
+                suffix,
+                siteName,
+                siteAdminProfile: $"管理人プロフィール {suffix}",
+                writingCharacter: $"語り手キャラ {suffix}",
+                readerPersona: $"読者ペルソナ {suffix}");
+
+            await page.GotoAsync("/articles/create");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "記事作成" })).ToBeVisibleAsync();
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await FillAndChangeAsync(page.Locator("#title"), title);
+            var profileValue = await page.Locator("#writing-profile option")
+                .Filter(new LocatorFilterOptions { HasText = siteName })
+                .GetAttributeAsync("value");
+            Assert.False(string.IsNullOrWhiteSpace(profileValue));
+            await page.Locator("#writing-profile").SelectOptionAsync(profileValue);
+            await page.Locator("#outline-method").SelectOptionAsync("Keyword");
+            await page.Locator("#search-mode").SetCheckedAsync(false);
+            await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" }).ClickAsync();
+
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            var match = ArticleUrlPattern().Match(page.Url);
+            Assert.True(match.Success, $"Article detail URL was expected but current URL was {page.Url}.");
+
+            var snapshotJson = await fixture.GetArticleWritingProfileSnapshotJsonAsync(Guid.Parse(match.Groups["id"].Value));
+            Assert.NotNull(snapshotJson);
+            Assert.Contains($"管理人プロフィール {suffix}", snapshotJson, StringComparison.Ordinal);
+            Assert.Contains($"語り手キャラ {suffix}", snapshotJson, StringComparison.Ordinal);
+            Assert.Contains($"読者ペルソナ {suffix}", snapshotJson, StringComparison.Ordinal);
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
     private static async Task LoginAsync(IPage page)
+    {
+        await LoginAsync(page, E2ETestFixture.AdminEmail, E2ETestFixture.AdminPassword);
+    }
+
+    private static async Task LoginAsync(IPage page, string email, string password)
     {
         await page.GotoAsync("/login");
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "ログイン" })).ToBeVisibleAsync();
 
-        await page.Locator("#email").FillAsync(E2ETestFixture.AdminEmail);
-        await page.Locator("#password").FillAsync(E2ETestFixture.AdminPassword);
+        await page.Locator("#email").FillAsync(email);
+        await page.Locator("#password").FillAsync(password);
         await page.GetByRole(AriaRole.Button, new() { Name = "ログイン" }).ClickAsync();
 
         await Expect(page.GetByRole(AriaRole.Link, new() { Name = "記事を作成" })).ToBeVisibleAsync();
+    }
+
+    private static async Task SearchArticleAsync(IPage page, string query)
+    {
+        await page.GotoAsync("/articles");
+        await WaitForInteractiveRenderAsync(page);
+        await FillAndChangeAsync(page.Locator("#search-q"), query);
+        await page.GetByRole(AriaRole.Button, new() { Name = "検索" }).ClickAsync();
+        await WaitForInteractiveRenderAsync(page);
+    }
+
+    private static async Task<string> CreateWordpressSiteViaSettingsAsync(
+        IPage page,
+        string suffix,
+        string? siteName = null,
+        string? siteAdminProfile = null,
+        string? writingCharacter = null,
+        string? readerPersona = null)
+    {
+        var resolvedSiteName = siteName ?? $"E2E WordPress {suffix}";
+        await page.GotoAsync("/settings");
+        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "設定" })).ToBeVisibleAsync();
+        await WaitForInteractiveRenderAsync(page);
+
+        await FillAndChangeAsync(page.Locator("#site-name"), resolvedSiteName);
+        await FillAndChangeAsync(page.Locator("#base-url"), "https://example.com");
+        await FillAndChangeAsync(page.Locator("#login-id"), $"wp-e2e-{suffix}");
+        await FillAndChangeAsync(page.Locator("#app-pass"), $"app-pass-{suffix}");
+        await FillAndChangeAsync(page.Locator("#default-category-id"), "7");
+        await FillAndChangeAsync(page.Locator("#default-category-name"), "E2E");
+
+        if (siteAdminProfile is not null)
+        {
+            await FillAndChangeAsync(page.Locator("#site-admin-profile"), siteAdminProfile);
+        }
+
+        if (writingCharacter is not null)
+        {
+            await FillAndChangeAsync(page.Locator("#writing-character"), writingCharacter);
+        }
+
+        if (readerPersona is not null)
+        {
+            await FillAndChangeAsync(page.Locator("#reader-persona"), readerPersona);
+        }
+
+        await page.GetByRole(AriaRole.Button, new() { Name = "登録" }).ClickAsync();
+        await Expect(page.GetByText("WordPressサイトを登録しました。")).ToBeVisibleAsync();
+        await Expect(page.Locator("tbody tr").Filter(new LocatorFilterOptions { HasText = resolvedSiteName }))
+            .ToHaveCountAsync(1);
+        return resolvedSiteName;
     }
 
     private static async Task<Guid> CreateArticleAsync(IPage page, string keyword, string title)

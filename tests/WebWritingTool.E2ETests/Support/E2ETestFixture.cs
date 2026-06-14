@@ -2,12 +2,16 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Playwright;
 using Testcontainers.PostgreSql;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
+using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Domain.Wordpress;
 using WebWritingTool.Infrastructure.Data;
+using WebWritingTool.Infrastructure.Identity;
 
 namespace WebWritingTool.E2ETests.Support;
 
@@ -15,6 +19,7 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
 {
     public const string AdminEmail = "admin-e2e@example.test";
     public const string AdminPassword = "Change-this-e2e-password-123!";
+    public const string StandardUserPassword = "Change-this-e2e-user-123!";
 
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16")
         .WithDatabase("web_writing_tool_e2e")
@@ -120,6 +125,122 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
         return site.Id;
     }
 
+    public async Task<SeededArticleAccessScenario> SeedArticleAccessScenarioAsync(string suffix)
+    {
+        await using var dbContext = CreateDbContext();
+
+        var owner = CreateStandardUser(
+            $"owner-{suffix}@example.test",
+            $"E2E Owner {suffix}");
+        var viewer = CreateStandardUser(
+            $"viewer-{suffix}@example.test",
+            $"E2E Viewer {suffix}");
+
+        dbContext.Users.AddRange(owner, viewer);
+
+        var userRoleId = await dbContext.Roles
+            .Where(role => role.NormalizedName == ApplicationRoles.User.ToUpperInvariant())
+            .Select(role => role.Id)
+            .SingleAsync();
+
+        dbContext.UserRoles.AddRange(
+            new IdentityUserRole<string>
+            {
+                UserId = owner.Id,
+                RoleId = userRoleId
+            },
+            new IdentityUserRole<string>
+            {
+                UserId = viewer.Id,
+                RoleId = userRoleId
+            });
+
+        var article = new Article
+        {
+            UserId = owner.Id,
+            Keyword = $"e2e-auth-keyword-{suffix}",
+            Title = $"E2E所有者限定記事 {suffix}",
+            Status = ArticleStatus.Draft,
+            Tags = ["e2e-auth"],
+            Memo = "他ユーザーから見えないことを検証するE2Eデータ",
+            GenerationModel = "gemini-3.5-flash",
+            OutlineMethod = "Keyword",
+            SearchMode = false,
+            IsDomesticOnly = true,
+            NotificationMode = "None"
+        };
+
+        dbContext.Articles.Add(article);
+        await dbContext.SaveChangesAsync();
+
+        return new SeededArticleAccessScenario(
+            owner.Email!,
+            viewer.Email!,
+            article.Id,
+            article.Title!);
+    }
+
+    public async Task<SeededArticleSearchScenario> SeedArticleSearchScenarioAsync(string suffix)
+    {
+        await using var dbContext = CreateDbContext();
+        var adminUserId = await GetUserIdByEmailAsync(dbContext, AdminEmail);
+
+        var matching = CreateArticle(
+            adminUserId,
+            $"e2e-search-keyword-{suffix}",
+            $"E2E検索対象記事 {suffix}");
+        matching.Tags = ["e2e-search", suffix];
+        matching.Memo = "検索で表示される記事";
+
+        var other = CreateArticle(
+            adminUserId,
+            $"e2e-other-keyword-{suffix}",
+            $"E2E検索対象外記事 {suffix}");
+        other.Tags = ["e2e-search-other", suffix];
+        other.Memo = "検索で表示されない記事";
+
+        dbContext.Articles.AddRange(matching, other);
+        await dbContext.SaveChangesAsync();
+
+        return new SeededArticleSearchScenario(matching.Title!, other.Title!);
+    }
+
+    public async Task<SeededWordpressPostScenario> SeedWordpressPostScenarioAsync(string suffix)
+    {
+        await using var dbContext = CreateDbContext();
+        var adminUserId = await GetUserIdByEmailAsync(dbContext, AdminEmail);
+
+        var article = CreateArticle(
+            adminUserId,
+            $"e2e-wordpress-keyword-{suffix}",
+            $"E2E WordPress投稿記事 {suffix}");
+        article.Status = ArticleStatus.Completed;
+        article.Body = "## E2E見出し\n\nE2E本文";
+        article.HtmlBody = "<h2>E2E見出し</h2><p>E2E本文</p>";
+        article.CompletedAt = DateTimeOffset.UtcNow;
+
+        dbContext.Articles.Add(article);
+        await dbContext.SaveChangesAsync();
+
+        return new SeededWordpressPostScenario(article.Id, article.Title!);
+    }
+
+    public async Task<int> GetJobCountAsync(Guid articleId, JobType jobType)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.ArticleGenerationJobs.CountAsync(
+            job => job.ArticleId == articleId && job.JobType == jobType);
+    }
+
+    public async Task<string?> GetArticleWritingProfileSnapshotJsonAsync(Guid articleId)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.Articles
+            .Where(article => article.Id == articleId)
+            .Select(article => article.WritingProfileSnapshotJson)
+            .SingleAsync();
+    }
+
     public async Task MarkArticleCompletedAsync(Guid articleId, string htmlBody)
     {
         await using var dbContext = CreateDbContext();
@@ -148,6 +269,52 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             .Options;
 
         return new ApplicationDbContext(options);
+    }
+
+    private static async Task<string> GetUserIdByEmailAsync(ApplicationDbContext dbContext, string email)
+    {
+        return await dbContext.Users
+            .Where(user => user.Email == email)
+            .Select(user => user.Id)
+            .SingleAsync();
+    }
+
+    private static Article CreateArticle(string userId, string keyword, string title)
+    {
+        return new Article
+        {
+            UserId = userId,
+            Keyword = keyword,
+            Title = title,
+            Status = ArticleStatus.Draft,
+            Tags = [],
+            GenerationModel = "gemini-3.5-flash",
+            OutlineMethod = "Keyword",
+            SearchMode = false,
+            IsDomesticOnly = true,
+            NotificationMode = "None"
+        };
+    }
+
+    private static ApplicationUser CreateStandardUser(string email, string displayName)
+    {
+        var normalizedEmail = email.ToUpperInvariant();
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            UserName = email,
+            NormalizedUserName = normalizedEmail,
+            Email = email,
+            NormalizedEmail = normalizedEmail,
+            EmailConfirmed = true,
+            DisplayName = displayName,
+            IsEnabled = true,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            ConcurrencyStamp = Guid.NewGuid().ToString("N")
+        };
+
+        user.PasswordHash = new PasswordHasher<ApplicationUser>().HashPassword(user, StandardUserPassword);
+        return user;
     }
 
     private async Task ApplyMigrationsAsync()
@@ -339,3 +506,17 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
     [GeneratedRegex("[^a-zA-Z0-9_.-]+")]
     private static partial Regex SafeNamePattern();
 }
+
+public sealed record SeededArticleAccessScenario(
+    string OwnerEmail,
+    string ViewerEmail,
+    Guid ArticleId,
+    string ArticleTitle);
+
+public sealed record SeededArticleSearchScenario(
+    string MatchingTitle,
+    string OtherTitle);
+
+public sealed record SeededWordpressPostScenario(
+    Guid ArticleId,
+    string ArticleTitle);

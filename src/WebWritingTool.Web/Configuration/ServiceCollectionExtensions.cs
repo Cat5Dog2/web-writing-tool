@@ -145,7 +145,7 @@ internal static class ServiceCollectionExtensions
         {
             options.HeaderName = CsrfEndpointFilter.HeaderName;
         });
-        services.AddSecurityRateLimiting();
+        services.AddSecurityRateLimiting(environment);
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddSingleton<ISecretMasker, SecretMasker>();
@@ -198,16 +198,30 @@ internal static class ServiceCollectionExtensions
             var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(searchOptions.X.TimeoutSeconds);
         });
-        services.AddHttpClient<IWordpressClient, WordpressClient>((provider, client) =>
+        if (environment.IsEnvironment("Test"))
         {
-            var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
-            client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
-        });
-        services.AddHttpClient<IDiscordNotificationClient, DiscordNotificationClient>((provider, client) =>
+            services.AddSingleton<IWordpressClient, TestWordpressClient>();
+        }
+        else
         {
-            var notificationOptions = provider.GetRequiredService<IOptions<NotificationOptions>>().Value;
-            client.Timeout = TimeSpan.FromSeconds(notificationOptions.TimeoutSeconds);
-        });
+            services.AddHttpClient<IWordpressClient, WordpressClient>((provider, client) =>
+            {
+                var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
+                client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
+            });
+        }
+        if (environment.IsEnvironment("Test"))
+        {
+            services.AddSingleton<IDiscordNotificationClient, TestDiscordNotificationClient>();
+        }
+        else
+        {
+            services.AddHttpClient<IDiscordNotificationClient, DiscordNotificationClient>((provider, client) =>
+            {
+                var notificationOptions = provider.GetRequiredService<IOptions<NotificationOptions>>().Value;
+                client.Timeout = TimeSpan.FromSeconds(notificationOptions.TimeoutSeconds);
+            });
+        }
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
@@ -298,36 +312,40 @@ internal static class ServiceCollectionExtensions
             ?? new SecurityOptions();
     }
 
-    private static IServiceCollection AddSecurityRateLimiting(this IServiceCollection services)
+    private static IServiceCollection AddSecurityRateLimiting(
+        this IServiceCollection services,
+        IWebHostEnvironment environment)
     {
+        var isTest = environment.IsEnvironment("Test");
+
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.Login,
-                permitLimit: 10,
+                permitLimit: isTest ? 100 : 10,
                 TimeSpan.FromMinutes(1),
                 useAuthenticatedUser: false);
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.BulkArticleRegistration,
-                permitLimit: 3,
+                permitLimit: isTest ? 100 : 3,
                 TimeSpan.FromMinutes(1));
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.JobRegistration,
-                permitLimit: 30,
+                permitLimit: isTest ? 100 : 30,
                 TimeSpan.FromMinutes(1));
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.NotificationTest,
-                permitLimit: 5,
+                permitLimit: isTest ? 100 : 5,
                 TimeSpan.FromMinutes(10));
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.WordpressPost,
-                permitLimit: 10,
+                permitLimit: isTest ? 100 : 10,
                 TimeSpan.FromMinutes(1));
         });
 
