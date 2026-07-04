@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
@@ -14,7 +15,8 @@ public sealed class ArticleService(
     ApplicationDbContext dbContext,
     IContentRenderingService contentRenderingService,
     IUrlSafetyValidator urlSafetyValidator,
-    ISecurityRateLimiter securityRateLimiter)
+    ISecurityRateLimiter securityRateLimiter,
+    ITopicRiskClassifier topicRiskClassifier)
     : IArticleCommandService, IArticleQueryService
 {
     private const int DefaultPage = 1;
@@ -217,6 +219,8 @@ public sealed class ArticleService(
             WritingProfileSnapshotJson = writingProfile is null ? null : CreateWritingProfileSnapshotJson(writingProfile)
         };
 
+        ApplyTopicRisk(article);
+
         dbContext.Articles.Add(article);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -317,6 +321,11 @@ public sealed class ArticleService(
             })
             .ToArray();
 
+        foreach (var article in articles)
+        {
+            ApplyTopicRisk(article);
+        }
+
         dbContext.Articles.AddRange(articles);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -399,7 +408,9 @@ public sealed class ArticleService(
         article.Body = normalizedBody;
         article.HtmlBody = sanitizedHtmlBody;
 
-        if (reviewSensitiveValueChanged)
+        var topicRiskEscalated = ApplyTopicRisk(article);
+
+        if (reviewSensitiveValueChanged || topicRiskEscalated)
         {
             article.HumanReviewedAt = null;
             article.HumanReviewedByUserId = null;
@@ -884,6 +895,20 @@ public sealed class ArticleService(
         return await dbContext.WordpressSites.FirstOrDefaultAsync(
             site => site.Id == command.AutoPostWordpressSiteId.Value && site.UserId == command.UserId,
             cancellationToken);
+    }
+
+    private bool ApplyTopicRisk(Article article)
+    {
+        var classification = topicRiskClassifier.Classify(
+            article.Keyword,
+            article.Title,
+            article.Tags.Length == 0 ? null : string.Join(" ", article.Tags),
+            article.Memo,
+            article.SuggestedKeywords,
+            article.RelatedKeywords,
+            article.AdditionalPrompt);
+
+        return article.ApplyTopicRiskEscalation(classification);
     }
 
     private static string CreateWritingProfileSnapshotJson(WordpressSite site)

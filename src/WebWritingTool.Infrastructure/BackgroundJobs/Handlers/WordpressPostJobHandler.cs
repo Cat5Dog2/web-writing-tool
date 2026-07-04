@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Domain.Articles;
@@ -16,7 +17,8 @@ public sealed class WordpressPostJobHandler(
     ApplicationDbContext dbContext,
     IWordpressClient wordpressClient,
     ISecretProtector secretProtector,
-    IContentRenderingService contentRenderingService)
+    IContentRenderingService contentRenderingService,
+    IXPostRehydrationService xPostRehydrationService)
     : IJobHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -115,6 +117,11 @@ public sealed class WordpressPostJobHandler(
                 "投稿HTMLがありません。");
         }
 
+        if (string.Equals(requestedStatus, WordpressPostStatuses.Publish, StringComparison.Ordinal))
+        {
+            await EnsureXRehydrationForPublishAsync(article, history, cancellationToken);
+        }
+
         try
         {
             var result = await wordpressClient.CreatePostAsync(
@@ -173,6 +180,37 @@ public sealed class WordpressPostJobHandler(
                 history.ErrorMessage ?? "WordPress投稿に失敗しました。",
                 ex,
                 ex.RetryAfter);
+        }
+    }
+
+    private async Task EnsureXRehydrationForPublishAsync(
+        Article article,
+        WordpressPost history,
+        CancellationToken cancellationToken)
+    {
+        var postIds = await dbContext.XSearchPosts
+            .Where(post => post.ArticleId == article.Id && post.UserId == article.UserId)
+            .Select(post => post.PostId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (postIds.Count == 0)
+        {
+            return;
+        }
+
+        var topicRiskMode = TopicRiskModeExtensions.ToTopicRiskMode(article.TopicRisk);
+        var result = await xPostRehydrationService.RehydrateCachedPostsAsync(
+            article.UserId,
+            postIds,
+            topicRiskMode,
+            cancellationToken);
+
+        if (result.RehydrationRequired && result.MissingCount > 0)
+        {
+            const string message = "X投稿の再取得に失敗しました。引用内容を確認してください。";
+            await MarkHistoryFailedAsync(history, JobErrorCodes.XRehydrationFailed, message);
+            throw new JobExecutionException(JobErrorCodes.XRehydrationFailed, message);
         }
     }
 

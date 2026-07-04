@@ -6,6 +6,7 @@
 
 @inject IArticleQueryService ArticleQueryService
 @inject IArticleCommandService ArticleCommandService
+@inject IArticleReviewService ArticleReviewService
 @inject IWordpressPostCommandService WordpressPostCommandService
 @inject IWordpressPostQueryService WordpressPostQueryService
 @inject IWordpressSiteQueryService WordpressSiteQueryService
@@ -314,7 +315,10 @@
                     </div>
                     @if (IsPublishBlocked)
                     {
-                        <div class="alert alert-warning">人間確認前の記事は公開投稿できません。下書き投稿は可能です。</div>
+                        <div class="alert alert-warning d-flex justify-content-between align-items-center gap-2">
+                            <span>人間確認前の記事は公開投稿できません。下書き投稿は可能です。</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@isReviewSubmitting" @onclick="CompleteHumanReviewAsync">人間確認を完了</button>
+                        </div>
                     }
                     <div class="mb-3">
                         <label class="form-label" for="post-html">本文HTML</label>
@@ -374,6 +378,7 @@
     private readonly WordpressPostForm postForm = new();
     private bool isPostDialogLoading;
     private bool isPostSubmitting;
+    private bool isReviewSubmitting;
 
     private bool IsPublishBlocked => postPreview?.HumanReviewRequired == true && postPreview.HumanReviewedAt is null;
 
@@ -677,6 +682,43 @@
         successMessage = "WordPress投稿ジョブを登録しました。";
         ClosePostDialog();
         await LoadArticlesAsync(articleList.Page);
+    }
+
+    private async Task CompleteHumanReviewAsync()
+    {
+        if (postTarget is null)
+        {
+            return;
+        }
+
+        var actor = await GetActorAsync();
+        if (actor is null)
+        {
+            return;
+        }
+
+        isReviewSubmitting = true;
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await ArticleReviewService.CompleteHumanReviewAsync(
+            new CompleteHumanReviewCommand(actor, postTarget.Id, null, null));
+
+        isReviewSubmitting = false;
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return;
+        }
+
+        var wordpressActor = await GetWordpressActorAsync();
+        if (wordpressActor is not null)
+        {
+            postPreview = await WordpressPostQueryService.GetPreviewAsync(wordpressActor, postTarget.Id);
+        }
+
+        successMessage = "人間確認を完了しました。公開投稿が可能になりました。";
     }
 
     private void ClearPostForm()

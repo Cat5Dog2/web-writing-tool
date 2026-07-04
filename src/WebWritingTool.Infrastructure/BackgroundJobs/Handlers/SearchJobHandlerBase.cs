@@ -84,17 +84,7 @@ public abstract class SearchJobHandlerBase(
             headingTitle,
             query);
 
-        if (result.Mode == TopicRiskMode.Normal)
-        {
-            return result.Mode;
-        }
-
-        article.StrictMode = true;
-        article.TopicRisk = ToPersistedTopicRisk(result.Mode);
-        if (result.HumanReviewRequired)
-        {
-            article.HumanReviewRequired = true;
-        }
+        article.ApplyTopicRiskEscalation(result);
 
         return result.Mode;
     }
@@ -118,15 +108,5 @@ public abstract class SearchJobHandlerBase(
     protected static string SerializeResult(object result)
     {
         return JsonSerializer.Serialize(result, JsonOptions);
-    }
-
-    private static string ToPersistedTopicRisk(TopicRiskMode mode)
-    {
-        return mode switch
-        {
-            TopicRiskMode.Strict => "strict",
-            TopicRiskMode.ComplianceStrict => "compliance_strict",
-            _ => "normal"
-        };
     }
 }

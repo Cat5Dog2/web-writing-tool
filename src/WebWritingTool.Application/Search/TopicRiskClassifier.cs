@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WebWritingTool.Domain.Articles;
 
 namespace WebWritingTool.Application.Search;
 
@@ -15,6 +16,68 @@ public sealed record TopicRiskClassification(
     string? MatchedCategory,
     string? MatchedKeyword,
     bool HumanReviewRequired);
+
+public static class TopicRiskModeExtensions
+{
+    public const string NormalValue = "normal";
+    public const string StrictValue = "strict";
+    public const string ComplianceStrictValue = "compliance_strict";
+
+    public static string ToPersistedValue(this TopicRiskMode mode)
+    {
+        return mode switch
+        {
+            TopicRiskMode.Strict => StrictValue,
+            TopicRiskMode.ComplianceStrict => ComplianceStrictValue,
+            _ => NormalValue
+        };
+    }
+
+    public static int Rank(this TopicRiskMode mode)
+    {
+        return mode switch
+        {
+            TopicRiskMode.ComplianceStrict => 2,
+            TopicRiskMode.Strict => 1,
+            _ => 0
+        };
+    }
+
+    public static TopicRiskMode ToTopicRiskMode(string? persistedValue)
+    {
+        return persistedValue switch
+        {
+            ComplianceStrictValue => TopicRiskMode.ComplianceStrict,
+            StrictValue => TopicRiskMode.Strict,
+            _ => TopicRiskMode.Normal
+        };
+    }
+}
+
+public static class ArticleTopicRiskExtensions
+{
+    /// <summary>
+    /// 分類結果を記事へ反映する。判定は安全側に倒し、既存より厳しい場合のみ更新する（緩和はしない）。
+    /// </summary>
+    public static bool ApplyTopicRiskEscalation(this Article article, TopicRiskClassification classification)
+    {
+        var currentRank = TopicRiskModeExtensions.ToTopicRiskMode(article.TopicRisk).Rank();
+        var newRank = classification.Mode.Rank();
+        if (newRank == 0 || newRank <= currentRank)
+        {
+            return false;
+        }
+
+        article.StrictMode = true;
+        article.TopicRisk = classification.Mode.ToPersistedValue();
+        if (classification.HumanReviewRequired)
+        {
+            article.HumanReviewRequired = true;
+        }
+
+        return true;
+    }
+}
 
 public interface ITopicRiskClassifier
 {

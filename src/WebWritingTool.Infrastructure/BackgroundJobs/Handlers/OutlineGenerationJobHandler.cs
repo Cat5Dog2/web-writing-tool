@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
@@ -12,9 +13,12 @@ public sealed class OutlineGenerationJobHandler(
     ApplicationDbContext dbContext,
     IAiTextGenerationClient aiClient,
     IOptions<GeminiOptions> geminiOptions,
-    OutlineGenerationPromptBuilder promptBuilder)
+    OutlineGenerationPromptBuilder promptBuilder,
+    ITopicRiskClassifier topicRiskClassifier)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
+    private const int MetaDescriptionMaxLength = 320;
+
     public JobType JobType => JobType.OutlineGeneration;
 
     public async Task<JobExecutionResult> HandleAsync(
@@ -38,7 +42,7 @@ public sealed class OutlineGenerationJobHandler(
         {
             var result = await GenerateAsync(operation, model, prompt, temperature: 0.4, cancellationToken);
             var outline = OutlineGenerationParser.Parse(result.Text);
-            if (outline.Count == 0)
+            if (outline.Headings.Count == 0)
             {
                 throw new JsonException("No outline headings returned.");
             }
@@ -49,7 +53,9 @@ public sealed class OutlineGenerationJobHandler(
                 heading.DeletedAt = now;
             }
 
-            var addedHeadings = AddHeadings(article.Id, outline);
+            var addedHeadings = AddHeadings(article.Id, outline.Headings);
+            ApplyMetaDescription(article, outline.MetaDescription);
+            ApplyTopicRisk(article, outline.Headings);
             article.Status = ArticleStatus.OutlineReady;
             AddSuccessAccounting(job, article, operation, prompt, result);
             await DbContext.SaveChangesAsync(cancellationToken);
@@ -74,6 +80,37 @@ public sealed class OutlineGenerationJobHandler(
             await DbContext.SaveChangesAsync(CancellationToken.None);
             throw ToBadResponseException(ex);
         }
+    }
+
+    private static void ApplyMetaDescription(Article article, string? metaDescription)
+    {
+        var normalized = metaDescription?.Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return;
+        }
+
+        article.MetaDescription = normalized.Length > MetaDescriptionMaxLength
+            ? normalized[..MetaDescriptionMaxLength]
+            : normalized;
+    }
+
+    private void ApplyTopicRisk(Article article, IReadOnlyList<OutlineHeadingItem> outline)
+    {
+        var headingTitles = string.Join(
+            " ",
+            outline.SelectMany(heading => new[] { heading.Title }
+                .Concat(heading.Children.Select(child => child.Title))));
+
+        var classification = topicRiskClassifier.Classify(
+            article.Keyword,
+            article.Title,
+            article.SuggestedKeywords,
+            article.RelatedKeywords,
+            article.AdditionalPrompt,
+            headingTitles);
+
+        article.ApplyTopicRiskEscalation(classification);
     }
 
     private List<ArticleHeading> AddHeadings(

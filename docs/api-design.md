@@ -348,7 +348,7 @@ Request `BulkCreateArticlesRequest`:
 
 | プロパティ | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `lines` | string[] | 必須 | `キーワード`または`キーワード|タイトル` |
+| `lines` | string[] | 必須 | `キーワード`または`キーワード\|タイトル` |
 | `h2Count` | int? | 任意 | 一括設定 |
 | `h3Count` | int? | 任意 | 一括設定 |
 | `isDomesticOnly` | bool | 必須 | 日本国内情報に限定 |

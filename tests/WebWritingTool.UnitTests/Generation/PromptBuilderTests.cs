@@ -63,10 +63,11 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void OutlineGenerationParser_ParsesH2AndH3Hierarchy()
+    public void OutlineGenerationParser_ParsesH2AndH3HierarchyAndMetaDescription()
     {
         const string response = """
             {
+              "metaDescription": "記事の概要を説明するメタディスクリプション。",
               "headings": [
                 {
                   "level": 2,
@@ -80,9 +81,11 @@ public class PromptBuilderTests
             }
             """;
 
-        var headings = OutlineGenerationParser.Parse(response);
+        var outline = OutlineGenerationParser.Parse(response);
 
-        var h2 = Assert.Single(headings);
+        Assert.Equal("記事の概要を説明するメタディスクリプション。", outline.MetaDescription);
+
+        var h2 = Assert.Single(outline.Headings);
         Assert.Equal(2, h2.Level);
         Assert.Equal("概要", h2.Title);
         Assert.Equal(800, h2.TargetLength);

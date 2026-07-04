@@ -79,6 +79,7 @@ app.MapAccountEndpoints();
 app.MapArticleEndpoints();
 app.MapHeadingEndpoints();
 app.MapJobEndpoints();
+app.MapUsageEndpoints();
 app.MapWordpressEndpoints();
 app.MapNotificationEndpoints();
 app.MapAdminEndpoints();
