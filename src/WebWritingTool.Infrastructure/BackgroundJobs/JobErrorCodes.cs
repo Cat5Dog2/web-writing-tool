@@ -13,5 +13,7 @@ public static class JobErrorCodes
     public const string UsageLimitExceeded = "UsageLimitExceeded";
     public const string NotFound = "NotFound";
     public const string Conflict = "Conflict";
+    public const string XRehydrationRequired = "XRehydrationRequired";
+    public const string XRehydrationFailed = "XRehydrationFailed";
     public const string UnknownError = "UnknownError";
 }

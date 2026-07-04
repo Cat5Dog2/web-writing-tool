@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Domain.Articles;
@@ -16,7 +17,8 @@ public sealed class WordpressPostJobHandler(
     ApplicationDbContext dbContext,
     IWordpressClient wordpressClient,
     ISecretProtector secretProtector,
-    IContentRenderingService contentRenderingService)
+    IContentRenderingService contentRenderingService,
+    IXPostRehydrationService xPostRehydrationService)
     : IJobHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -117,6 +119,11 @@ public sealed class WordpressPostJobHandler(
 
         try
         {
+            if (string.Equals(requestedStatus, WordpressPostStatuses.Publish, StringComparison.Ordinal))
+            {
+                await EnsureXRehydrationForPublishAsync(article, history, htmlBody, cancellationToken);
+            }
+
             var result = await wordpressClient.CreatePostAsync(
                 new WordpressPostRequest(
                     new WordpressSiteConnection(
@@ -173,6 +180,36 @@ public sealed class WordpressPostJobHandler(
                 history.ErrorMessage ?? "WordPress投稿に失敗しました。",
                 ex,
                 ex.RetryAfter);
+        }
+    }
+
+    private async Task EnsureXRehydrationForPublishAsync(
+        Article article,
+        WordpressPost history,
+        string htmlBody,
+        CancellationToken cancellationToken)
+    {
+        var postIds = XPostCitationParser.ExtractPostIds(htmlBody);
+
+        if (postIds.Count == 0)
+        {
+            return;
+        }
+
+        var topicRiskMode = TopicRiskModeExtensions.ToTopicRiskMode(article.TopicRisk);
+        var result = await xPostRehydrationService.RehydrateCachedPostsAsync(
+            article.UserId,
+            postIds,
+            topicRiskMode,
+            cancellationToken);
+
+        if (result.RehydrationRequired
+            && (result.MissingCount > 0 || result.ChangedCount > 0))
+        {
+            article.InvalidateHumanReview();
+            const string message = "X投稿が更新、削除、または取得不能です。引用内容を確認してください。";
+            await MarkHistoryFailedAsync(history, JobErrorCodes.XRehydrationFailed, message);
+            throw new JobExecutionException(JobErrorCodes.XRehydrationFailed, message);
         }
     }
 

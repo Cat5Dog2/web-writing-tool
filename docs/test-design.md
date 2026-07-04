@@ -141,7 +141,7 @@ tests/
 | テストID | 対象 | 観点 |
 | --- | --- | --- |
 | `UT-APP-001` | 一括登録パーサー | `キーワード`形式 |
-| `UT-APP-002` | 一括登録パーサー | `キーワード|タイトル`形式 |
+| `UT-APP-002` | 一括登録パーサー | `キーワード\|タイトル`形式 |
 | `UT-APP-003` | 一括登録パーサー | 空行、不正行、重複 |
 | `UT-APP-004` | 構成生成回数判定 | 残数あり |
 | `UT-APP-005` | 構成生成回数判定 | 残数なし |
@@ -194,6 +194,8 @@ tests/
 | `IT-API-009` | `DELETE /api/articles/{articleId}` | Queuedジョブあり | 204、QueuedジョブがCanceled |
 | `IT-API-010` | `POST /api/articles/{articleId}/human-review` | 人間確認完了 | 200、HumanReviewedAtと確認者が保存される |
 | `IT-API-011` | `PUT /api/articles/{articleId}` | 確認後に本文更新 | HumanReviewedAtがNULLへ戻る |
+| `IT-API-012` | `POST /api/articles/{articleId}/human-review` | 他ユーザー記事 | 403または404 |
+| `IT-API-013` | `POST /api/articles/{articleId}/human-review` | 古いRowVersion | 409 |
 
 ### 8.3 Headings API
 
@@ -377,6 +379,10 @@ tests/
 | `IT-JOB-078` | normal判定 | 一般SEO、ハウツー、技術メモはnormalになる |
 | `IT-JOB-079` | 除外キーワード | 除外キーワードに一致した場合は過剰なstrict判定を避ける |
 | `IT-JOB-080` | 辞書更新 | YAML/JSON更新後の判定結果が期待通りになる |
+| `IT-JOB-081` | X引用対象選定 | 公開HTML内の引用Post IDだけを再hydrationする |
+| `IT-JOB-082` | X引用編集検知 | 編集または削除を検知した場合は公開失敗、確認済み状態解除 |
+| `IT-JOB-083` | X再取得分割 | 101件以上を100件単位で分割して再取得する |
+| `IT-JOB-084` | X再取得外部失敗 | 投稿履歴へ失敗を保存しRetryAfterをジョブへ引き継ぐ |
 
 ## 11. 外部APIモック設計
 

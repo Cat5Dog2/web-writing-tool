@@ -38,6 +38,20 @@ public sealed record JobStatusResponse(
 
 public sealed record JobCancelResponse(Guid Id, string Status);
 
+public sealed record ArticleJobListQuery(
+    Guid ArticleId,
+    string? Status,
+    string? JobType);
+
+public sealed record ArticleJobListItemResponse(
+    Guid Id,
+    string JobType,
+    string Status,
+    DateTimeOffset QueuedAt,
+    DateTimeOffset? FinishedAt);
+
+public sealed record ArticleJobListResponse(IReadOnlyList<ArticleJobListItemResponse> Items);
+
 public enum JobServiceError
 {
     None,

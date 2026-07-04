@@ -47,6 +47,14 @@ public static class ArticleEndpoints
             .WithName("DeleteArticle")
             .WithSummary("記事を論理削除します。");
 
+        api.MapPost("/{articleId:guid}/human-review", CompleteHumanReviewAsync)
+            .WithName("CompleteHumanReview")
+            .WithSummary("記事の人間確認を完了します。");
+
+        api.MapGet("/{articleId:guid}/jobs", GetArticleJobsAsync)
+            .WithName("GetArticleJobs")
+            .WithSummary("記事に紐づくジョブ一覧を取得します。");
+
         api.MapPost("/{articleId:guid}/generation/title-candidates", GenerateTitleCandidatesAsync)
             .RequireRateLimiting(SecurityRateLimitPolicyNames.JobRegistration)
             .WithName("GenerateTitleCandidates")
@@ -268,6 +276,53 @@ public static class ArticleEndpoints
         return result.Succeeded
             ? Results.NoContent()
             : ToProblemResult(result.Error, result.ValidationErrors);
+    }
+
+    private static async Task<IResult> CompleteHumanReviewAsync(
+        Guid articleId,
+        [FromBody] CompleteHumanReviewRequest request,
+        ClaimsPrincipal principal,
+        IArticleReviewService articleReviewService,
+        CancellationToken cancellationToken)
+    {
+        var actor = GetActor(principal);
+        if (actor is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await articleReviewService.CompleteHumanReviewAsync(
+            new CompleteHumanReviewCommand(
+                actor,
+                articleId,
+                request.ReviewComment,
+                request.RowVersion),
+            cancellationToken);
+
+        return result.Succeeded && result.Value is not null
+            ? Results.Ok(result.Value)
+            : ToProblemResult(result.Error, result.ValidationErrors);
+    }
+
+    private static async Task<IResult> GetArticleJobsAsync(
+        Guid articleId,
+        [AsParameters] ArticleJobListRequest request,
+        ClaimsPrincipal principal,
+        IJobQueryService jobQueryService,
+        CancellationToken cancellationToken)
+    {
+        var actor = GetJobActor(principal);
+        if (actor is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var response = await jobQueryService.ListForArticleAsync(
+            actor,
+            new ArticleJobListQuery(articleId, request.Status, request.JobType),
+            cancellationToken);
+
+        return response is null ? Results.NotFound() : Results.Ok(response);
     }
 
     private static Task<IResult> GenerateTitleCandidatesAsync(
@@ -657,4 +712,13 @@ public static class ArticleEndpoints
         string? AdditionalPrompt);
 
     private sealed record ConvertArticleHtmlRequest(bool InsertLineBreakAfterPeriod);
+
+    private sealed record CompleteHumanReviewRequest(string? ReviewComment, string? RowVersion);
+
+    private sealed class ArticleJobListRequest
+    {
+        public string? Status { get; init; }
+
+        public string? JobType { get; init; }
+    }
 }

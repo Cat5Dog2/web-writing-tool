@@ -203,6 +203,18 @@ public sealed record UpdateArticleCommand(
     string? HtmlBody,
     string? RowVersion);
 
+public sealed record CompleteHumanReviewCommand(
+    ArticleActor Actor,
+    Guid ArticleId,
+    string? ReviewComment,
+    string? RowVersion);
+
+public sealed record HumanReviewResponse(
+    Guid ArticleId,
+    bool HumanReviewRequired,
+    DateTimeOffset? HumanReviewedAt,
+    string? HumanReviewedByUserId);
+
 public sealed record ArticleFormOptionsResponse(
     IReadOnlyList<ArticleGenerationModelOption> GenerationModels,
     IReadOnlyList<WritingProfileOption> WritingProfiles);

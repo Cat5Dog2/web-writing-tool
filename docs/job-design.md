@@ -493,7 +493,7 @@ Worker分離の判断条件:
 - 既存のX投稿検索結果は保持する。
 - 記事ステータスは原則変更しない。
 
-X投稿を記事内で引用する場合は、WordPress投稿前に再hydrationして削除、非公開化、編集の有無を確認する。
+X投稿を記事内で引用する場合は、WordPress投稿HTMLの引用元カードからPost IDを抽出し、100件単位で再hydrationして削除、非公開化、編集の有無を確認する。変更または取得不能を検出した場合は公開を失敗させ、人間確認済み状態を解除する。X API失敗時はWordPress投稿履歴へエラーコードを保存し、ジョブの再試行判定へ引き継ぐ。
 
 `TopicRisk = compliance_strict`または`HumanReviewRequired = true`の場合、人間確認が完了するまでWordPress公開投稿は登録しない。下書き投稿は許可する。
 

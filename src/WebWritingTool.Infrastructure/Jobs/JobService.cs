@@ -109,6 +109,49 @@ public sealed class JobService(
         return ToStatusResponse(job);
     }
 
+    public async Task<ArticleJobListResponse?> ListForArticleAsync(
+        JobActor actor,
+        ArticleJobListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var article = await dbContext.Articles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == query.ArticleId, cancellationToken);
+
+        if (article is null || !CanAccess(actor, article.UserId))
+        {
+            return null;
+        }
+
+        var jobs = dbContext.ArticleGenerationJobs
+            .AsNoTracking()
+            .Where(job => job.ArticleId == query.ArticleId);
+
+        if (!string.IsNullOrWhiteSpace(query.Status)
+            && Enum.TryParse<JobStatus>(query.Status, ignoreCase: true, out var status))
+        {
+            jobs = jobs.Where(job => job.Status == status);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.JobType)
+            && Enum.TryParse<JobType>(query.JobType, ignoreCase: true, out var jobType))
+        {
+            jobs = jobs.Where(job => job.JobType == jobType);
+        }
+
+        var items = await jobs
+            .OrderByDescending(job => job.QueuedAt)
+            .Select(job => new ArticleJobListItemResponse(
+                job.Id,
+                job.JobType.ToString(),
+                job.Status.ToString(),
+                job.QueuedAt,
+                job.FinishedAt))
+            .ToListAsync(cancellationToken);
+
+        return new ArticleJobListResponse(items);
+    }
+
     private async Task<JobServiceResult<JobCancelResponse>> CancelCoreAsync(
         JobActor actor,
         Guid jobId,

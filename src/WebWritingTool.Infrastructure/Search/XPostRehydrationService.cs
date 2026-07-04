@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Search;
+using WebWritingTool.Domain.Search;
 using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.Infrastructure.Search;
@@ -10,6 +11,8 @@ public sealed class XPostRehydrationService(
     SearchCachePolicyResolver cachePolicyResolver)
     : IXPostRehydrationService
 {
+    private const int MaxPostIdsPerRequest = 100;
+
     public async Task<XPostRehydrationServiceResult> RehydrateCachedPostsAsync(
         string userId,
         IReadOnlyList<string> postIds,
@@ -28,7 +31,8 @@ public sealed class XPostRehydrationService(
                 RehydrationRequired: false,
                 RequestedCount: 0,
                 RefreshedCount: 0,
-                MissingCount: 0);
+                MissingCount: 0,
+                ChangedCount: 0);
         }
 
         var rehydrationRequired = cachePolicyResolver.RequiresXRehydrationBeforeDisplay(topicRiskMode);
@@ -38,25 +42,40 @@ public sealed class XPostRehydrationService(
                 RehydrationRequired: false,
                 RequestedCount: normalizedIds.Length,
                 RefreshedCount: 0,
-                MissingCount: 0);
+                MissingCount: 0,
+                ChangedCount: 0);
         }
 
         var cachedPosts = await dbContext.XSearchPosts
             .Where(post => post.UserId == userId && normalizedIds.Contains(post.PostId))
             .ToListAsync(cancellationToken);
-        var freshPosts = await xClient.RehydrateAsync(
-            new XPostRehydrationRequest(normalizedIds),
-            cancellationToken);
-        var freshById = freshPosts.ToDictionary(post => post.PostId, StringComparer.Ordinal);
+        var freshById = new Dictionary<string, XSearchPostResult>(StringComparer.Ordinal);
+        foreach (var batch in normalizedIds.Chunk(MaxPostIdsPerRequest))
+        {
+            var freshPosts = await xClient.RehydrateAsync(
+                new XPostRehydrationRequest(batch),
+                cancellationToken);
+            foreach (var freshPost in freshPosts)
+            {
+                freshById[freshPost.PostId] = freshPost;
+            }
+        }
+
         var now = DateTimeOffset.UtcNow;
         var ttl = cachePolicyResolver.ResolveX(now, topicRiskMode);
         var refreshedCount = 0;
         var missingCount = 0;
+        var changedCount = 0;
 
         foreach (var cachedPost in cachedPosts)
         {
             if (freshById.TryGetValue(cachedPost.PostId, out var fresh))
             {
+                if (HasChanged(cachedPost, fresh))
+                {
+                    changedCount++;
+                }
+
                 cachedPost.AuthorId = fresh.AuthorId;
                 cachedPost.Text = fresh.Text;
                 cachedPost.Url = fresh.Url;
@@ -87,6 +106,16 @@ public sealed class XPostRehydrationService(
             RehydrationRequired: true,
             RequestedCount: normalizedIds.Length,
             RefreshedCount: refreshedCount,
-            MissingCount: missingCount + Math.Max(0, normalizedIds.Length - cachedPosts.Count));
+            MissingCount: missingCount + Math.Max(0, normalizedIds.Length - cachedPosts.Count),
+            ChangedCount: changedCount);
+    }
+
+    private static bool HasChanged(XSearchPost cachedPost, XSearchPostResult freshPost)
+    {
+        return !string.Equals(cachedPost.AuthorId, freshPost.AuthorId, StringComparison.Ordinal)
+            || !string.Equals(cachedPost.Text, freshPost.Text, StringComparison.Ordinal)
+            || !string.Equals(cachedPost.Url, freshPost.Url, StringComparison.Ordinal)
+            || !string.Equals(cachedPost.Language, freshPost.Language, StringComparison.Ordinal)
+            || cachedPost.PostedAt != freshPost.PostedAt;
     }
 }

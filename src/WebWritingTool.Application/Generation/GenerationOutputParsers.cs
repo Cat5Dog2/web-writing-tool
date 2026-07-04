@@ -10,6 +10,10 @@ public sealed record OutlineHeadingItem(
     int? TargetLength,
     IReadOnlyList<OutlineHeadingItem> Children);
 
+public sealed record OutlineGenerationResult(
+    string? MetaDescription,
+    IReadOnlyList<OutlineHeadingItem> Headings);
+
 public static class TitleCandidateParser
 {
     public static IReadOnlyList<TitleCandidate> Parse(string text, int maxCount)
@@ -71,7 +75,7 @@ public static class TitleCandidateParser
 
 public static class OutlineGenerationParser
 {
-    public static IReadOnlyList<OutlineHeadingItem> Parse(string text)
+    public static OutlineGenerationResult Parse(string text)
     {
         using var document = JsonDocument.Parse(TitleCandidateParser.StripCodeFence(text));
         var root = document.RootElement;
@@ -82,10 +86,16 @@ public static class OutlineGenerationParser
             throw new JsonException("Outline response must contain headings array.");
         }
 
-        return source.EnumerateArray()
+        var metaDescription = root.ValueKind == JsonValueKind.Object
+            ? ReadString(root, "metaDescription")
+            : null;
+
+        var items = source.EnumerateArray()
             .Select(ReadHeading)
             .Where(heading => !string.IsNullOrWhiteSpace(heading.Title))
             .ToArray();
+
+        return new OutlineGenerationResult(metaDescription, items);
     }
 
     private static OutlineHeadingItem ReadHeading(JsonElement element)

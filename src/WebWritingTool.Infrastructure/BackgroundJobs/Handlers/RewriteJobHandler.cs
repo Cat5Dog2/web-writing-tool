@@ -64,6 +64,7 @@ public sealed class RewriteJobHandler(
             heading.ActualLength = body.Length;
             heading.Status = HeadingStatus.Generated;
             article.Body = BuildArticleBody(headings);
+            article.InvalidateHumanReview();
             if (headings.All(item => item.Status == HeadingStatus.Generated))
             {
                 article.Status = ArticleStatus.Completed;

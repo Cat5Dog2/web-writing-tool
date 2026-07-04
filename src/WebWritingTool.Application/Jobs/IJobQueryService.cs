@@ -6,4 +6,9 @@ public interface IJobQueryService
         JobActor actor,
         Guid jobId,
         CancellationToken cancellationToken = default);
+
+    Task<ArticleJobListResponse?> ListForArticleAsync(
+        JobActor actor,
+        ArticleJobListQuery query,
+        CancellationToken cancellationToken = default);
 }
