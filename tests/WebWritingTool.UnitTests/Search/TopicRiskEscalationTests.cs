@@ -59,4 +59,21 @@ public class TopicRiskEscalationTests
         Assert.Equal("compliance_strict", article.TopicRisk);
         Assert.True(article.HumanReviewRequired);
     }
+
+    [Fact]
+    public void ApplyTopicRiskEscalation_WhenArticleWasReviewed_ClearsReviewState()
+    {
+        var article = new Article
+        {
+            Keyword = "料金の比較",
+            HumanReviewedAt = DateTimeOffset.UtcNow,
+            HumanReviewedByUserId = "reviewer"
+        };
+        article.ApplyTopicRiskEscalation(classifier.Classify(article.Keyword));
+
+        article.ApplyTopicRiskEscalation(classifier.Classify("医療の診断"));
+
+        Assert.Null(article.HumanReviewedAt);
+        Assert.Null(article.HumanReviewedByUserId);
+    }
 }

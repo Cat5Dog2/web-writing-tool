@@ -69,8 +69,7 @@ public sealed partial class ArticleContentService(
 
         if (reviewSensitiveValueChanged)
         {
-            article.HumanReviewedAt = null;
-            article.HumanReviewedByUserId = null;
+            article.InvalidateHumanReview();
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

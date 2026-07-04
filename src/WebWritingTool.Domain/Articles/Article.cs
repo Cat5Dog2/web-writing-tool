@@ -79,4 +79,10 @@ public sealed class Article : IAuditableEntity, ISoftDeletableEntity, IRowVersio
     public DateTimeOffset? DeletedAt { get; set; }
 
     public byte[] RowVersion { get; set; } = [];
+
+    public void InvalidateHumanReview()
+    {
+        HumanReviewedAt = null;
+        HumanReviewedByUserId = null;
+    }
 }

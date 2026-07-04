@@ -407,6 +407,8 @@ public sealed class XSearchPostResult
 | X由来の集計データ | 30から180日 | 件数、傾向、キーワード、感情分類など個別投稿を復元できない形で保持する |
 | 生成済み記事内のX引用 | 公開前に再検証 | 投稿が削除、非公開、編集されていないか確認する |
 
+X投稿の再hydrationはX APIのTweet lookup上限に合わせてPost IDを100件単位へ分割する。WordPress公開時は検索結果全件ではなく、公開HTMLの引用元カードから抽出したPost IDだけを対象にする。
+
 MVPの既定値:
 
 - Tavily検索結果JSON: 6時間

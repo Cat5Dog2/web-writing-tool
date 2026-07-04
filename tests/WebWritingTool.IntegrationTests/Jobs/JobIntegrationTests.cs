@@ -116,6 +116,43 @@ public class JobIntegrationTests(IntegrationTestFixture fixture)
             job => job.Id == retryResult.Value.JobId && job.Status == JobStatus.Queued));
     }
 
+    [Fact]
+    public async Task ListForArticleAsync_WithStatusAndJobType_ReturnsOnlyMatchingJobs()
+    {
+        var context = await CreateJobContextAsync(JobStatus.Succeeded);
+
+        using var scope = fixture.Factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        dbContext.ArticleGenerationJobs.Add(new ArticleGenerationJob
+        {
+            UserId = context.UserId,
+            ArticleId = context.ArticleId,
+            JobType = JobType.BodyGeneration,
+            Status = JobStatus.Failed,
+            Priority = 0,
+            Progress = 50,
+            PayloadJson = "{}",
+            AttemptCount = 1,
+            MaxAttempts = 3,
+            QueuedAt = DateTimeOffset.UtcNow,
+            FinishedAt = DateTimeOffset.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+        var queryService = scope.ServiceProvider.GetRequiredService<IJobQueryService>();
+
+        var response = await queryService.ListForArticleAsync(
+            new JobActor(context.UserId, IsAdmin: false),
+            new ArticleJobListQuery(
+                context.ArticleId,
+                JobStatus.Succeeded.ToString(),
+                JobType.OutlineGeneration.ToString()));
+
+        var item = Assert.Single(response!.Items);
+        Assert.Equal(context.JobId, item.Id);
+        Assert.Equal(JobStatus.Succeeded.ToString(), item.Status);
+        Assert.Equal(JobType.OutlineGeneration.ToString(), item.JobType);
+    }
+
     private async Task<JobContext> CreateJobContextAsync(
         JobStatus status = JobStatus.Queued,
         int attemptCount = 0,

@@ -69,6 +69,7 @@ public sealed class BodyGenerationJobHandler(
                 heading.Body = body;
                 heading.ActualLength = body.Length;
                 heading.Status = HeadingStatus.Generated;
+                article.InvalidateHumanReview();
                 AddSuccessAccounting(job, article, operation, prompt, result);
                 generatedCount++;
                 await DbContext.SaveChangesAsync(cancellationToken);

@@ -412,8 +412,7 @@ public sealed class ArticleService(
 
         if (reviewSensitiveValueChanged || topicRiskEscalated)
         {
-            article.HumanReviewedAt = null;
-            article.HumanReviewedByUserId = null;
+            article.InvalidateHumanReview();
         }
 
         try

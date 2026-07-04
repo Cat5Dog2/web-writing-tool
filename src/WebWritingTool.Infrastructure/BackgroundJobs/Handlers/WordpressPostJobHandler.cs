@@ -117,13 +117,13 @@ public sealed class WordpressPostJobHandler(
                 "投稿HTMLがありません。");
         }
 
-        if (string.Equals(requestedStatus, WordpressPostStatuses.Publish, StringComparison.Ordinal))
-        {
-            await EnsureXRehydrationForPublishAsync(article, history, cancellationToken);
-        }
-
         try
         {
+            if (string.Equals(requestedStatus, WordpressPostStatuses.Publish, StringComparison.Ordinal))
+            {
+                await EnsureXRehydrationForPublishAsync(article, history, htmlBody, cancellationToken);
+            }
+
             var result = await wordpressClient.CreatePostAsync(
                 new WordpressPostRequest(
                     new WordpressSiteConnection(
@@ -186,13 +186,10 @@ public sealed class WordpressPostJobHandler(
     private async Task EnsureXRehydrationForPublishAsync(
         Article article,
         WordpressPost history,
+        string htmlBody,
         CancellationToken cancellationToken)
     {
-        var postIds = await dbContext.XSearchPosts
-            .Where(post => post.ArticleId == article.Id && post.UserId == article.UserId)
-            .Select(post => post.PostId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
+        var postIds = XPostCitationParser.ExtractPostIds(htmlBody);
 
         if (postIds.Count == 0)
         {
@@ -206,9 +203,11 @@ public sealed class WordpressPostJobHandler(
             topicRiskMode,
             cancellationToken);
 
-        if (result.RehydrationRequired && result.MissingCount > 0)
+        if (result.RehydrationRequired
+            && (result.MissingCount > 0 || result.ChangedCount > 0))
         {
-            const string message = "X投稿の再取得に失敗しました。引用内容を確認してください。";
+            article.InvalidateHumanReview();
+            const string message = "X投稿が更新、削除、または取得不能です。引用内容を確認してください。";
             await MarkHistoryFailedAsync(history, JobErrorCodes.XRehydrationFailed, message);
             throw new JobExecutionException(JobErrorCodes.XRehydrationFailed, message);
         }

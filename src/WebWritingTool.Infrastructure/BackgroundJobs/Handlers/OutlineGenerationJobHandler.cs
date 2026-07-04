@@ -56,6 +56,7 @@ public sealed class OutlineGenerationJobHandler(
             var addedHeadings = AddHeadings(article.Id, outline.Headings);
             ApplyMetaDescription(article, outline.MetaDescription);
             ApplyTopicRisk(article, outline.Headings);
+            article.InvalidateHumanReview();
             article.Status = ArticleStatus.OutlineReady;
             AddSuccessAccounting(job, article, operation, prompt, result);
             await DbContext.SaveChangesAsync(cancellationToken);

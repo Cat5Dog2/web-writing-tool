@@ -72,7 +72,8 @@ public sealed record XPostRehydrationServiceResult(
     bool RehydrationRequired,
     int RequestedCount,
     int RefreshedCount,
-    int MissingCount);
+    int MissingCount,
+    int ChangedCount);
 
 public interface IXPostRehydrationService
 {

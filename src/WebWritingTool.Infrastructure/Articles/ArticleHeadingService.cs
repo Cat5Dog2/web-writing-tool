@@ -447,8 +447,7 @@ public sealed class ArticleHeadingService(ApplicationDbContext dbContext) : IArt
     {
         article.Body = BuildArticleBody(headings);
         article.HtmlBody = null;
-        article.HumanReviewedAt = null;
-        article.HumanReviewedByUserId = null;
+        article.InvalidateHumanReview();
     }
 
     private static string BuildArticleBody(IReadOnlyList<ArticleHeading> headings)

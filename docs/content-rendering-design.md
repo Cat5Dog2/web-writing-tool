@@ -258,7 +258,9 @@ MVPではX公式の埋め込みスクリプトやiframeを使わない。X投稿
 - X投稿本文は短期保持する。
 - X Post IDは再取得、重複排除、監査用途で保持できる。
 - production/strictでは表示またはWordPress投稿前に再取得する。
+- WordPress公開前は、サニタイズ済み投稿HTMLの`blockquote[cite]`から`x.com`または`twitter.com`のPost IDを抽出し、実際に引用する投稿だけを再取得する。
 - 削除、非公開、編集、取得不能の場合は引用を停止し、必要に応じて人間確認へ回す。
+- 再取得結果が保存済み内容から変化した場合は公開を停止し、`HumanReviewedAt`と`HumanReviewedByUserId`をNULLへ戻す。
 - X投稿の個別内容を長期保持前提でHTML本文へ大量複製しない。
 - 引用元カードには投稿本文の短い引用、投稿者表示名、投稿日時、X投稿URLを含める。
 - 引用元カード内の投稿URLは`https://x.com/...`または`https://twitter.com/...`のみ許可する。

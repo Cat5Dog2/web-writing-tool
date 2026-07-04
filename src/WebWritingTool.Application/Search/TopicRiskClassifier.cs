@@ -75,6 +75,7 @@ public static class ArticleTopicRiskExtensions
             article.HumanReviewRequired = true;
         }
 
+        article.InvalidateHumanReview();
         return true;
     }
 }
