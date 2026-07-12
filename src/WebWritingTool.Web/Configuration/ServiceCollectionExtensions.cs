@@ -154,6 +154,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<ISecurityRateLimiter, InMemorySecurityRateLimiter>();
         services.AddSingleton<IUrlSafetyValidator, DnsUrlSafetyValidator>();
         services.AddScoped<UserOwnedDataDeletionService>();
+        services.AddScoped<IAccountPasswordService, AccountPasswordService>();
         services.AddScoped<IAccountWithdrawalService, AccountWithdrawalService>();
         services.AddScoped<IAdminUserService, AdminUserService>();
         services.AddScoped<ArticleService>();
@@ -325,12 +326,25 @@ internal static class ServiceCollectionExtensions
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            // Write a ProblemDetails body so the status code pages middleware does not
+            // re-execute the bodyless 429 into /not-found.
+            options.OnRejected = static (context, cancellationToken) =>
+                new ValueTask(Results.Problem(
+                        title: "RateLimited",
+                        detail: "Too many requests.",
+                        statusCode: StatusCodes.Status429TooManyRequests)
+                    .ExecuteAsync(context.HttpContext));
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.Login,
                 permitLimit: isTest ? 100 : 10,
                 TimeSpan.FromMinutes(1),
                 useAuthenticatedUser: false);
+            AddFixedWindowPolicy(
+                options,
+                SecurityRateLimitPolicyNames.PasswordChange,
+                permitLimit: isTest ? 100 : 5,
+                TimeSpan.FromMinutes(10));
             AddFixedWindowPolicy(
                 options,
                 SecurityRateLimitPolicyNames.BulkArticleRegistration,

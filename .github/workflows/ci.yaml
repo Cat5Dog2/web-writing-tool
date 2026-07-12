@@ -128,7 +128,7 @@ jobs:
             -w /src \
             -e "ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}" \
             mcr.microsoft.com/dotnet/sdk:10.0 \
-            sh -lc 'dotnet restore WebWritingTool.slnx && dotnet tool install --global dotnet-ef --version 10.0.8 && /root/.dotnet/tools/dotnet-ef database update --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj --context ApplicationDbContext'
+            sh -lc 'dotnet restore WebWritingTool.slnx && dotnet tool restore && dotnet tool run dotnet-ef database update --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj --context ApplicationDbContext'
 
       - name: Start production compose
         run: docker compose up -d --build app caddy

@@ -52,7 +52,11 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 if (securityOptions.RequireHttps)
 {
-    app.UseHttpsRedirection();
+    // Container health probes reach the app over plain HTTP, so liveness/readiness must not
+    // redirect. Admin-only /health/deps stays on the redirect path.
+    app.UseWhen(
+        context => context.Request.Path.Value is not ("/health/live" or "/health/ready"),
+        branch => branch.UseHttpsRedirection());
 }
 app.UseStaticFiles();
 

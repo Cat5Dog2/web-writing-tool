@@ -5,12 +5,48 @@
 
 <h1>アカウント</h1>
 
-@if (!string.IsNullOrWhiteSpace(errorMessage))
+@if (PasswordChanged)
 {
-    <div class="alert alert-danger" role="alert">@errorMessage</div>
+    <div class="alert alert-success" role="status">パスワードを変更しました。</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(passwordErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">@passwordErrorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(withdrawErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">@withdrawErrorMessage</div>
 }
 
 <section class="mt-4">
+    <h2 class="h4">パスワード変更</h2>
+    <p>現在のパスワードと、12文字以上で英大文字・英小文字・数字・記号を含む新しいパスワードを入力してください。</p>
+
+    <form method="post" action="/account/password" class="auth-form">
+        <AntiforgeryToken />
+
+        <div class="mb-3">
+            <label class="form-label" for="password-current-password">現在のパスワード</label>
+            <input id="password-current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="password-new-password">新しいパスワード</label>
+            <input id="password-new-password" name="newPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="password-confirm-new-password">新しいパスワード（確認）</label>
+            <input id="password-confirm-new-password" name="confirmNewPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
+        </div>
+
+        <button type="submit" class="btn btn-primary">パスワードを変更する</button>
+    </form>
+</section>
+
+<section class="mt-5">
     <h2 class="h4">退会</h2>
     <p>退会すると、アカウントと紐づくデータが削除されます。確認のため現在のパスワードと <code>DELETE</code> を入力してください。</p>
 
@@ -35,7 +71,24 @@
     [SupplyParameterFromQuery]
     public string? WithdrawError { get; set; }
 
-    private string? errorMessage => WithdrawError switch
+    [SupplyParameterFromQuery]
+    public bool PasswordChanged { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? PasswordError { get; set; }
+
+    private string? passwordErrorMessage => PasswordError switch
+    {
+        "user" => "ユーザー情報を確認できませんでした。再ログインしてください。",
+        "current" => "現在のパスワードが正しくありません。",
+        "confirm" => "新しいパスワードと確認入力が一致しません。",
+        "same" => "現在と異なる新しいパスワードを入力してください。",
+        "new" => "新しいパスワードがパスワード要件を満たしていません。",
+        "failed" => "パスワード変更に失敗しました。時間をおいて再試行してください。",
+        _ => null
+    };
+
+    private string? withdrawErrorMessage => WithdrawError switch
     {
         "running-jobs" => "実行中のジョブがあるため退会できません。",
         "last-admin" => "最後のAdminユーザーは退会できません。",

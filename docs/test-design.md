@@ -263,6 +263,20 @@ tests/
 | `IT-API-094` | `DELETE /api/account` | パスワード不一致 | 400 |
 | `IT-API-095` | `DELETE /api/account` | 最後のAdmin | 400 |
 | `IT-API-096` | `DELETE /api/account` | Runningジョブあり | 409 |
+| `IT-API-097` | `PUT /api/account/password` | 正しい現在パスワードと有効な新パスワード | 204、旧パスワード無効、新パスワード有効 |
+| `IT-API-098` | `PUT /api/account/password` | 現在パスワード不一致 | 400、旧パスワード維持 |
+| `IT-API-099` | `PUT /api/account/password` | 確認入力不一致 | 400、旧パスワード維持 |
+| `IT-API-100` | `PUT /api/account/password` | パスワードポリシー違反 | 400、旧パスワード維持 |
+| `IT-API-101` | `PUT /api/account/password` | 現在と同じ新パスワード | 400、旧パスワード維持 |
+| `IT-API-104` | `PUT /api/account/password` | レート制限上限超過 | 429、ProblemDetails（`title: RateLimited`） |
+
+### 8.8 ヘルスエンドポイント
+
+| テストID | API | 観点 | 期待 |
+| --- | --- | --- | --- |
+| `IT-API-102` | `GET /health/live` `GET /health/ready` | `RequireHttps=true`でHTTP直アクセス | リダイレクトなしでヘルス応答（liveは200） |
+| `IT-API-103` | `GET /login` | `RequireHttps=true`でHTTP直アクセス | 307、httpsへリダイレクト |
+| `IT-API-105` | `GET /health/deps` | `RequireHttps=true`でHTTP直アクセス | 307、httpsへリダイレクト |
 
 ## 9. DB結合テスト設計
 
@@ -460,6 +474,7 @@ tests/
 | `E2E-009` | 通知設定 | 送信テスト成功 |
 | `E2E-010` | 権限不足 | 他ユーザー記事へアクセス不可 |
 | `E2E-011` | サイト別ライティング設定 | WordPressサイトに設定を保存し、記事作成で選択できる |
+| `E2E-012` | 本人パスワード変更 | 変更後もログイン状態を維持し、旧パスワードを拒否して新パスワードでログインできる |
 
 ### 12.3 E2E実行範囲
 
@@ -500,6 +515,7 @@ PRの最小セットは、ログイン、記事検索、記事作成、生成結
 | `SEC-012` | 他ユーザーのライティング設定サイトID指定 | 403または404 |
 | `SEC-013` | サイト別ライティング設定本文のログ混入 | プロンプト全文として出力されない |
 | `SEC-014` | 本人退会 | 現在パスワード必須、最後のAdminとRunningジョブありは拒否 |
+| `SEC-015` | 本人パスワード変更 | 認証・CSRF・現在パスワードを必須とし、パスワード値をログとレスポンスへ出さない |
 
 ## 14. 非機能テスト設計
 

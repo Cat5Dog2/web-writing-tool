@@ -116,6 +116,31 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await dbContext.SaveChangesAsync();
     }
 
+    public async Task SeedUserWithPasswordAsync(
+        string userId,
+        string email,
+        string password,
+        params string[] roles)
+    {
+        await SeedUserAsync(userId, email, roles);
+
+        using var scope = Factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(userId);
+        Assert.NotNull(user);
+
+        var result = await userManager.AddPasswordAsync(user, password);
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(error => error.Code)));
+    }
+
+    public async Task<bool> CheckPasswordAsync(string userId, string password)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(userId);
+        return user is not null && await userManager.CheckPasswordAsync(user, password);
+    }
+
     public async Task<Guid> SeedArticleAsync(string userId, string keyword)
     {
         using var scope = Factory.Services.CreateScope();

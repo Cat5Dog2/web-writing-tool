@@ -1,0 +1,12 @@
+services:
+  app:
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8081}:8080"
+
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+
+  caddy:
+    profiles:
+      - bundled-caddy

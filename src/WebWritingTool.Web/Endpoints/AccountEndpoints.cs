@@ -23,6 +23,11 @@ public static class AccountEndpoints
             .RequireCsrfToken()
             .WithTags("Account");
 
+        api.MapPut("/password", ChangePasswordAsync)
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.PasswordChange)
+            .WithName("ChangePassword")
+            .WithSummary("ログインユーザー本人のパスワードを変更します。");
+
         api.MapDelete("", WithdrawAccountAsync)
             .WithName("WithdrawAccount")
             .WithSummary("ログインユーザー本人のアカウントを削除します。");
@@ -39,7 +44,96 @@ public static class AccountEndpoints
             .RequireAuthorization()
             .RequireCsrfToken();
 
+        endpoints.MapPost("/account/password", ChangePasswordFromFormAsync)
+            .RequireAuthorization()
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.PasswordChange)
+            .RequireCsrfToken();
+
         return endpoints;
+    }
+
+    private static async Task<IResult> ChangePasswordAsync(
+        [FromBody] ChangePasswordRequest request,
+        ClaimsPrincipal principal,
+        IAccountPasswordService passwordService,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
+        CancellationToken cancellationToken)
+    {
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await passwordService.ChangePasswordAsync(
+            new ChangePasswordCommand(
+                userId,
+                request.CurrentPassword,
+                request.NewPassword,
+                request.ConfirmNewPassword),
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return ToProblemResult(result.Error);
+        }
+
+        await RefreshSignInAsync(userId, userManager, signInManager);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ChangePasswordFromFormAsync(
+        [FromForm] ChangePasswordForm form,
+        ClaimsPrincipal principal,
+        IAccountPasswordService passwordService,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
+        CancellationToken cancellationToken)
+    {
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Results.Redirect("/login");
+        }
+
+        var result = await passwordService.ChangePasswordAsync(
+            new ChangePasswordCommand(
+                userId,
+                form.CurrentPassword,
+                form.NewPassword,
+                form.ConfirmNewPassword),
+            cancellationToken);
+
+        if (result.Succeeded)
+        {
+            await RefreshSignInAsync(userId, userManager, signInManager);
+            return Results.Redirect("/account?passwordChanged=true");
+        }
+
+        var error = result.Error switch
+        {
+            ChangePasswordError.UserNotFound => "user",
+            ChangePasswordError.InvalidCurrentPassword => "current",
+            ChangePasswordError.NewPasswordMismatch => "confirm",
+            ChangePasswordError.NewPasswordSameAsCurrent => "same",
+            ChangePasswordError.InvalidNewPassword => "new",
+            _ => "failed"
+        };
+
+        return Results.Redirect($"/account?passwordError={error}");
+    }
+
+    private static async Task RefreshSignInAsync(
+        string userId,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager)
+    {
+        var user = await userManager.FindByIdAsync(userId);
+        if (user is not null)
+        {
+            await signInManager.RefreshSignInAsync(user);
+        }
     }
 
     private static async Task<IResult> LoginFromFormAsync(
@@ -168,6 +262,37 @@ public static class AccountEndpoints
         };
     }
 
+    private static IResult ToProblemResult(ChangePasswordError error)
+    {
+        return error switch
+        {
+            ChangePasswordError.UserNotFound => Results.Problem(
+                title: "Not Found",
+                detail: "User was not found.",
+                statusCode: StatusCodes.Status404NotFound),
+            ChangePasswordError.InvalidCurrentPassword => Results.Problem(
+                title: "Bad Request",
+                detail: "Current password is invalid.",
+                statusCode: StatusCodes.Status400BadRequest),
+            ChangePasswordError.NewPasswordMismatch => Results.Problem(
+                title: "Bad Request",
+                detail: "New password confirmation does not match.",
+                statusCode: StatusCodes.Status400BadRequest),
+            ChangePasswordError.NewPasswordSameAsCurrent => Results.Problem(
+                title: "Bad Request",
+                detail: "New password must differ from the current password.",
+                statusCode: StatusCodes.Status400BadRequest),
+            ChangePasswordError.InvalidNewPassword => Results.Problem(
+                title: "Bad Request",
+                detail: "New password does not meet the password policy.",
+                statusCode: StatusCodes.Status400BadRequest),
+            _ => Results.Problem(
+                title: "Internal Server Error",
+                detail: "Password change failed.",
+                statusCode: StatusCodes.Status500InternalServerError)
+        };
+    }
+
     private static string GetLoginErrorUrl(string? returnUrl, string error)
     {
         var url = $"/login?loginError={Uri.EscapeDataString(error)}";
@@ -212,4 +337,14 @@ public static class AccountEndpoints
     private sealed record WithdrawAccountRequest(string CurrentPassword, string ConfirmText);
 
     private sealed record WithdrawAccountForm(string CurrentPassword, string ConfirmText);
+
+    private sealed record ChangePasswordRequest(
+        string CurrentPassword,
+        string NewPassword,
+        string ConfirmNewPassword);
+
+    private sealed record ChangePasswordForm(
+        string CurrentPassword,
+        string NewPassword,
+        string ConfirmNewPassword);
 }

@@ -118,7 +118,7 @@ Web層からEF Coreの`DbContext`を直接操作しない。画面はApplication
 UseForwardedHeaders
 UseExceptionHandler / UseDeveloperExceptionPage
 UseHsts
-UseHttpsRedirection
+UseHttpsRedirection（/health/liveと/health/readyのみ対象外）
 UseStaticFiles
 UseRouting
 UseAuthentication

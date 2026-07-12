@@ -372,6 +372,47 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task E2E012_AccountPasswordChange_UpdatesCredentialsAndKeepsSession()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E012_AccountPasswordChange_UpdatesCredentialsAndKeepsSession));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var email = await fixture.SeedPasswordChangeUserAsync(suffix);
+        const string newPassword = "Changed-e2e-password-456!";
+
+        try
+        {
+            await LoginAsync(page, email, E2ETestFixture.StandardUserPassword);
+            await page.GotoAsync("/account");
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "アカウント" })).ToBeVisibleAsync();
+
+            await page.Locator("#password-current-password").FillAsync(E2ETestFixture.StandardUserPassword);
+            await page.Locator("#password-new-password").FillAsync(newPassword);
+            await page.Locator("#password-confirm-new-password").FillAsync(newPassword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "パスワードを変更する" }).ClickAsync();
+
+            await Expect(page.GetByText("パスワードを変更しました。")).ToBeVisibleAsync();
+            await page.GotoAsync("/articles");
+            await Expect(page.GetByRole(AriaRole.Link, new() { Name = "記事を作成" })).ToBeVisibleAsync();
+
+            await page.GetByRole(AriaRole.Button, new() { Name = "ログアウト" }).ClickAsync();
+            await page.Locator("#email").FillAsync(email);
+            await page.Locator("#password").FillAsync(E2ETestFixture.StandardUserPassword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "ログイン" }).ClickAsync();
+            await Expect(page.GetByText("メールアドレスまたはパスワードが正しくありません。"))
+                .ToBeVisibleAsync();
+
+            await LoginAsync(page, email, newPassword);
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
     private static async Task LoginAsync(IPage page)
     {
         await LoginAsync(page, E2ETestFixture.AdminEmail, E2ETestFixture.AdminPassword);
