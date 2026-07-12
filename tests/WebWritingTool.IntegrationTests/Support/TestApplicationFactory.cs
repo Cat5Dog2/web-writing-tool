@@ -13,7 +13,7 @@ using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.IntegrationTests.Support;
 
-internal sealed class TestApplicationFactory(string connectionString)
+internal sealed class TestApplicationFactory(string connectionString, bool requireHttps = false)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -21,10 +21,10 @@ internal sealed class TestApplicationFactory(string connectionString)
         builder.UseEnvironment("Test");
         builder.ConfigureAppConfiguration(configuration =>
         {
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            var settings = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DefaultConnection"] = connectionString,
-                ["Security:RequireHttps"] = "false",
+                ["Security:RequireHttps"] = requireHttps ? "true" : "false",
                 ["AiProviders:Gemini:ApiKey"] = "test-gemini-key",
                 ["SearchProviders:Tavily:ApiKey"] = "test-tavily-key",
                 ["SearchProviders:X:BearerToken"] = "test-x-token",
@@ -33,7 +33,15 @@ internal sealed class TestApplicationFactory(string connectionString)
                 ["Wordpress:TimeoutSeconds"] = "60",
                 ["Notifications:Provider"] = "Discord",
                 ["Notifications:TimeoutSeconds"] = "30"
-            });
+            };
+
+            if (requireHttps)
+            {
+                // TestServer has no HTTPS binding, so the redirect middleware needs an explicit port.
+                settings["HTTPS_PORT"] = "443";
+            }
+
+            configuration.AddInMemoryCollection(settings);
         });
 
         builder.ConfigureTestServices(services =>

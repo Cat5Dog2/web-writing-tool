@@ -430,6 +430,11 @@
   - 条件: 通常CIではGemini、Tavily、X API、WordPress、Discordの実APIを呼ばない。
   - 完了条件: PR CIとmain CIで設計どおりのテスト範囲が実行され、失敗時に必要なテスト成果物が保存される。
 
+- [x] `T-1310` 本人パスワード変更と共通Caddy向け本番配置を強化する。
+  - 参照: `docs/api-design.md`, `docs/screen-design.md`, `docs/security-design.md`, `docs/environment-setup.md`, `docs/operation-design.md`
+  - 対象: パスワード変更API/画面、app healthcheck、Migration tools profile、共通Caddy用Compose override
+  - 完了条件: 正常系・現在パスワード不一致・確認不一致・ポリシー違反が結合テストで検証され、共通Caddy構成のCompose検証と公開URL経由のhealth確認手順が整備される。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

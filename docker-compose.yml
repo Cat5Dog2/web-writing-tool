@@ -67,9 +67,53 @@ services:
       BackgroundJobs__SearchCacheCleanupIntervalMinutes: ${BackgroundJobs__SearchCacheCleanupIntervalMinutes:-60}
     expose:
       - "8080"
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080;
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
+          read -r status <&3;
+          [[ "$$status" == *" 200 "* ]]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - app_keys:/var/app/keys
       - app_storage:/var/app/storage
+    logging: *default-logging
+
+  migrate:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    profiles:
+      - tools
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /work
+    environment:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - ./.config:/source/.config:ro
+      - ./global.json:/source/global.json:ro
+      - ./src:/source/src:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        cp -a /source/.config /work/.config &&
+        cp /source/global.json /work/global.json &&
+        cp -a /source/src /work/src &&
+        dotnet restore src/WebWritingTool.Web/WebWritingTool.Web.csproj &&
+        dotnet tool restore &&
+        dotnet tool run dotnet-ef database update
+        --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj
+        --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj
+        --context ApplicationDbContext
     logging: *default-logging
 
   caddy:
@@ -77,7 +121,7 @@ services:
     restart: unless-stopped
     depends_on:
       app:
-        condition: service_started
+        condition: service_healthy
     environment:
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-localhost}
     ports:
