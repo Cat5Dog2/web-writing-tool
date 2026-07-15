@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-web_writing_tool}
       POSTGRES_USER: ${POSTGRES_USER:-web_writing_tool}
