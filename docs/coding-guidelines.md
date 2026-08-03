@@ -449,7 +449,33 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 // userIdを代入する
 ```
 
-## 18. フォーマット
+## 18. 静的解析（Slopwatch）
+
+コードを追加・変更したらSlopwatchで解析する。無効化されたテスト、警告抑制、空catch、任意の待機、CPMバイパスなど、問題を隠すだけの変更を検出する。
+
+- ツールは`.config/dotnet-tools.json`にローカルツールとして固定する。
+- 初回のみ`dotnet tool restore`が必要である。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 tool restore
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning
+```
+
+ホストに.NET SDKがある場合は`dotnet tool restore`と`dotnet slopwatch analyze -d . --fail-on warning`を直接実行してもよい。
+
+`--fail-on warning`は必ず付ける。既定は`--fail-on error`であり、警告レベルの新規検出（SW004の任意待機など）は表示されるだけで終了コード0になるため、ゲートとして機能しない。CIも同じフラグで実行する。
+
+`.slopwatch/baseline.json`は導入時点の既存検出をベースライン化したものであり、新規の検出だけが失敗となる。ベースラインには次の5件が入っている。
+
+| 対象 | ルール | 内容 |
+| --- | --- | --- |
+| `ArticleJobWorker`、`SearchCacheCleanupWorker` | SW003 | `BackgroundService`停止時の`OperationCanceledException`握り潰し |
+| `E2ETestFixture` | SW003 | 起動待機ポーリング中の通信例外握り潰し |
+| `E2ETestFixture` | SW004 | 起動待機の`Task.Delay(500)` |
+
+ベースラインの更新は既存検出を隠すため原則行わない。意図的なパターンはベースラインではなく`[SlopwatchSuppress("SWxxx", "20文字以上の理由")]`で理由を明記する。
+
+## 19. フォーマット
 
 - `scripts/format.ps1`を基本とし、開発用.NET SDKコンテナ経由で`dotnet format`を実行する。
 - `.editorconfig`を導入する。
@@ -458,7 +484,7 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 - warningを無視しない。
 - 生成ファイル以外の広範囲な自動整形は避ける。
 
-## 19. `todo.md`運用
+## 20. `todo.md`運用
 
 - 実装は`todo.md`のタスクID単位で進める。
 - タスク開始前に関連設計書を読む。
@@ -467,7 +493,7 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 - 仕様差分が出た場合は、実装だけでなく関連`docs/*.md`も更新する。
 - 1つのタスクで複数フェーズにまたがる変更を避ける。
 
-## 20. レビュー観点
+## 21. レビュー観点
 
 実装後は以下を確認する。
 
@@ -484,7 +510,7 @@ GenerateBodyAsync_WithWritingProfile_AppliesSitePersona
 - `compliance_strict`でPublishが抑止されるか。
 - テストが最小範囲で通っているか。
 
-## 21. 禁止事項
+## 22. 禁止事項
 
 - DB EntityをAPIレスポンスとして直接返す。
 - UIだけで認可を済ませる。

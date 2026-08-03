@@ -17,9 +17,17 @@ public sealed class IdentityDataSeeder(
     : IIdentityDataSeeder
 {
     private const string InitialAiProvider = "GoogleGemini";
-    private const string InitialAiModel = "gemini-3.5-flash";
-    private const string InitialAiDisplayName = "Google Gemini 3.5 Flash";
     private const string InitialAiRegion = "Japan";
+
+    // SortOrderの昇順が画面の選択肢順であり、先頭が既定モデルになる。
+    // このシードはここに列挙したモデルだけを整列させる。手動追加した別モデルがSortOrder 0を持つ場合、
+    // 既定モデルが先頭になる保証はない。運用側の並び順を勝手に書き換えないための割り切りであり、
+    // 手動追加モデルまで保証するなら明示的な既定モデル列をAiModelSettingsへ追加する。
+    private static readonly (string Model, string DisplayName, int SortOrder)[] InitialAiModels =
+    [
+        ("gemini-3.6-flash", "Google Gemini 3.6 Flash", 0),
+        ("gemini-3.5-flash", "Google Gemini 3.5 Flash", 1)
+    ];
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
@@ -74,28 +82,50 @@ public sealed class IdentityDataSeeder(
 
     private async Task SeedAiModelSettingsAsync(CancellationToken cancellationToken)
     {
-        var exists = await dbContext.AiModelSettings.AnyAsync(
-            setting => setting.Provider == InitialAiProvider && setting.Model == InitialAiModel,
-            cancellationToken);
+        var existingSettings = await dbContext.AiModelSettings
+            .Where(setting => setting.Provider == InitialAiProvider)
+            .ToDictionaryAsync(setting => setting.Model, cancellationToken);
 
-        if (exists)
+        var added = 0;
+        var reordered = 0;
+
+        foreach (var (model, displayName, sortOrder) in InitialAiModels)
         {
-            logger.LogInformation("Initial AI model seed skipped because the model already exists.");
+            if (existingSettings.TryGetValue(model, out var existing))
+            {
+                // 既存行のEnabledは運用側の設定として尊重し、既定モデルの並び順だけを合わせる。
+                if (existing.SortOrder != sortOrder)
+                {
+                    existing.SortOrder = sortOrder;
+                    reordered++;
+                }
+
+                continue;
+            }
+
+            dbContext.AiModelSettings.Add(new AiModelSetting
+            {
+                Provider = InitialAiProvider,
+                Model = model,
+                DisplayName = displayName,
+                Region = InitialAiRegion,
+                Enabled = true,
+                SortOrder = sortOrder
+            });
+            added++;
+        }
+
+        if (added == 0 && reordered == 0)
+        {
+            logger.LogInformation("Initial AI model seed skipped because all models are already registered.");
             return;
         }
 
-        dbContext.AiModelSettings.Add(new AiModelSetting
-        {
-            Provider = InitialAiProvider,
-            Model = InitialAiModel,
-            DisplayName = InitialAiDisplayName,
-            Region = InitialAiRegion,
-            Enabled = true,
-            SortOrder = 0
-        });
-
         await dbContext.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Initial AI model was seeded.");
+        logger.LogInformation(
+            "Initial AI models were seeded. added={AddedCount} reordered={ReorderedCount}",
+            added,
+            reordered);
     }
 
     private static void EnsureSucceeded(IdentityResult result, string message)

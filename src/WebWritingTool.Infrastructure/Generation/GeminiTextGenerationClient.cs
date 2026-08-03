@@ -44,6 +44,15 @@ public sealed class GeminiTextGenerationClient(
             HttpMethod.Post,
             $"v1beta/models/{Uri.EscapeDataString(model)}:generateContent");
         message.Headers.TryAddWithoutValidation("x-goog-api-key", geminiOptions.ApiKey);
+
+        if (request.Temperature.HasValue)
+        {
+            logger.LogDebug(
+                "Temperature was dropped because sampling parameters are not recommended for Gemini 3.x. operation={Operation} model={Model}",
+                request.Operation,
+                model);
+        }
+
         message.Content = JsonContent.Create(CreateRequest(request), options: JsonOptions);
 
         var stopwatch = Stopwatch.StartNew();
@@ -119,6 +128,12 @@ public sealed class GeminiTextGenerationClient(
             : model;
     }
 
+    /// <summary>
+    /// Gemini向けリクエストを組み立てる。
+    /// Gemini 3.xではtemperature、top_p、top_kが非推奨で、全リクエストから削除するよう案内されている。
+    /// 将来モデルでは送信するとHTTP 400になるため、<see cref="AiTextGenerationRequest.Temperature"/>は送信しない。
+    /// 出力のばらつきを制御する場合はSystemInstructionに明示ルールを書く。
+    /// </summary>
     private static GeminiGenerateContentRequest CreateRequest(AiTextGenerationRequest request)
     {
         return new GeminiGenerateContentRequest(
@@ -131,10 +146,7 @@ public sealed class GeminiTextGenerationClient(
                 new GeminiContent(
                     "user",
                     [new GeminiPart(request.UserPrompt)])
-            ],
-            request.Temperature.HasValue
-                ? new GeminiGenerationConfig(request.Temperature.Value)
-                : null);
+            ]);
     }
 
     private static ExternalIntegrationException CreateException(HttpResponseMessage response)
@@ -181,10 +193,7 @@ public sealed class GeminiTextGenerationClient(
     private sealed record GeminiGenerateContentRequest(
         [property: JsonPropertyName("system_instruction")]
         GeminiContent? SystemInstruction,
-        IReadOnlyList<GeminiContent> Contents,
-        GeminiGenerationConfig? GenerationConfig);
-
-    private sealed record GeminiGenerationConfig(double Temperature);
+        IReadOnlyList<GeminiContent> Contents);
 
     private sealed record GeminiContent(
         string? Role,

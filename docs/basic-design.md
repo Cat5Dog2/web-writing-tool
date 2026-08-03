@@ -137,7 +137,7 @@ Caddy配下で動作するため、Forwarded Headersは認証、HTTPSリダイ�
 
 | Options | 主な設定 |
 | --- | --- |
-| `AiProviderOptions` | Provider、Model、API Key、Timeout、MaxInputChars。MVPはGoogle Gemini 3.5 Flash |
+| `AiProviderOptions` | Provider、Model、API Key、Timeout、MaxInputChars。MVPの既定はGoogle Gemini 3.6 Flash |
 | `SearchProviderOptions` | Provider、Tavily API Key、X Bearer Token、DefaultRegion、MaxResults、環境別CacheTtl |
 | `WordpressOptions` | Timeout、AllowedSchemes、RetryCount |
 | `NotificationOptions` | Provider、Timeout。Discord Webhook URLはユーザー別にDB暗号化保存する |
@@ -581,7 +581,7 @@ MVPではProvider別の文字数/トークン換算とトークン事前見積�
 
 ### 11.1 AI Provider
 
-MVPではGoogle Geminiを採用し、既定モデルをGoogle Gemini 3.5 Flashとする。APIモデルIDは`gemini-3.5-flash`、利用可能リージョンはJapanとする。
+MVPではGoogle Geminiを採用し、既定モデルをGoogle Gemini 3.6 Flashとする。APIモデルIDは`gemini-3.6-flash`、利用可能リージョンはJapanとする。Google Gemini 3.5 Flash（`gemini-3.5-flash`）も選択可能なモデルとして残す。
 
 インターフェース:
 

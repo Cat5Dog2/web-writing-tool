@@ -129,7 +129,7 @@ VPS要件の目安:
 | `POSTGRES_USER` | PostgreSQLユーザー | Docker時必須 | Docker時必須 |
 | `POSTGRES_PASSWORD` | PostgreSQLパスワード | Docker時必須 | Docker時必須 |
 | `AiProviders__Gemini__ApiKey` | Gemini APIキー | AI実行時必須 | 必須 |
-| `AiProviders__Gemini__Model` | GeminiモデルID | `gemini-3.5-flash` | `gemini-3.5-flash` |
+| `AiProviders__Gemini__Model` | GeminiモデルID | `gemini-3.6-flash` | `gemini-3.6-flash` |
 | `AiProviders__Gemini__Region` | Gemini利用リージョン | `Japan` | `Japan` |
 | `SearchProviders__DefaultRegion` | 検索既定リージョン | `Japan` | `Japan` |
 | `SearchProviders__Tavily__ApiKey` | Tavily APIキー | 検索時必須 | 必須 |
@@ -171,7 +171,7 @@ POSTGRES_USER=web_writing_tool
 POSTGRES_PASSWORD=change-me
 
 AiProviders__Gemini__ApiKey=change-me
-AiProviders__Gemini__Model=gemini-3.5-flash
+AiProviders__Gemini__Model=gemini-3.6-flash
 AiProviders__Gemini__Region=Japan
 AiProviders__Gemini__TimeoutSeconds=120
 
@@ -225,7 +225,7 @@ Webプロジェクト作成後、Webプロジェクトディレクトリで実�
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets init --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "ConnectionStrings:DefaultConnection" "Host=postgres;Port=5432;Database=web_writing_tool;Username=web_writing_tool;Password=change-me" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:ApiKey" "<your-gemini-api-key>" --project src/WebWritingTool.Web
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.5-flash" --project src/WebWritingTool.Web
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.6-flash" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Region" "Japan" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:Tavily:ApiKey" "<your-tavily-api-key>" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:X:BearerToken" "<your-x-bearer-token>" --project src/WebWritingTool.Web
@@ -620,15 +620,15 @@ productionでは必ず永続volumeへ保存する。
 | 項目 | 値 |
 | --- | --- |
 | Provider | Google Gemini |
-| Model | Google Gemini 3.5 Flash |
-| Model ID | `gemini-3.5-flash` |
+| Model | Google Gemini 3.6 Flash |
+| Model ID | `gemini-3.6-flash` |
 | Region | Japan |
 
 設定:
 
 ```text
 AiProviders__Gemini__ApiKey
-AiProviders__Gemini__Model=gemini-3.5-flash
+AiProviders__Gemini__Model=gemini-3.6-flash
 AiProviders__Gemini__Region=Japan
 AiProviders__Gemini__TimeoutSeconds=120
 ```
@@ -761,9 +761,50 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
-`scripts/test.ps1`は開発用.NET SDKコンテナ経由で`dotnet test`を実行する。
+`scripts/test.ps1`は開発用.NET SDKコンテナ経由で`dotnet test`を実行する。E2Eは常に除外する。
 
-### 13.3 format
+### 13.3 E2E test
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1
+```
+
+E2Eを含めて全テストを実行する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -IncludeE2E
+```
+
+`scripts/test-e2e.ps1`はコンテナではなくホストで実行する。ホストに.NET SDKとDockerが必要である。
+
+ホスト実行にする理由は次の2点である。
+
+- `docker-compose.dev.yml`が`ArtifactsPath`を`/tmp`へ向けるため、ビルド出力がバインドマウント外へ出て`E2ETestFixture`がリポジトリルートを解決できない。
+- `Dockerfile.dev`にPlaywrightのブラウザーと依存パッケージが含まれていない。
+
+初回実行時はChromiumを自動でインストールする。導入済みなら`-SkipBrowserInstall`で省略できる。テスト成果物は`test-results/e2e`へ出力する。
+
+`-Configuration Release`も指定できる。スクリプトはテスト実行中だけ`E2E_DOTNET_CONFIGURATION`へ同じ構成を設定し、終了時に元の値へ戻す。この環境変数は`E2ETestFixture`が`dotnet run --no-build`で起動するWebアプリの構成を決めるため、設定しないとRelease実行時にDebugのWebアプリを起動してしまう。
+
+### 13.4 静的解析（Slopwatch）
+
+初回のみローカルツールを復元する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 tool restore
+```
+
+解析する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning
+```
+
+`--fail-on warning`はCIと同じ判定にするために付ける。付けない場合、警告レベルの新規検出は表示だけされて終了コード0になる。
+
+ホストに.NET SDKがある場合は`dotnet tool restore`と`dotnet slopwatch analyze -d . --fail-on warning`を直接実行してもよい。判定基準と`.slopwatch/baseline.json`の扱いは[コーディング規約](coding-guidelines.md)を参照する。
+
+### 13.5 format
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
@@ -771,19 +812,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 
 `scripts/format.ps1`は開発用.NET SDKコンテナ経由で`dotnet format`を実行する。
 
-### 13.4 Migration追加
+### 13.6 Migration追加
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 tool run dotnet-ef migrations add <MigrationName> --project src/WebWritingTool.Infrastructure --startup-project src/WebWritingTool.Web --context ApplicationDbContext
 ```
 
-### 13.5 Migration適用
+### 13.7 Migration適用
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-migrate.ps1
 ```
 
-### 13.6 開発用Docker Compose
+### 13.8 開発用Docker Compose
 
 ```powershell
 Copy-Item .env.example .env
@@ -792,7 +833,7 @@ docker compose --env-file .env -f docker-compose.dev.yml ps
 docker compose --env-file .env -f docker-compose.dev.yml down
 ```
 
-### 13.7 本番/配置用Docker Compose
+### 13.9 本番/配置用Docker Compose
 
 ```powershell
 docker compose up -d postgres
@@ -899,6 +940,8 @@ local:
 - [ ] `scripts/dotnet.ps1 --info`が成功する。
 - [ ] `scripts/build.ps1`が開発用.NET SDKコンテナ経由で成功する。
 - [ ] `scripts/test.ps1`が開発用.NET SDKコンテナ経由で成功する。
+- [ ] `scripts/test-e2e.ps1`がホスト実行で成功する。
+- [ ] `scripts/dotnet.ps1 tool restore`後に`scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning`が0件で成功する。
 - [ ] PostgreSQLへMigration適用できる。
 - [ ] 初期Adminでログインできる。
 - [ ] 管理画面から2人目以降のAdminを追加または昇格できる。

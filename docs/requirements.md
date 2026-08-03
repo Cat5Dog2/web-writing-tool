@@ -338,15 +338,15 @@ MVPでは管理者と一般ユーザーを実装対象とし、ライター管�
 ### 8.1 AIモデル
 
 - MVPで採用するAIプロバイダーはGoogle Geminiとする。
-- MVPで採用するAIモデルはGoogle Gemini 3.5 Flashとする。
-- テキスト生成モデルは将来複数選択できる設計にするが、MVPの既定モデルはGoogle Gemini 3.5 Flashに固定する。
+- MVPで採用するAIモデルはGoogle Gemini 3.6 Flashとする。
+- テキスト生成モデルは将来複数選択できる設計とし、MVPの既定モデルはGoogle Gemini 3.6 Flashとする。Google Gemini 3.5 Flashも選択可能なモデルとして残す。
 - Gemini以外のAIプロバイダー対応はMVP対象外とし、後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択できるようにする。
 - プロバイダー差分はサービス層で吸収し、後続フェーズで別Providerを追加できるようにする。
 - 後続フェーズでProvider別TokenCounterを実装し、公式APIまたは公式Tokenizerを使ってトークン数を事前見積もりする。
 - モデル名、最大入力文字数、最大出力文字数、利用可否を設定で管理する。
 - APIキーはソースコード、Git、平文設定ファイルに保存しない。
-- Gemini 3.5 FlashのAPIモデルIDは`gemini-3.5-flash`とする。
-- Gemini 3.5 Flashの利用可能リージョンはJapanとする。
+- Gemini 3.6 FlashのAPIモデルIDは`gemini-3.6-flash`、Gemini 3.5 FlashのAPIモデルIDは`gemini-3.5-flash`とする。
+- Gemini 3.6 FlashとGemini 3.5 Flashの利用可能リージョンはJapanとする。
 
 ### 8.2 Web検索
 

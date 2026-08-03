@@ -104,7 +104,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 ```
 
-`scripts/test.ps1` は既定で `Category=E2E` を除外し、単体・結合・PostgreSQL・ジョブ・セキュリティテストを実行する。Playwright E2Eの実行手順は [CI/CD設計](docs/ci-cd-design.md) を参照する。
+`scripts/test.ps1` は `Category=E2E` を常に除外し、単体・結合・PostgreSQL・ジョブ・セキュリティテストを実行する。
+
+Playwright E2Eはコンテナではなくホストで実行する。ホストに.NET SDKとDockerが必要である。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -IncludeE2E
+```
+
+詳細は [CI/CD設計](docs/ci-cd-design.md) と [環境構築手順書](docs/environment-setup.md) を参照する。
 
 ## Dockerでのローカル起動
 

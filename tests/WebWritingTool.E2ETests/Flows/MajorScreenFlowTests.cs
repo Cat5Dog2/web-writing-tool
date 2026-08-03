@@ -143,7 +143,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
                 {
                     keyword,
                     titleMethod = "Ai",
-                    generationModel = "gemini-3.5-flash",
+                    generationModel = "gemini-3.6-flash",
                     candidateCount = 3,
                     suggestedKeywords = (string?)null,
                     relatedKeywords = (string?)null,
@@ -531,7 +531,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
                 h2Count = 2,
                 h3Count = 0,
                 outlineMethod = "Ai",
-                generationModel = "gemini-3.5-flash",
+                generationModel = "gemini-3.6-flash",
                 searchMode = false,
                 isDomesticOnly = true,
                 tone = "Normal",
@@ -555,7 +555,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             $"/api/articles/{articleId}/generation/headings/{headingId}/body",
             new
             {
-                generationModel = "gemini-3.5-flash",
+                generationModel = "gemini-3.6-flash",
                 targetLength = 200,
                 useWebSearch = false,
                 additionalPrompt = "E2E smoke"
