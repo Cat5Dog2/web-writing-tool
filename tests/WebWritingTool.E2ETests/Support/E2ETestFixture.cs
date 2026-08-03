@@ -163,7 +163,7 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             Status = ArticleStatus.Draft,
             Tags = ["e2e-auth"],
             Memo = "他ユーザーから見えないことを検証するE2Eデータ",
-            GenerationModel = "gemini-3.5-flash",
+            GenerationModel = "gemini-3.6-flash",
             OutlineMethod = "Keyword",
             SearchMode = false,
             IsDomesticOnly = true,
@@ -310,7 +310,7 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             Title = title,
             Status = ArticleStatus.Draft,
             Tags = [],
-            GenerationModel = "gemini-3.5-flash",
+            GenerationModel = "gemini-3.6-flash",
             OutlineMethod = "Keyword",
             SearchMode = false,
             IsDomesticOnly = true,
@@ -516,7 +516,12 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException("Repository root could not be found.");
+        // ビルド出力がリポジトリ外にあると解決できない。
+        // 開発用.NET SDKコンテナはArtifactsPathを/tmpへ向けるため、E2Eはホストで実行する。
+        throw new DirectoryNotFoundException(
+            "Repository root containing WebWritingTool.slnx could not be found. Searched upward from "
+            + $"'{AppContext.BaseDirectory}'. E2E tests must run on the host via scripts/test-e2e.ps1, "
+            + "not inside the development .NET SDK container.");
     }
 
     private static string CreateSafeName(string value)

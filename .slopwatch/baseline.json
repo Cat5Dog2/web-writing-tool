@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "createdAt": "2026-08-03T11:28:05.816179+00:00",
+  "updatedAt": "2026-08-03T11:28:05.8185962+00:00",
+  "description": "Initial baseline created by 'slopwatch init' on 2026-08-03 11:28:05 UTC",
+  "entries": [
+    {
+      "hash": "f0fdc3b4125b7bfa",
+      "ruleId": "SW003",
+      "filePath": "src/WebWritingTool.Web/BackgroundJobs/ArticleJobWorker.cs",
+      "lineNumber": 213,
+      "codeSnippet": "catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-08-03T11:28:05.8184919+00:00"
+    },
+    {
+      "hash": "dd334050f39481d2",
+      "ruleId": "SW003",
+      "filePath": "src/WebWritingTool.Web/BackgroundJobs/SearchCacheCleanupWorker.cs",
+      "lineNumber": 79,
+      "codeSnippet": "catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-08-03T11:28:05.8185804+00:00"
+    },
+    {
+      "hash": "d9a43ba2cc9e1ca5",
+      "ruleId": "SW003",
+      "filePath": "tests/WebWritingTool.E2ETests/Support/E2ETestFixture.cs",
+      "lineNumber": 449,
+      "codeSnippet": "catch (HttpRequestException)\n            {\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-08-03T11:28:05.8185863+00:00"
+    },
+    {
+      "hash": "ff83a20303e610e2",
+      "ruleId": "SW003",
+      "filePath": "tests/WebWritingTool.E2ETests/Support/E2ETestFixture.cs",
+      "lineNumber": 452,
+      "codeSnippet": "catch (TaskCanceledException)\n            {\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-08-03T11:28:05.8185893+00:00"
+    },
+    {
+      "hash": "602af54b4e2039ad",
+      "ruleId": "SW004",
+      "filePath": "tests/WebWritingTool.E2ETests/Support/E2ETestFixture.cs",
+      "lineNumber": 456,
+      "codeSnippet": "Task.Delay(500)",
+      "message": "Test uses Task.Delay(500) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-08-03T11:28:05.8185959+00:00"
+    }
+  ]
+}

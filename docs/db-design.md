@@ -861,7 +861,10 @@ MVPでは月次利用量集計機能を実装しない。`UsageLedgers`は時系
 初期シード候補:
 
 - `AiModelSettings`
-  - GoogleGemini / gemini-3.5-flash / Google Gemini 3.5 Flash / Japan
+  - GoogleGemini / gemini-3.6-flash / Google Gemini 3.6 Flash / Japan / SortOrder 0（既定モデル）
+  - GoogleGemini / gemini-3.5-flash / Google Gemini 3.5 Flash / Japan / SortOrder 1
+  - 既存行の`Enabled`は上書きせず、`SortOrder`のみ既定モデルが先頭になるよう揃える。
+  - 整列対象はシードが管理する上記2モデルに限る。手動追加した別モデルが`SortOrder` 0を持つ場合、既定モデルが先頭になる保証はない。
 - 管理者ロール
 - 一般ユーザーロール
 - 初期Adminユーザー

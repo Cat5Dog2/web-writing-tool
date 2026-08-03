@@ -411,7 +411,7 @@ tests/
 
 | テストID | 観点 |
 | --- | --- |
-| `IT-EXT-001` | Gemini 3.5 Flash成功レスポンスを共通DTOへ変換 |
+| `IT-EXT-001` | Gemini 3.6 Flash成功レスポンスを共通DTOへ変換 |
 | `IT-EXT-002` | Gemini APIのモデルIDが設定値から解決される |
 | `IT-EXT-003` | 429をRateLimitedへ変換 |
 | `IT-EXT-004` | 401をUnauthorizedExternalApiへ変換 |
@@ -569,11 +569,34 @@ PRの最小セットは、ログイン、記事検索、記事作成、生成結
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
-`scripts/test.ps1`は開発用.NET SDKコンテナ経由で`dotnet test`を実行する。
+`scripts/test.ps1`は開発用.NET SDKコンテナ経由で`dotnet test`を実行する。E2Eは常に除外する。
 
 PostgreSQLを使う結合テストはTestcontainers for .NETでPostgreSQLを起動する。
 
 Docker ComposeのテストDBは、本番相当構成の確認、E2E、手動検証が必要な場合に使用する。
+
+E2Eを含める場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -IncludeE2E
+```
+
+E2Eだけを実行する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1
+```
+
+E2Eはコンテナではなくホストで実行する。`scripts/test.ps1 -IncludeE2E`はコンテナで単体・結合テストを実行した後、`scripts/test-e2e.ps1`へ委譲する。
+
+ホスト実行にする理由は次の2点である。
+
+- `docker-compose.dev.yml`が`ArtifactsPath`を`/tmp`へ向けるため、ビルド出力がバインドマウント外へ出て`E2ETestFixture`がリポジトリルートを解決できない。
+- `Dockerfile.dev`にPlaywrightのブラウザーと依存パッケージが含まれていない。
+
+`scripts/test-e2e.ps1`はrestore、build、Chromiumインストール、`dotnet test`を実行する。この手順の単一情報源はこのスクリプトであり、`.github/workflows/ci.yaml`のE2Eジョブもこのスクリプトを直接呼ぶ。CI側に手順を重複して書かない。
+
+ホストに.NET SDKとDockerが必要であり、`--artifacts-path`は指定しない。ブラウザー導入済みなら`-SkipBrowserInstall`でインストールを省略できる。trxログは`test-results/e2e/trx/e2e.trx`へ出力する。
 
 ### 15.2 CI実行順
 

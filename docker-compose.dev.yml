@@ -39,7 +39,7 @@ services:
       AdminSeed__Email: ${AdminSeed__Email:-}
       AdminSeed__Password: ${AdminSeed__Password:-}
       AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
-      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.5-flash}
+      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.6-flash}
       AiProviders__Gemini__Region: ${AiProviders__Gemini__Region:-Japan}
       AiProviders__Gemini__TimeoutSeconds: ${AiProviders__Gemini__TimeoutSeconds:-120}
       SearchProviders__DefaultRegion: ${SearchProviders__DefaultRegion:-Japan}
@@ -61,9 +61,11 @@ services:
       - dotnet_nuget_cache:/home/dotnet/.nuget/packages
       - dotnet_usersecrets:/home/dotnet/.microsoft/usersecrets
       - dotnet_aspnet:/home/dotnet/.aspnet
+      - dotnet_tools:/home/dotnet/.dotnet
 
 volumes:
   postgres_data:
   dotnet_nuget_cache:
   dotnet_usersecrets:
   dotnet_aspnet:
+  dotnet_tools:

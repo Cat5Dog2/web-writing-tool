@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
@@ -17,7 +18,7 @@ public class GeminiTextGenerationClientTests
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
                 request.RequestUri?.ToString());
             Assert.True(request.Headers.TryGetValues("x-goog-api-key", out var values));
             Assert.Equal("test-key", Assert.Single(values));
@@ -47,7 +48,7 @@ public class GeminiTextGenerationClientTests
 
         var result = await client.GenerateAsync(new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.5-flash",
+            "gemini-3.6-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",
@@ -57,10 +58,54 @@ public class GeminiTextGenerationClientTests
 
         Assert.Equal("生成本文", result.Text);
         Assert.Equal(AiProviders.Gemini, result.Provider);
-        Assert.Equal("gemini-3.5-flash", result.Model);
+        Assert.Equal("gemini-3.6-flash", result.Model);
         Assert.Equal("response-1", result.RawResponseId);
         Assert.Equal("systemuser".Length, result.PromptChars);
         Assert.Equal("生成本文".Length, result.OutputChars);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WithoutRequestModel_UsesConfiguredDefaultModel()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(
+                $"https://generativelanguage.googleapis.com/v1beta/models/{GeminiOptions.DefaultModel}:generateContent",
+                request.RequestUri?.ToString());
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent("""
+                    {
+                      "candidates": [
+                        {
+                          "content": {
+                            "parts": [
+                              { "text": "生成本文" }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    """)
+            };
+        }))
+        {
+            BaseAddress = new Uri("https://generativelanguage.googleapis.com/")
+        };
+        var client = CreateClient(httpClient, apiKey: "test-key");
+
+        var result = await client.GenerateAsync(new AiTextGenerationRequest(
+            AiProviders.Gemini,
+            string.Empty,
+            AiOperations.BodyGeneration,
+            "system",
+            "user",
+            null,
+            null,
+            []));
+
+        Assert.Equal("gemini-3.6-flash", result.Model);
     }
 
     [Fact]
@@ -119,6 +164,31 @@ public class GeminiTextGenerationClientTests
         Assert.Equal(ExternalIntegrationErrorCodes.ExternalBadResponse, exception.ErrorCode);
     }
 
+    // Gemini 3.xではtemperature、top_p、top_kが全リクエストから削除するよう案内されており、
+    // 将来モデルでは送信するとHTTP 400になる。3.5も対象に含む。
+    [Theory]
+    [InlineData("gemini-3.6-flash")]
+    [InlineData("gemini-3.5-flash")]
+    [InlineData("gemini-4-flash-future")]
+    public async Task GenerateAsync_WithAnyModel_NeverSendsSamplingParameters(string model)
+    {
+        var handler = new StubHttpMessageHandler(_ => SuccessResponse());
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://generativelanguage.googleapis.com/")
+        };
+        var client = CreateClient(httpClient, apiKey: "test-key");
+
+        await client.GenerateAsync(CreateRequest(model, temperature: 0.5));
+
+        Assert.NotNull(handler.LastRequestBody);
+        using var document = JsonDocument.Parse(handler.LastRequestBody);
+        Assert.False(document.RootElement.TryGetProperty("generationConfig", out _));
+        Assert.DoesNotContain("temperature", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("top_p", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("top_k", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static GeminiTextGenerationClient CreateClient(HttpClient httpClient, string apiKey)
     {
         return new GeminiTextGenerationClient(
@@ -127,11 +197,44 @@ public class GeminiTextGenerationClientTests
             NullLogger<GeminiTextGenerationClient>.Instance);
     }
 
+    private static HttpResponseMessage SuccessResponse()
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent("""
+                {
+                  "candidates": [
+                    {
+                      "content": {
+                        "parts": [
+                          { "text": "生成本文" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """)
+        };
+    }
+
+    private static AiTextGenerationRequest CreateRequest(string model, double? temperature)
+    {
+        return new AiTextGenerationRequest(
+            AiProviders.Gemini,
+            model,
+            AiOperations.BodyGeneration,
+            "system",
+            "user",
+            null,
+            temperature,
+            []);
+    }
+
     private static AiTextGenerationRequest CreateRequest()
     {
         return new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.5-flash",
+            "gemini-3.6-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",
@@ -148,11 +251,18 @@ public class GeminiTextGenerationClientTests
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
         : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        public string? LastRequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult(handler(request));
+            if (request.Content is not null)
+            {
+                LastRequestBody = await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+
+            return handler(request);
         }
     }
 }

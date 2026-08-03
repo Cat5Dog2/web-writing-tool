@@ -325,8 +325,8 @@ WordPress Application PasswordとDiscord Webhook URLはユーザー別にDB暗�
 | 項目 | 方針 |
 | --- | --- |
 | Provider | Google Gemini |
-| Model | Google Gemini 3.5 Flash |
-| API Model ID | `gemini-3.5-flash` |
+| Model | Google Gemini 3.6 Flash |
+| API Model ID | `gemini-3.6-flash` |
 | Region | Japan |
 | 実行主体 | BackgroundService |
 

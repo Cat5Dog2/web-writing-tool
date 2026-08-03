@@ -15,6 +15,7 @@
 - DB MigrationはテストPostgreSQLへの適用またはSQL生成で確認する。
 - ローカル開発とPR CIの通常`dotnet`操作は、共通スクリプト経由で開発用.NET SDKコンテナから実行する。
 - Playwright E2E smokeはブラウザとOS依存パッケージが必要なため、GitHub-hosted runner上で.NET SDKをセットアップして実行する。
+- E2Eの実行手順は`scripts/test-e2e.ps1`を単一の情報源とし、CIとローカルで同じスクリプトを呼ぶ。CI側に個別の手順を書かない。
 - 本番デプロイは自動直送せず、手動承認または明示操作を必須にする。
 - `.env`、実APIキー、DBパスワード、Webhook URL、Application PasswordをCIログや成果物へ出さない。
 - 重大脆弱性が検出された場合はリリースを止める。
@@ -90,7 +91,8 @@ PR CIで実行する範囲:
 | integration tests | `WebWritingTool.IntegrationTests` | `scripts/test.ps1`でWebApplicationFactoryと外部APIモックを検証 |
 | DB tests | PostgreSQL | `WebWritingTool.IntegrationTests`内でTestcontainers for .NETを使う |
 | job tests | BackgroundService関連 | `WebWritingTool.IntegrationTests`内でロック、状態遷移、再試行を検証 |
-| E2E smoke | `WebWritingTool.E2ETests` | Playwright Chromiumをrunnerへインストールして最小セットのみ実行 |
+| E2E smoke | `WebWritingTool.E2ETests` | `scripts/test-e2e.ps1`。runnerへPlaywright Chromiumをインストールして実行 |
+| static analysis | solution全体 | `scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning` |
 | Docker build | 可能なら軽量確認 | main CIで必須、PRでは時間次第 |
 
 PR CIでは性能テスト、全E2E、本番相当Compose確認を必須にしない。
@@ -165,13 +167,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
-`scripts/test.ps1`は既定でブラウザ不要のテストを実行し、`Category=E2E`のテストを除外する。E2E smokeはPlaywright Chromiumをインストールした環境で以下を直接実行する。
+`scripts/test.ps1`はブラウザ不要のテストを開発用.NET SDKコンテナで実行し、`Category=E2E`のテストを常に除外する。E2E smokeは以下で実行する。
 
 ```powershell
-dotnet build tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/WebWritingTool.E2ETests/bin/Debug/net10.0/playwright.ps1 install chromium
-dotnet test tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1
 ```
+
+`scripts/test-e2e.ps1`はコンテナではなくホストで、restore、build、Chromiumインストール、`dotnet test`を実行する。ホストに.NET SDKとDockerが必要である。`scripts/test.ps1 -IncludeE2E`はコンテナでの単体・結合テスト後にこのスクリプトへ委譲する。CIのE2Eジョブも同じスクリプトを呼び、手順を二重管理しない。
+
+trxログは`test-results/e2e/trx/e2e.trx`へ出力する。Playwrightのtrace、video、screenshotと同じ`test-results/e2e`配下にまとまるため、CIは失敗時にこのディレクトリごと成果物として保存する。
+
+E2Eをコンテナで実行しない理由は次の2点である。
+
+- `docker-compose.dev.yml`が`ArtifactsPath`を`/tmp`へ向けるため、ビルド出力がバインドマウント外へ出て`E2ETestFixture`がリポジトリルートを解決できない。
+- `Dockerfile.dev`にPlaywrightのブラウザーと依存パッケージが含まれていない。
 
 `global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CIの.NET SDKバージョンは一致させる。
 

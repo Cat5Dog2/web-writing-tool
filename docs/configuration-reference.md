@@ -99,7 +99,7 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | 環境変数 | 設定キー | local | production | 秘密情報 | 既定値 / 方針 |
 | --- | --- | --- | --- | --- | --- |
 | `AiProviders__Gemini__ApiKey` | `AiProviders:Gemini:ApiKey` | AI実行時必須 | 必須 | Yes | Gemini APIキー |
-| `AiProviders__Gemini__Model` | `AiProviders:Gemini:Model` | 推奨 | 必須 | No | `gemini-3.5-flash` |
+| `AiProviders__Gemini__Model` | `AiProviders:Gemini:Model` | 推奨 | 必須 | No | `gemini-3.6-flash` |
 | `AiProviders__Gemini__Region` | `AiProviders:Gemini:Region` | 推奨 | 必須 | No | `Japan` |
 | `AiProviders__Gemini__TimeoutSeconds` | `AiProviders:Gemini:TimeoutSeconds` | 任意 | 任意 | No | 120 |
 | `AiProviders__Gemini__MaxInputChars` | `AiProviders:Gemini:MaxInputChars` | 任意 | 任意 | No | 実装時にモデル制限へ合わせる |
@@ -240,7 +240,7 @@ POSTGRES_USER=web_writing_tool
 POSTGRES_PASSWORD=change-me
 
 AiProviders__Gemini__ApiKey=change-me
-AiProviders__Gemini__Model=gemini-3.5-flash
+AiProviders__Gemini__Model=gemini-3.6-flash
 AiProviders__Gemini__Region=Japan
 AiProviders__Gemini__TimeoutSeconds=120
 
@@ -299,7 +299,7 @@ Webプロジェクト作成後、開発用.NET SDKコンテナ経由で設定す
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets init --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "ConnectionStrings:DefaultConnection" "Host=postgres;Port=5432;Database=web_writing_tool;Username=web_writing_tool;Password=change-me" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:ApiKey" "<your-gemini-api-key>" --project src/WebWritingTool.Web
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.5-flash" --project src/WebWritingTool.Web
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.6-flash" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Region" "Japan" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:Tavily:ApiKey" "<your-tavily-api-key>" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:X:BearerToken" "<your-x-bearer-token>" --project src/WebWritingTool.Web

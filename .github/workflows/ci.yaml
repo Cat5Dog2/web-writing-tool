@@ -32,6 +32,11 @@ jobs:
       - name: Format check
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 
+      - name: Slopwatch
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 tool restore
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
@@ -61,17 +66,10 @@ jobs:
           docker --version
           docker compose version
 
-      - name: Restore E2E project
-        run: dotnet restore tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj
-
-      - name: Build E2E project
-        run: dotnet build tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-restore
-
-      - name: Install Playwright Chromium
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/WebWritingTool.E2ETests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
-
+      # scripts/test-e2e.ps1 owns the restore / build / Chromium install / test sequence
+      # so CI and local runs cannot drift apart.
       - name: Run E2E smoke
-        run: dotnet test tests/WebWritingTool.E2ETests/WebWritingTool.E2ETests.csproj --configuration Debug --no-build --logger "trx;LogFileName=e2e.trx" --results-directory test-results/e2e/trx
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-e2e.ps1
 
       - name: Upload E2E artifacts on failure
         if: failure()
