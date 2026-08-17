@@ -129,7 +129,7 @@ VPS要件の目安:
 | `POSTGRES_USER` | PostgreSQLユーザー | Docker時必須 | Docker時必須 |
 | `POSTGRES_PASSWORD` | PostgreSQLパスワード | Docker時必須 | Docker時必須 |
 | `AiProviders__Gemini__ApiKey` | Gemini APIキー | AI実行時必須 | 必須 |
-| `AiProviders__Gemini__Model` | GeminiモデルID | `gemini-3.6-flash` | `gemini-3.6-flash` |
+| `AiProviders__Gemini__Model` | GeminiモデルID | `gemini-3.7-flash` | `gemini-3.7-flash` |
 | `AiProviders__Gemini__Region` | Gemini利用リージョン | `Japan` | `Japan` |
 | `SearchProviders__DefaultRegion` | 検索既定リージョン | `Japan` | `Japan` |
 | `SearchProviders__Tavily__ApiKey` | Tavily APIキー | 検索時必須 | 必須 |
@@ -171,7 +171,7 @@ POSTGRES_USER=web_writing_tool
 POSTGRES_PASSWORD=change-me
 
 AiProviders__Gemini__ApiKey=change-me
-AiProviders__Gemini__Model=gemini-3.6-flash
+AiProviders__Gemini__Model=gemini-3.7-flash
 AiProviders__Gemini__Region=Japan
 AiProviders__Gemini__TimeoutSeconds=120
 
@@ -225,7 +225,7 @@ Webプロジェクト作成後、Webプロジェクトディレクトリで実�
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets init --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "ConnectionStrings:DefaultConnection" "Host=postgres;Port=5432;Database=web_writing_tool;Username=web_writing_tool;Password=change-me" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:ApiKey" "<your-gemini-api-key>" --project src/WebWritingTool.Web
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.6-flash" --project src/WebWritingTool.Web
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Model" "gemini-3.7-flash" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "AiProviders:Gemini:Region" "Japan" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:Tavily:ApiKey" "<your-tavily-api-key>" --project src/WebWritingTool.Web
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 user-secrets set "SearchProviders:X:BearerToken" "<your-x-bearer-token>" --project src/WebWritingTool.Web
@@ -620,15 +620,15 @@ productionでは必ず永続volumeへ保存する。
 | 項目 | 値 |
 | --- | --- |
 | Provider | Google Gemini |
-| Model | Google Gemini 3.6 Flash |
-| Model ID | `gemini-3.6-flash` |
+| Model | Google Gemini 3.7 Flash |
+| Model ID | `gemini-3.7-flash` |
 | Region | Japan |
 
 設定:
 
 ```text
 AiProviders__Gemini__ApiKey
-AiProviders__Gemini__Model=gemini-3.6-flash
+AiProviders__Gemini__Model=gemini-3.7-flash
 AiProviders__Gemini__Region=Japan
 AiProviders__Gemini__TimeoutSeconds=120
 ```

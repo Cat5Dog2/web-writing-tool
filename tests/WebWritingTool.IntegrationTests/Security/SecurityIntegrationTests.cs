@@ -33,7 +33,7 @@ public class SecurityIntegrationTests(IntegrationTestFixture fixture)
             additionalPrompt = (string?)null,
             writingProfileWordpressSiteId = (Guid?)null,
             outlineMethod = "Keyword",
-            generationModel = "gemini-3.6-flash",
+            generationModel = "gemini-3.7-flash",
             searchMode = false,
             isDomesticOnly = true,
             notificationMode = "None"

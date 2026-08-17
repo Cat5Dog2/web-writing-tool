@@ -614,6 +614,21 @@ DBスキーマ変更を含むリリースでは、アプリの前後方互換性
 
 productionとstrictでは、X投稿を画面表示またはWordPress投稿本文に引用する前に必ず再取得し、削除、非公開化、編集の有無を確認する。
 
+### 18.6 AIモデル切り替えとロールバック
+
+既定モデルを切り替える場合は、シードの`SortOrder`、`GeminiOptions.DefaultModel`、`appsettings.json`とDocker Composeの既定値、実環境の`AiProviders__Gemini__Model`を更新する。`GeminiOptions.Model`は設定バインドされるため、定数だけを変更しても実効値は変わらない。旧モデルは`AiModelSettings`から削除せず、選択可能な状態で残す。
+
+モデル解決順は「ジョブPayloadの`GenerationModel`」「記事の`GenerationModel`」「`AiProviders__Gemini__Model`」であり、ジョブ実行時に`AiModelSettings.Enabled`を再検証しない。このためロールバックは影響範囲ごとに対応する。
+
+| 対象 | 対応 |
+| --- | --- |
+| 新規記事の選択肢 | 対象モデルの`AiModelSettings.Enabled`を`false`にする。シードは既存行の`Enabled`を上書きしないため再起動後も維持される |
+| 既存記事 | 保存済みの`GenerationModel`は変わらないため、必要に応じて旧モデルへ変更する |
+| 登録済みジョブ | Payloadの`GenerationModel`は変わらないため、ジョブ状態に応じてキャンセルまたは再登録する |
+| 既定値の完全復元 | シード、コードと設定ファイルの既定値（`GeminiOptions.DefaultModel`、`appsettings.json`、Docker Compose）、および実環境の`AiProviders__Gemini__Model`を旧モデルへ戻して再デプロイする |
+
+`AiProviders__Gemini__Model`はフォールバック設定であり、単独ではロールバック手段にならない。
+
 ## 19. 運用コマンド例
 
 実際のサービス名、Composeファイル名、パスは本番環境に合わせて調整する。
