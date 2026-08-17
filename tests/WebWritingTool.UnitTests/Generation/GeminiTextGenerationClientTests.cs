@@ -18,7 +18,7 @@ public class GeminiTextGenerationClientTests
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent",
                 request.RequestUri?.ToString());
             Assert.True(request.Headers.TryGetValues("x-goog-api-key", out var values));
             Assert.Equal("test-key", Assert.Single(values));
@@ -48,7 +48,7 @@ public class GeminiTextGenerationClientTests
 
         var result = await client.GenerateAsync(new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.6-flash",
+            "gemini-3.7-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",
@@ -58,7 +58,7 @@ public class GeminiTextGenerationClientTests
 
         Assert.Equal("生成本文", result.Text);
         Assert.Equal(AiProviders.Gemini, result.Provider);
-        Assert.Equal("gemini-3.6-flash", result.Model);
+        Assert.Equal("gemini-3.7-flash", result.Model);
         Assert.Equal("response-1", result.RawResponseId);
         Assert.Equal("systemuser".Length, result.PromptChars);
         Assert.Equal("生成本文".Length, result.OutputChars);
@@ -105,7 +105,7 @@ public class GeminiTextGenerationClientTests
             null,
             []));
 
-        Assert.Equal("gemini-3.6-flash", result.Model);
+        Assert.Equal("gemini-3.7-flash", result.Model);
     }
 
     [Fact]
@@ -165,8 +165,9 @@ public class GeminiTextGenerationClientTests
     }
 
     // Gemini 3.xではtemperature、top_p、top_kが全リクエストから削除するよう案内されており、
-    // 将来モデルでは送信するとHTTP 400になる。3.5も対象に含む。
+    // 将来モデルでは送信するとHTTP 400になる。3.6と3.5も対象に含む。
     [Theory]
+    [InlineData("gemini-3.7-flash")]
     [InlineData("gemini-3.6-flash")]
     [InlineData("gemini-3.5-flash")]
     [InlineData("gemini-4-flash-future")]
@@ -234,7 +235,7 @@ public class GeminiTextGenerationClientTests
     {
         return new AiTextGenerationRequest(
             AiProviders.Gemini,
-            "gemini-3.6-flash",
+            "gemini-3.7-flash",
             AiOperations.BodyGeneration,
             "system",
             "user",

@@ -152,7 +152,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Title = $"{keyword} title",
             Status = ArticleStatus.Draft,
             Tags = ["test"],
-            GenerationModel = "gemini-3.6-flash",
+            GenerationModel = "gemini-3.7-flash",
             OutlineMethod = "Keyword",
             NotificationMode = "None",
             IsDomesticOnly = true

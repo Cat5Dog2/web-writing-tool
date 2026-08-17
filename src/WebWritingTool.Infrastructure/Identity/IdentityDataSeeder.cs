@@ -25,8 +25,9 @@ public sealed class IdentityDataSeeder(
     // 手動追加モデルまで保証するなら明示的な既定モデル列をAiModelSettingsへ追加する。
     private static readonly (string Model, string DisplayName, int SortOrder)[] InitialAiModels =
     [
-        ("gemini-3.6-flash", "Google Gemini 3.6 Flash", 0),
-        ("gemini-3.5-flash", "Google Gemini 3.5 Flash", 1)
+        ("gemini-3.7-flash", "Google Gemini 3.7 Flash", 0),
+        ("gemini-3.6-flash", "Google Gemini 3.6 Flash", 1),
+        ("gemini-3.5-flash", "Google Gemini 3.5 Flash", 2)
     ];
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)

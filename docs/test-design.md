@@ -411,7 +411,7 @@ tests/
 
 | テストID | 観点 |
 | --- | --- |
-| `IT-EXT-001` | Gemini 3.6 Flash成功レスポンスを共通DTOへ変換 |
+| `IT-EXT-001` | Gemini 3.7 Flash成功レスポンスを共通DTOへ変換 |
 | `IT-EXT-002` | Gemini APIのモデルIDが設定値から解決される |
 | `IT-EXT-003` | 429をRateLimitedへ変換 |
 | `IT-EXT-004` | 401をUnauthorizedExternalApiへ変換 |
