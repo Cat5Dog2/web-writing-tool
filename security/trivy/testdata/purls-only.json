@@ -1,0 +1,12 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-00000",
+      "statement": "Fixture for scripts/scan-image.ps1 -SelfTest. Not a real acceptance.",
+      "expired_at": "2099-01-01T00:00:00Z",
+      "purls": [
+        "pkg:golang/example.com/module"
+      ]
+    }
+  ]
+}

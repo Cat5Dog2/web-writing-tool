@@ -1,0 +1,12 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-00000",
+      "paths": [
+        "usr/local/bin/example"
+      ],
+      "statement": "Fixture for scripts/scan-image.ps1 -SelfTest. Not a real acceptance.",
+      "expired_at": "2099-01-01"
+    }
+  ]
+}

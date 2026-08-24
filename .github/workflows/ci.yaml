@@ -37,11 +37,47 @@ jobs:
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 tool restore
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning
 
+      - name: NuGet vulnerability scan
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-nuget.ps1
+
+      # A non-ASCII byte or a BOM in a script changes how Windows PowerShell parses it, silently.
+      # docs/coding-guidelines.md 19.1 has the details.
+      - name: Script encoding check
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-script-encoding.ps1
+
+      # Validates security/trivy and proves the validator still rejects malformed acceptances.
+      # Runs here, without Docker, so a bad acceptance fails before the production Docker job.
+      - name: Validate vulnerability acceptances
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
       - name: Test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+
+  # CI and the VPS run pwsh, local procedures in docs run "powershell" (Windows PowerShell 5.1).
+  # The two hosts parse scripts differently, so the checks that guard the release gate are run on
+  # both. Needs no Docker: -ValidateOnly stops before the image scan.
+  script-compat:
+    name: Windows PowerShell compatibility
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Report host version
+        run: $PSVersionTable.PSVersion.ToString()
+
+      - name: Script encoding check
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-script-encoding.ps1
+
+      - name: Validate vulnerability acceptances
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
 
   e2e-smoke:
     name: E2E smoke
@@ -79,6 +115,27 @@ jobs:
           path: test-results/e2e
           if-no-files-found: ignore
 
+  performance:
+    name: Nightly performance
+    runs-on: ubuntu-latest
+    needs: build-test
+    # docs/ci-cd-design.md 7章。夜間CIの劣化検知が目的で、リリース停止条件ではない。
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check Docker
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run performance tests
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-performance.ps1
+
   docker-production:
     name: Production Docker smoke
     runs-on: ubuntu-latest
@@ -87,6 +144,7 @@ jobs:
     env:
       ASPNETCORE_ENVIRONMENT: Production
       APP_IMAGE: web-writing-tool-app:ci
+      CADDY_IMAGE: web-writing-tool-caddy:ci
       App__BaseUrl: http://localhost:8080
       CADDY_SITE_ADDRESS: :80
       CADDY_HTTP_PORT: 8080
@@ -112,29 +170,54 @@ jobs:
           docker --version
           docker compose version
 
-      - name: Build production image
-        run: docker build -f Dockerfile -t web-writing-tool-app:ci .
+      # --pull is required. A cached base image keeps shipping runtime patches that upstream
+      # already fixed, and the image scan below would then fail on avoidable vulnerabilities.
+      # caddy is built from Dockerfile.caddy, see docs/ci-cd-design.md 9.1.
+      - name: Build production images
+        run: docker compose build --pull app caddy
+
+      # Scans every image docker-compose.yml deploys: app, caddy and postgres.
+      - name: Image vulnerability scan
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci
 
       - name: Start PostgreSQL
         run: docker compose up -d postgres
 
+      # Use the same tools profile the deployment procedure uses, so the documented
+      # migration path is exercised by CI instead of a CI-only variant.
       - name: Apply migrations
-        run: |
-          docker run --rm \
-            --network web-writing-tool_default \
-            -v "${{ github.workspace }}:/src" \
-            -w /src \
-            -e "ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}" \
-            mcr.microsoft.com/dotnet/sdk:10.0 \
-            sh -lc 'dotnet restore WebWritingTool.slnx && dotnet tool restore && dotnet tool run dotnet-ef database update --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj --startup-project src/WebWritingTool.Web/WebWritingTool.Web.csproj --context ApplicationDbContext'
+        run: docker compose --profile tools run --rm migrate
 
+      # --no-build so the smoke test runs the exact image the scan above inspected.
+      # Rebuilding here would produce a different artifact than the one that passed the gate.
       - name: Start production compose
-        run: docker compose up -d --build app caddy
+        run: docker compose up -d --no-build app caddy
 
       - name: Check health through Caddy
         run: |
           curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:8080/health/live
           curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:8080/health/ready
+
+      # Caddy must answer 404 for /health/ready outside private ranges. Docker publishes ports
+      # from the bridge gateway, so a host curl always looks private. Attaching Caddy to a
+      # TEST-NET-3 network gives a genuinely non-private source address.
+      - name: Check /health/ready is blocked from a public source address
+        run: |
+          caddy=$(docker compose ps -q caddy)
+          docker network create --subnet 203.0.113.0/24 ci-public-probe
+          docker network connect --alias caddy-public ci-public-probe "$caddy"
+          ready=$(docker run --rm --network ci-public-probe curlimages/curl:8.21.0 -s -o /dev/null -w '%{http_code}' http://caddy-public/health/ready)
+          live=$(docker run --rm --network ci-public-probe curlimages/curl:8.21.0 -s -o /dev/null -w '%{http_code}' http://caddy-public/health/live)
+          echo "public source: /health/ready=$ready /health/live=$live"
+          test "$ready" = "404"
+          test "$live" = "200"
+
+      - name: Remove public probe network
+        if: always()
+        run: |
+          caddy=$(docker compose ps -q caddy || true)
+          if [ -n "$caddy" ]; then docker network disconnect ci-public-probe "$caddy" || true; fi
+          docker network rm ci-public-probe || true
 
       - name: Show compose status on failure
         if: failure()

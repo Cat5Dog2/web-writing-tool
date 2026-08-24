@@ -5,8 +5,23 @@
 		max_size 20MB
 	}
 
-	reverse_proxy app:8080 {
-		header_up Host {host}
+	# /health/ready はDBとBackgroundServiceの稼働状態を返すため、インターネットからは応答しない。
+	# /health/live は外形監視で使うため公開したままにする。/health/deps はアプリ側でAdmin認証必須。
+	# 共通Caddy構成（docker-compose.shared-caddy.yml）ではこのCaddyfileが読まれないため、
+	# VPS側の共通Caddyに同じ制限を設定する。docs/operation-design.md を参照。
+	@external_ready_probe {
+		path /health/ready
+		not remote_ip private_ranges
+	}
+
+	handle @external_ready_probe {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy app:8080 {
+			header_up Host {host}
+		}
 	}
 
 	log {

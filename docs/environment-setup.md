@@ -97,6 +97,9 @@ PowerShell 5.1でも基本操作は可能だが、スクリプトはPowerShell 7
 | ufw | ファイアウォール |
 | openssh-server | SSH接続 |
 | rsyncまたはgit | デプロイ |
+| PowerShell 7（`pwsh`） | `scripts/scan-image.ps1`の実行。VPSでビルドした成果物を起動前にスキャンするため必須 |
+
+Ubuntuでは`sudo snap install powershell --classic`でPowerShell 7を入れられる。
 
 VPS要件の目安:
 
@@ -322,8 +325,12 @@ HTTPS、Cookie Secure、認証リダイレクト、CSRFを本番寄りに確認�
 
 ### 6.2 起動
 
+ビルド、スキャン、起動の順に実行する。`up`へ`--build`を付けない。付けるとスキャンした成果物と
+起動する成果物が別物になる。
+
 ```powershell
-docker compose up -d --build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+docker compose up -d --no-build
 docker compose ps
 ```
 
@@ -451,9 +458,10 @@ example.com {
 実装時には以下も検討する。
 
 - アクセスログ
-- セキュリティヘッダー
 - リクエストボディサイズ上限
-- `/health/live`の公開可否
+- `/health/ready`をインターネットへ出さない設定。同梱`Caddyfile`と同じく`remote_ip private_ranges`以外を拒否する
+
+セキュリティヘッダーはアプリ側の`SecurityHeadersMiddleware`が付与するため、共通Caddy側の設定は不要。
 
 ### 7.8 DNS設定
 
@@ -493,8 +501,13 @@ docker compose --profile tools run --rm migrate
 
 Migration成功後にappと付属Caddyを起動する。
 
+`scripts/scan-image.ps1 -Build`が`docker compose build --pull`でイメージを作り、そのまま同じタグを
+スキャンする。起動は`--no-build`にする。`up -d --build`にすると、スキャンを通した成果物ではなく
+その場で作り直した別の成果物が動く。
+
 ```bash
-docker compose up -d --build app caddy
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+docker compose up -d --no-build app caddy
 ```
 
 ```bash
@@ -509,7 +522,9 @@ docker compose logs --tail=100 postgres
 ```bash
 curl -fsSI https://example.com
 curl -fsS https://example.com/health/live
-curl -fsS https://example.com/health/ready
+
+# /health/ready はインターネットからは404になる。VPS上でループバック経由に切り替える。
+curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
 
 確認項目:
@@ -537,11 +552,18 @@ docker compose \
   -f docker-compose.shared-caddy.yml \
   --profile tools run --rm migrate
 
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -Build
+
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.shared-caddy.yml \
-  up -d --build app
+  up -d --no-build app
 ```
+
+この構成では付属Caddyが`bundled-caddy` profileへ隔離されるため、`docker compose config`から外れ、
+スキャン対象にも入らない。TLS終端はVPS側の共通Caddyが担うので、そちらの脆弱性管理は別途行う。
 
 このoverrideはappを`127.0.0.1:${APP_HOST_PORT:-8081}`、PostgreSQLを`127.0.0.1:${POSTGRES_HOST_PORT:-5433}`にだけ公開し、付属Caddyを`bundled-caddy` profileへ隔離する。外部インターフェースへは公開しない。
 
@@ -563,7 +585,9 @@ writing.example.com {
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 curl -fsS https://writing.example.com/health/live
-curl -fsS https://writing.example.com/health/ready
+
+# 共通Caddyでも/health/readyを外部へ出さない設定にした場合は、appへ直接確認する。
+curl -fsS http://127.0.0.1:8081/health/ready
 ```
 
 ## 8. appsettings方針
@@ -838,7 +862,8 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 ```powershell
 docker compose up -d postgres
 docker compose --profile tools run --rm migrate
-docker compose up -d --build app caddy
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+docker compose up -d --no-build app caddy
 docker compose ps
 docker compose logs -f app
 docker compose down
@@ -949,7 +974,8 @@ local:
 
 docker-local:
 
-- [ ] `docker compose up -d --build`で`app`, `postgres`, `caddy`が起動する。
+- [ ] `scripts/scan-image.ps1 -Build`が成功する。
+- [ ] `docker compose up -d --no-build`で`app`, `postgres`, `caddy`が起動する。
 - [ ] Caddy経由でアプリへアクセスできる。
 - [ ] PostgreSQLデータが再起動後も保持される。
 - [ ] Data Protectionキーが再起動後も保持される。

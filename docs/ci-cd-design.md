@@ -9,7 +9,7 @@
 ## 2. 基本方針
 
 - PRでは開発速度を落とさない範囲で品質ゲートを設ける。
-- mainマージ後と夜間CIで、PRで省略した重い検証を補完する。
+- mainマージ後と夜間CI、および`workflow_dispatch`で、PRで動かない本番Docker確認と性能テストを補完する。
 - 外部本番APIはCIで呼ばない。
 - PostgreSQL依存テストにはEF Core InMemory Providerを使わない。
 - DB MigrationはテストPostgreSQLへの適用またはSQL生成で確認する。
@@ -29,8 +29,8 @@ CI/CD基盤はGitHub Actionsとする。
 | PR CI | GitHub Actionsの`pull_request` workflowで実行する |
 | main CI | GitHub Actionsの`push` workflowで実行する |
 | 夜間CI | GitHub Actionsの`schedule` workflowで実行する |
-| リリース前チェック | GitHub Actionsの`workflow_dispatch`またはrelease tagで実行する |
-| production deploy | GitHub Actionsの`workflow_dispatch` + environment protectionで手動承認後に実行する |
+| リリース前チェック | GitHub Actionsの`workflow_dispatch`で実行する。現行workflowはtag pushでは起動しない |
+| production deploy | 未実装。VPS上での手動デプロイを正とする。[運用設計](operation-design.md)14.2の手順に従う |
 | Runner | 初期はGitHub-hosted runnerを使う |
 | self-hosted runner | 本番相当性能確認、長時間E2E、VPS近似検証が必要になった段階で検討する |
 
@@ -55,9 +55,9 @@ on:
 | --- | --- | --- |
 | 作業ブランチ | Issue / タスク単位の実装 | 任意で手動CI |
 | PR | mainへ入れる前の品質ゲート | PR CI必須 |
-| `main` | 統合済みブランチ | main CI、全E2E、Docker build |
-| release tag | リリース候補 | リリース前チェック、成果物固定 |
-| production deploy | 本番反映 | 手動承認後に実行 |
+| `main` | 統合済みブランチ | main CI、E2E全件、Docker build、本番Docker確認 |
+| release tag | リリース候補の記録 | mainでCIが成功したコミットへ打つ。tag自体はCIを起動しない |
+| production deploy | 本番反映 | VPS上で手動実行 |
 
 mainへのマージ条件は、PR CI成功とレビュー完了とする。
 
@@ -95,7 +95,8 @@ PR CIで実行する範囲:
 | static analysis | solution全体 | `scripts/dotnet.ps1 slopwatch analyze -d . --fail-on warning` |
 | Docker build | 可能なら軽量確認 | main CIで必須、PRでは時間次第 |
 
-PR CIでは性能テスト、全E2E、本番相当Compose確認を必須にしない。
+PR CIでは性能テストと本番相当Compose確認を必須にしない。E2Eはテストフィルターを掛けず、
+E2Eプロジェクト全件を必須にする。現在の実行時間では絞る必要がないためである。
 
 ## 6. main CI
 
@@ -111,7 +112,7 @@ main CIはPRで省略した検証を補完する。
 - DB / Migration tests
 - job tests
 - 外部APIモックテスト
-- 全E2E
+- E2Eプロジェクト全件
 - Docker image build
 - publish artifact
 - NuGet脆弱性確認
@@ -124,23 +125,24 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 
 実行対象:
 
-| 種別 | 内容 |
-| --- | --- |
-| 全E2E | `E2E-001`から`E2E-011` |
-| 性能テスト | `NFT-PERF-001`から`NFT-PERF-004` |
-| データ量増加ケース | 記事、見出し、ジョブ件数を増やした確認 |
-| Docker Compose確認 | 本番相当構成の起動確認 |
-| 期限切れデータ確認 | X投稿生データTTL、検索キャッシュ削除 |
-| 脆弱性確認 | NuGet、Dockerイメージ |
+| 種別 | 内容 | 実装 |
+| --- | --- | --- |
+| E2E | E2Eプロジェクト全件 | `e2e-smoke`ジョブ。テストフィルターを指定しないため、追加したケースは自動で対象になる |
+| 性能テスト | `NFT-PERF-001`から`NFT-PERF-004` | `performance`ジョブ。`scripts/test-performance.ps1` |
+| データ量増加ケース | 記事、見出し、ジョブ件数を増やした確認 | 性能テストが記事1,000件、見出し100件、ジョブ10,000件を投入して兼ねる |
+| Docker Compose確認 | 本番相当構成の起動確認 | `docker-production`ジョブ |
+| 期限切れデータ確認 | X投稿生データTTL、検索キャッシュ削除 | 結合テスト |
+| 脆弱性確認 | NuGet、Dockerイメージ | `scripts/scan-nuget.ps1`、`scripts/scan-image.ps1` |
 
 夜間CIの初期段階では、性能テストはリリース停止条件ではなく劣化検知と通知を主目的とする。
+`performance`ジョブは`continue-on-error: true`で動かし、基準超過はジョブの注釈として残す。
 
 ## 8. リリース前チェック
 
 リリース前には以下を確認する。
 
 - main CIが成功している。
-- 夜間CIまたは直近の全E2Eが成功している。
+- 夜間CIまたは直近のE2E全件が成功している。
 - Docker image buildが成功している。
 - Migration差分を確認済み。
 - 破壊的DB変更がない、または段階的Migrationになっている。
@@ -148,8 +150,29 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 - `.env.example`、`.env.production.example` と [設定リファレンス](configuration-reference.md) が最新。
 - 外部API仕様変更や設定追加が反映済み。
 - 秘密情報がログ、成果物、テストデータに含まれていない。
-- NuGetとDockerイメージの重大脆弱性がない。
-- リリースノートまたは変更概要を用意している。
+- NuGetとDockerイメージの重大脆弱性がない。`scripts/scan-nuget.ps1`と`scripts/scan-image.ps1`で確認する。イメージ側は受容記録のないHIGH / CRITICALが0件であることを指す。
+- `security/trivy`の受容記録に期限切れがない。
+- リリースノートまたは変更概要を用意している。`RELEASE_NOTES.md`へ追記する。
+- セキュリティヘッダーが付与されている。結合テスト`SecurityHeadersTests`で検証する。
+
+### 8.1 リリース手順
+
+現行workflowは`pull_request`、`main`へのpush、`schedule`、`workflow_dispatch`で起動する。
+**tag pushでは起動しない。** またPRでは`docker-production`ジョブが動かない。
+そのためtagは、mainへマージしてCIが成功したコミットへ打つ。
+
+1. 作業ブランチを作る。mainへ直接コミットしない。
+2. `RELEASE_NOTES.md`の対象見出しへリリース日とtag名を確定して書く。
+3. 変更をコミットする。**リリースノートの確定を先に済ませ、同じコミットへ含める。** 後から更新すると、tagが古いリリースノートを指す。
+4. PRを作りmainへマージする。
+5. main CIの成功を確認する。`docker-production`ジョブが実行されるのはこのタイミングである。
+6. 同じmainのコミットで`workflow_dispatch`を実行し、成功を確認する。`performance`ジョブは
+   `schedule`と`workflow_dispatch`でしか動かないため、これがリリース前チェックの実行に当たる。
+7. 成功したmainのコミットへtagを作成しpushする。
+8. VPSで[運用設計](operation-design.md)14.2の手順によりデプロイする。
+
+将来tag pushでリリース前チェックを起動する場合は、workflowの`on`へ`tags`を追加してから
+この手順を見直す。
 
 ## 9. ビルド
 
@@ -184,22 +207,148 @@ E2Eをコンテナで実行しない理由は次の2点である。
 
 `global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CIの.NET SDKバージョンは一致させる。
 
+脆弱性スキャンも共通スクリプトを使う。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-nuget.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+```
+
+| スクリプト | 対象 | 失敗条件 |
+| --- | --- | --- |
+| `scripts/scan-nuget.ps1` | `dotnet list package --vulnerable --include-transitive`。テストプロジェクトを含む全プロジェクト | High / Criticalが1件以上 |
+| `scripts/scan-image.ps1` | 本番Composeがデプロイする全イメージ | 受容記録のないHIGH / CRITICALが1件以上 |
+
+イメージスキャンにはTrivyを使う。Trivyは脆弱性DBをダウンロードするだけで、イメージやその
+メタデータを外部サービスへ送信しない。Docker Scoutはイメージ由来情報を外部へ送るため使わない。
+
+### 9.1 スキャン対象イメージ
+
+対象は`docker compose config`から取得する。`docker-compose.yml`と乖離しないようにするためである。
+現時点の対象はapp、caddy、postgresの3つである。Caddyはインターネットに面するため必ず含める。
+
+Composeが`build`を持つサービスのイメージは自前ビルドとして扱い、pullせず`docker compose build --pull`で作る。
+それ以外はスキャン前に`docker pull`する。ローカルキャッシュのままだと、
+上流が公開済みの修正を取り込めていない古いタグを評価してしまう。
+
+#### Caddyを自前ビルドする理由
+
+公開されている`caddy:2.11.4`のバイナリはGo 1.26.3ビルドで、CVE-2026-56862（GO-2026-6090）を含む。
+ハンドシェイク後のKeyUpdateメッセージを送り続けることで、TLSサーバーに鍵導出を無期限に実行させるDoSである。
+この構成のCaddyはインターネットに面するTLS終端であり、未認証のクライアントから到達できる。
+修正はGo 1.25.13 / 1.26.6 / 1.27.0以降にしかなく、再ビルドでしか取り込めない。
+
+そのため`Dockerfile.caddy`でGo 1.27.0を使って`v2.11.4`をビルドし直す。同時にHIGHが出ていた
+x/net、x/text、grpc-goもバージョンを上げ、ランタイム層は`apk upgrade`する。
+結果としてcaddyイメージのHIGH / CRITICALは0件になり、受容記録は不要になった。
+
+上流がGo 1.26.6以降でビルドしたcaddyイメージを公開したら、`Dockerfile.caddy`を削除して
+公式イメージへ戻す。`docker compose config`から対象を取るため、戻してもスキャン範囲は変わらない。
+
+toolsプロファイルの`migrate`（`mcr.microsoft.com/dotnet/sdk:10.0`）はゲート対象外にする。
+デプロイ時だけ起動して終了する一時コンテナで、ソケットを開かず常駐しないためである。
+
+自前イメージのビルドにも必ず`--pull`を付ける。ベースイメージがローカルキャッシュのまま古いと、
+上流で修正済みのパッチを取り込めず、避けられる脆弱性でゲートが失敗する。
+
+### 9.2 受容済みリスクの扱い
+
+ゲートは`--ignore-unfixed`を使わない。修正版のない脆弱性も、放置ではなく個別の受容記録を必須にする。
+
+受容記録は`security/trivy/<イメージ名>.trivyignore.yaml`へ書く。イメージ単位でファイルを分けるため、
+ベースイメージで受容したCVEがアプリイメージの同じCVEを隠すことはない。書式と手順は
+[security/trivy/README.md](../security/trivy/README.md)を正とする。
+
+Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省略すると無期限に有効になる。
+そのため必須化はこちら側で行う。`scripts/scan-image.ps1`はTrivyへ渡す前に次を検証し、
+1つでも欠けるとスキャンを失敗させる。検証ロジックはこのスクリプトだけが持ち、他言語へ複製しない。
+片方だけ退行しても気付けなくなるためである。`build-test`ジョブがDocker不要の`-ValidateOnly`で
+先に実行するため、dockerジョブを待たずに落ちる。
+
+| 項目 | 必須理由 |
+| --- | --- |
+| `id` | 対象の特定 |
+| `paths`または`purls` | 対象限定。同じCVEが同一イメージの別バイナリや別パッケージに出たときに抑制しないため |
+| `statement` | CVE単位の到達性評価。コンポーネント全体をまとめた説明にしない |
+| `expired_at`（将来日付） | 再トリアージの強制。期限切れはゲートを止める |
+
+現在の受容内容:
+
+| イメージ | 内容 | 理由 |
+| --- | --- | --- |
+| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。Alpineパッケージ層の指摘は0件 |
+
+`caddy`は受容記録を持たない。到達可能なTLS DoSを受容せず、自前ビルドで解消したためである。9.1参照。
+
+### 9.3 ゲートの動作確認
+
+受容記録の検証は`scripts/scan-image.ps1 -SelfTest`が自動で確認する。
+`security/trivy/testdata`のフィクスチャを使い、`id`欠落、`statement`欠落、対象欠落、期限欠落、
+非RFC3339、期限切れが実際に失敗し、`paths`指定と`purls`指定の正常系が通ることを確かめる。
+CIの`build-test`ジョブが`-ValidateOnly -SelfTest`で毎回実行する。
+
+脆弱性検出そのものが失敗を招くかどうかは、意図的に脆弱な成果物を固定して持つ必要があるため
+自動化していない。スキャンスクリプトを変更したときに手で確認する。
+
+| 対象 | 確認方法 |
+| --- | --- |
+| `scripts/scan-nuget.ps1` | 既知の脆弱バージョンへ一時的に落として実行し、終了コード1と該当パッケージの出力を確認してから戻す |
+| `scripts/scan-image.ps1` | `--pull`なしで古いベースイメージからビルドしたイメージを指定し、終了コード1を確認する |
+
+スクリプトは`powershell`（Windows PowerShell 5.1）と`pwsh`（PowerShell 7）の両方で動く必要がある。
+CIは両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-latest`上のWindows PowerShell 5.1で、
+`scripts/check-script-encoding.ps1`と`scripts/scan-image.ps1 -ValidateOnly -SelfTest`を回す。
+
+版差で踏んだ実例を2件記録する。
+
+| 事象 | 内容 |
+| --- | --- |
+| JSON日時の自動変換 | PowerShell 7の`ConvertFrom-Json`はISO-8601文字列を`System.DateTime`へ変換し、文化依存の書式で文字列化する。書式検証をパース結果に対して行うと`pwsh`だけが正常なファイルを拒否した。`-DateKind String`は7.5以降にしかないため、日時の書式はJSONの生テキストから検証する |
+| BOMなしの非ASCII | Windows PowerShell 5.1はBOMなしファイルをANSIとして読む。UTF-8の日本語コメントが化けて行末の改行を食い潰し、次行のハッシュテーブル要素が無言で消えた。`scripts/check-script-encoding.ps1`がASCII以外とBOMを拒否する |
+
+### 9.4 スキャン済み成果物の同一性
+
+スキャンを通した成果物と、実際に起動する成果物を一致させる。
+
+`docker-production`ジョブはスキャン後に`docker compose up -d --no-build`で起動する。
+`--build`を付けるとスキャン対象と起動対象が別のビルド成果物になるためである。
+
+本番も同じ制約を持つ。CIでビルドしたイメージはレジストリへpushしていないため、VPSへ配布されない。
+本番へ出る成果物はVPS上でビルドしたものであり、**CIのスキャンは本番成果物の保証にはならない**。
+そのためVPSでも次の順序を守る。
+
+1. `scripts/scan-image.ps1 -Build`。`docker compose build --pull`でビルドし、同じタグをスキャンする。
+2. `docker compose up -d --no-build`。
+
+この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
+
+将来の選択肢として、CIでビルド・スキャンしたイメージをレジストリへpushし、VPSではdigest指定で
+pullして`up --no-build`する方式がある。VPSからビルドツールチェーンを外せ、ロールバックも
+digest指定で済む。レジストリの選定と認証情報の配置が前提になるため、導入時に別途決める。
+
 ## 10. テスト実行範囲
 
-| 実行タイミング | 単体 | 結合 | DB | ジョブ | E2E smoke | 全E2E | 性能 |
+| 実行タイミング | 単体 | 結合 | DB | ジョブ | E2E | 性能 | 本番Docker |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR | 必須 | 必須 | 必須 | 必須 | 必須 | なし | なし |
-| main | 必須 | 必須 | 必須 | 必須 | 必須 | 必須 | 任意 |
-| 夜間 | 必須 | 必須 | 必須 | 必須 | 必須 | 必須 | 必須 |
-| リリース前 | 必須 | 必須 | 必須 | 必須 | 必須 | 必須 | 手動確認 |
+| PR | 必須 | 必須 | 必須 | 必須 | 全件 | なし | なし |
+| main push | 必須 | 必須 | 必須 | 必須 | 全件 | なし | 必須 |
+| 夜間 | 必須 | 必須 | 必須 | 必須 | 全件 | 必須 | 必須 |
+| `workflow_dispatch` | 必須 | 必須 | 必須 | 必須 | 全件 | 必須 | 必須 |
+| リリース前 | 上記`workflow_dispatch`で全て実行 | | | | | | 手動受け入れを追加 |
 
-PRのE2E smokeは以下を対象にする。
+E2Eは現行workflowではPRでもフィルターを掛けず全件実行する。性能テストは`schedule`と
+`workflow_dispatch`のみで動く。本番Docker確認はPRでは動かない。
+
+PRのE2E smokeで最低限押さえる観点は次のとおり。
 
 - `E2E-001` ログイン
 - `E2E-002` 記事一覧検索
 - `E2E-004` 記事作成
 - `E2E-006` 生成結果編集
 - `E2E-010` 権限不足
+
+現行の`e2e-smoke`ジョブはテストフィルターを指定せず、E2Eプロジェクトの全件を実行する。
+現在の実行時間では絞る必要がないためである。実行時間が問題になった段階でフィルターを導入する。
 
 外部APIはモック応答またはジョブ登録までの検証を使い、通常CIでは実APIを呼ばない。失敗時のみtrace、screenshot、videoを`test-results/e2e`から成果物として保存する。
 
@@ -244,7 +393,7 @@ Docker Compose確認は夜間CIまたはリリース前チェックで行う。
 - PostgreSQLが外部公開されていない。
 - app 8080が外部公開されていない。
 - Caddy経由でアプリへアクセスできる。
-- `/health/live` と `/health/ready` が成功する。
+- `/health/live` と `/health/ready` が成功する。CIのcurlはDockerブリッジ経由でprivate rangeから届くため、Caddyの`/health/ready`制限には掛からない。
 
 ## 13. 外部APIモック方針
 
@@ -333,8 +482,9 @@ MVPの本番デプロイは、Linux VPS + Docker Compose + Caddyを対象とす�
 
 - `docker compose ps`
 - `/health/live`
-- `/health/ready`
+- `/health/ready`（VPS上からループバック経由）
 - 管理者ログイン
+- `/health/deps`（管理者。外部APIキーの設定漏れ検知）
 - 記事一覧表示
 - 記事作成ジョブ登録
 - アプリログ、Caddyログ、PostgreSQLログ
@@ -379,17 +529,18 @@ DBスキーマ変更を含むリリースでは、前後方互換のある段階
 5. P13でTestcontainers前提のDB / API結合テストを追加する。
 6. P13で外部APIモックテストを追加する。
 7. P13でE2E smokeを追加する。
-8. P13でmain CIの全E2Eを追加する。
+8. P13でmain CIのE2E全件を追加する。
 9. P12で本番/配置用Docker buildとCompose確認を追加する。
 10. Migration SQL生成と適用確認を追加する。
 11. 脆弱性確認を追加する。
-12. 手動承認付きproduction deployを追加する。
+12. 手動承認付きproduction deployを追加する。未実装。現状はVPS上での手動デプロイ。
+13. tag pushでのリリース前チェック起動を追加する。未実装。現状はmainのCI成功コミットへtagを打つ運用。
 
 ## 20. 受け入れ基準
 
 - P0の最小CIで`scripts/dotnet.ps1 --info`、`scripts/build.ps1`、`scripts/test.ps1`、`scripts/format.ps1`が成功する。
 - PR CIでrestore、build、単体、結合、DB、ジョブ、E2E smokeが成功する。
-- main CIで全E2Eが成功する。
+- main CIでE2E全件が成功する。
 - CIで外部本番APIを呼ばない。
 - PostgreSQL依存テストがPostgreSQLで実行される。
 - MigrationがテストDBへ適用できる。

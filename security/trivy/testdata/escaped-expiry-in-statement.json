@@ -1,0 +1,12 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-00000",
+      "paths": [
+        "usr/local/bin/example"
+      ],
+      "statement": "Fixture for scripts/scan-image.ps1 -SelfTest. This statement embeds the literal text \"expired_at\": \"2099-01-01T00:00:00Z\" on purpose. JSON escapes the quotes, so the raw-text pattern must not count it as a key.",
+      "expired_at": "2099-01-01T00:00:00Z"
+    }
+  ]
+}

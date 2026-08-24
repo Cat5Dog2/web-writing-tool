@@ -89,6 +89,8 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | `POSTGRES_DB` | Docker時必須 | Docker時必須 | No | PostgreSQL DB名 |
 | `POSTGRES_USER` | Docker時必須 | Docker時必須 | No | PostgreSQLユーザー |
 | `POSTGRES_PASSWORD` | Docker時必須 | Docker時必須 | Yes | PostgreSQLパスワード |
+| `APP_IMAGE` | 不要 | Docker時必須 | No | appサービスのイメージタグ。既定`web-writing-tool-app:local`。ビルド済みイメージを配置する運用では明示する |
+| `CADDY_IMAGE` | 不要 | 同梱Caddy構成のみ | No | caddyサービスのイメージタグ。既定`web-writing-tool-caddy:local`。`Dockerfile.caddy`からビルドする |
 | `APP_HOST_PORT` | 不要 | 共通Caddy構成のみ | No | appを`127.0.0.1`へ公開するホストポート。既定`8081` |
 | `POSTGRES_HOST_PORT` | 不要 | 共通Caddy構成のみ | No | PostgreSQLを`127.0.0.1`へ公開する保守用ホストポート。既定`5433` |
 
@@ -188,6 +190,7 @@ Discord Webhook URLはユーザー別にDB暗号化保存する。環境変数�
 | `Security__DataProtectionKeysPath` | `Security:DataProtectionKeysPath` | 任意 | 必須 | No | Data Protectionキー保存先 |
 | `Security__RequireHttps` | `Security:RequireHttps` | 任意 | 必須 | No | HTTPS必須化 |
 | `Security__AllowedForwardedHosts__0` | `Security:AllowedForwardedHosts:0` | 任意 | 推奨 | No | Forwarded Headersで許可するホスト |
+| `Security__ContentSecurityPolicyMode` | `Security:ContentSecurityPolicyMode` | 任意 | 任意 | No | `ReportOnly`（既定） / `Enforce` / `Disabled`。[セキュリティ設計](security-design.md)18.3を参照 |
 | `Security__CookieSecurePolicy` | `Security:CookieSecurePolicy` | 任意 | 必須 | No | `Always` |
 
 Data ProtectionキーはCookie認証と暗号化保存に影響する。productionでは永続volumeへ保存し、バックアップ対象にする。
@@ -235,6 +238,8 @@ Data ProtectionキーはCookie認証と暗号化保存に影響する。producti
 
 ```dotenv
 ASPNETCORE_ENVIRONMENT=Production
+APP_IMAGE=web-writing-tool-app:local
+CADDY_IMAGE=web-writing-tool-caddy:local
 ASPNETCORE_URLS=http://+:8080
 App__BaseUrl=https://example.com
 CADDY_SITE_ADDRESS=example.com
@@ -277,6 +282,7 @@ Security__DataProtectionKeysPath=/var/app/keys
 Security__RequireHttps=true
 Security__ForwardedHeadersEnabled=true
 Security__AllowedForwardedHosts__0=example.com
+Security__ContentSecurityPolicyMode=ReportOnly
 
 AdminSeed__Email=admin@example.com
 AdminSeed__Password=change-me

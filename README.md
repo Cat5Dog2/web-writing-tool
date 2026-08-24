@@ -155,17 +155,40 @@ http://localhost:5080/
 docker compose --env-file .env -f docker-compose.dev.yml down
 ```
 
+開発用Composeのプロジェクト名は `web-writing-tool-dev` である。本番Composeの `web-writing-tool` とコンテナ・volumeを共有しないよう分けている。以前のリビジョンで開発用Composeを起動したことがある場合は、旧プロジェクト名のコンテナを一度削除する。
+
+```powershell
+docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env down
+```
+
 ## CI
 
 [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) はPull Request、`main`へのpush、日次schedule、手動実行を対象とする。
 
 | Job | 実行内容 | 対象 |
 | --- | --- | --- |
-| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、build、E2Eを除くtest | すべてのトリガー |
+| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録の検証、build、E2Eと性能を除くtest | すべてのトリガー |
+| `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード検査と受容記録の検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
-| `docker-production` | 本番イメージbuild、PostgreSQL起動、Migration、`app`/`caddy`起動、Caddy経由のhealth check | `main`へのpush、schedule、手動実行。PRでは実行しない |
+| `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
+| `docker-production` | 本番イメージbuild（`--pull`）、イメージ脆弱性スキャン、PostgreSQL起動、Migration、`app`/`caddy`起動、Caddy経由のhealth check | `main`へのpush、schedule、手動実行。PRでは実行しない |
 
 現行workflowの `e2e-smoke` はテストフィルターを指定していないため、現在のE2Eプロジェクト全件を実行する。Production Docker smokeでは `/health/live` と `/health/ready` を確認する。`/health/deps` は実装済みだが管理者認可が必要で、CI smokeの確認対象外である。
+
+Migrationは本番デプロイ手順と同じ `docker compose --profile tools run --rm migrate` を使う。CI専用の手順を持たない。
+
+### 脆弱性スキャン
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-nuget.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+```
+
+NuGetはHigh/Criticalが1件でもあれば失敗する。
+
+イメージスキャンは本番Composeがデプロイする全イメージ（app、caddy、postgres）を対象とし、対象一覧は `docker compose config` から取得する。`--ignore-unfixed` は使わず、修正版がない指摘も `security/trivy/<イメージ名>.trivyignore.yaml` へ理由と期限付きで記録しない限りCIを止める。Trivyは脆弱性DBを取得するだけで、イメージやそのメタデータを外部へ送信しない。
+
+現在の受容内容と再トリアージ手順は [docs/ci-cd-design.md](docs/ci-cd-design.md) を参照。
 
 ## 秘密情報の扱い
 
@@ -184,6 +207,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 - 主要画面フローはPlaywright for .NET + Chromiumで検証する。
 - 外部APIはモックまたはテストダブルに差し替える。
 - 秘密情報、APIキー、Application Passwordをテストログへ出さない。
+- 性能テストは `Category=Performance` で通常実行から除外し、`scripts/test-performance.ps1` だけが実行する。
 
 詳細は [docs/test-design.md](docs/test-design.md) を参照。
 
@@ -193,7 +217,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 本番/配置用Composeでは `.env.production.example` を `.env` へコピーしてから、実値へ変更する。
 `.env` は `chmod 600 .env` で所有者だけが読めるようにする。
 
-- `caddy`: HTTPS終端、リバースプロキシ
+- `caddy`: HTTPS終端、リバースプロキシ。公開イメージではなく [Dockerfile.caddy](Dockerfile.caddy) から自前ビルドする
 - `app`: Blazor UI、API、BackgroundService
 - `postgres`: アプリケーションDB
 
@@ -204,7 +228,16 @@ VPS上の共通Caddyを使う場合は、`docker-compose.shared-caddy.yml`を重
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d postgres
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml --profile tools run --rm migrate
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d --build app
+pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build
+docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d --no-build app
 ```
+
+`scripts/scan-image.ps1 -Build` が `docker compose build --pull` でイメージを作り、そのまま同じタグをスキャンする。起動は `--no-build` にする。`--build` を付けると、スキャンを通した成果物ではなくその場で作り直した別の成果物が動く。
+
+CIでスキャンしたイメージはレジストリへ push していないため、本番へ出る成果物はVPS上でビルドしたものになる。ゲートはVPS上でも通す必要があり、そのためVPS要件にPowerShell 7を含める。
+
+`/health/ready` はDBとBackgroundServiceの稼働状態を返すため、同梱Caddyがインターネットからのアクセスを404で拒否する。共通Caddy構成ではリポジトリの `Caddyfile` が読まれないため、VPS側の共通Caddyに同じ制限を設定する。詳細は [docs/operation-design.md](docs/operation-design.md) を参照。
+
+セキュリティヘッダーはアプリの `SecurityHeadersMiddleware` が付与する。CSPは既定で `ReportOnly` とし、`Security__ContentSecurityPolicyMode=Enforce` で強制へ切り替える。
 
 詳細は [docs/operation-design.md](docs/operation-design.md) を参照。

@@ -1,0 +1,13 @@
+{
+  "expired_at": "2099-01-01T00:00:00Z",
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-00000",
+      "paths": [
+        "usr/local/bin/example"
+      ],
+      "statement": "Fixture for scripts/scan-image.ps1 -SelfTest. The document root carries a misplaced expired_at, so the raw text holds more occurrences than entries.",
+      "expired_at": "2099-01-01T00:00:00Z"
+    }
+  ]
+}

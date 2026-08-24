@@ -1,0 +1,11 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-00000",
+      "paths": [
+        "usr/local/bin/example"
+      ],
+      "expired_at": "2099-01-01T00:00:00Z"
+    }
+  ]
+}
