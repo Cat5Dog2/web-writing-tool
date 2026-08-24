@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+﻿using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting.StaticWebAssets;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -7,6 +7,7 @@ using WebWritingTool.Web.Configuration;
 using WebWritingTool.Web.Endpoints;
 using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.Application.Security;
+using WebWritingTool.Web.Security;
 
 DevelopmentEnvironmentFileConfiguration.TryLoadAspNetCoreEnvironmentFromDotEnv();
 
@@ -40,6 +41,9 @@ if (securityOptions.ShouldUseForwardedHeaders(app.Environment))
 {
     app.UseForwardedHeaders();
 }
+
+// 例外ハンドラーとステータスコードページより前に置き、再実行された応答にもヘッダーを付ける。
+app.UseSecurityHeaders();
 
 if (!app.Environment.IsDevelopment())
 {

@@ -116,6 +116,7 @@ Web層からEF Coreの`DbContext`を直接操作しない。画面はApplication
 
 ```text
 UseForwardedHeaders
+UseSecurityHeaders
 UseExceptionHandler / UseDeveloperExceptionPage
 UseHsts
 UseHttpsRedirection（/health/liveと/health/readyのみ対象外）
@@ -130,6 +131,8 @@ MapHealthChecks
 ```
 
 Caddy配下で動作するため、Forwarded Headersは認証、HTTPSリダイレクト、リンク生成より前に処理する。
+`UseSecurityHeaders`は`UseExceptionHandler`より前に置く。エラーページ再実行で応答ヘッダーが消えても、
+送信直前の`OnStarting`で付け直すため、500応答にもセキュリティヘッダーが残る。
 
 ### 4.3 設定管理
 
@@ -860,11 +863,11 @@ MVPでは画像生成、アイキャッチ画像の作成・加工、外部画�
 
 ### 16.2 ヘルスチェック
 
-| Path | 用途 |
-| --- | --- |
-| `/health/live` | アプリプロセスの生存確認 |
-| `/health/ready` | PostgreSQL接続、BackgroundService状態確認 |
-| `/health/deps` | 外部依存先の簡易疎通確認。管理者限定 |
+| Path | 用途 | 公開範囲 |
+| --- | --- | --- |
+| `/health/live` | アプリプロセスの生存確認 | 匿名 |
+| `/health/ready` | PostgreSQL接続、BackgroundService状態確認 | 匿名。Caddyがインターネットからのアクセスを拒否 |
+| `/health/deps` | 外部依存先の簡易疎通確認 | 管理者限定 |
 
 ## 17. Docker / Caddy設計
 

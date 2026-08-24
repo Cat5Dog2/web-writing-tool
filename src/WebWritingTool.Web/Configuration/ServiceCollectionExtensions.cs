@@ -138,6 +138,11 @@ internal static class ServiceCollectionExtensions
             .Validate(
                 options => !environment.IsProduction() || !string.IsNullOrWhiteSpace(options.DataProtectionKeysPath),
                 "Security:DataProtectionKeysPath is required in Production.")
+            // 数値など未定義の値でもEnumへはバインドされる。ここで弾かないとMiddlewareのswitchが
+            // どのcaseにも入らず、CSPヘッダーだけが黙って欠落する。
+            .Validate(
+                options => Enum.IsDefined(options.ContentSecurityPolicyMode),
+                "Security:ContentSecurityPolicyMode must be ReportOnly, Enforce or Disabled.")
             .ValidateOnStart();
 
         ConfigureForwardedHeaders(services, configuration, environment);

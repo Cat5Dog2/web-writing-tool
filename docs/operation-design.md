@@ -159,13 +159,28 @@ example.com {
 
 ### 7.2 ヘルスチェック
 
-| エンドポイント | 用途 | 内容 |
-| --- | --- | --- |
-| `/health/live` | liveness | プロセス生存確認 |
-| `/health/ready` | readiness | PostgreSQL接続、BackgroundService状態確認 |
-| `/health/deps` | 依存先確認 | 外部APIの簡易疎通。管理者限定 |
+| エンドポイント | 用途 | 内容 | 公開範囲 |
+| --- | --- | --- | --- |
+| `/health/live` | liveness | プロセス生存確認 | 匿名。外形監視のため公開 |
+| `/health/ready` | readiness | PostgreSQL接続、BackgroundService状態確認 | 匿名。ただしCaddyがインターネットからのアクセスを404で拒否 |
+| `/health/deps` | 依存先確認 | 外部APIの簡易疎通 | 管理者限定 |
 
 `/health/live`は軽量にし、外部APIを呼び出さない。外部API障害でコンテナが不必要に再起動されないようにする。
+
+`/health/ready`はDBとBackgroundServiceの稼働状態を返すため、同梱Caddyの`Caddyfile`で
+`remote_ip private_ranges`以外からのアクセスを404にする。VPS上や`app`コンテナのhealthcheckからは通る。
+共通Caddy構成（`docker-compose.shared-caddy.yml`）ではリポジトリの`Caddyfile`が読まれないため、
+VPS側の共通Caddyに同じ制限を設定する。
+
+VPS上から確認する場合は、ループバック経由でリクエストする。
+
+```bash
+# 同梱Caddy構成
+curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
+
+# 共通Caddy構成（appは127.0.0.1へのみ公開）
+curl -fsS http://127.0.0.1:8081/health/ready
+```
 
 ### 7.3 設定値
 
@@ -428,22 +443,32 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 
 - Gitの対象ブランチ、タグを確認する。
 - テスト結果を確認する。
+- `RELEASE_NOTES.md`に対象リリースの変更概要があることを確認する。
+- NuGetとDockerイメージの脆弱性スキャンが通っていることを確認する。詳細は[CI/CD設計](ci-cd-design.md)。
+- VPSにPowerShell 7が入っていることを確認する。本番成果物のスキャンに必要。
 - DBマイグレーション有無を確認する。
 - 外部API仕様変更や設定追加の有無を確認する。
-- `.env`に必要な環境変数が存在することを確認する。
-- 本番DBバックアップを取得する。
+- `.env`に必要な環境変数が存在することを確認する。`.env.production.example`との差分で確認する。
+- 共通Caddy構成の場合、VPS側の共通Caddyで`/health/ready`が外部から遮断されていることを確認する。リポジトリの`Caddyfile`は読まれない。
+- 本番DBバックアップと`app_keys`のバックアップを取得する。
 
 ### 14.2 デプロイ手順
 
 1. 本番VPSへログインする。
-2. 対象リリースのイメージまたはソースを配置する。
-3. 本番DBバックアップを取得する。
+2. 対象リリースのソースを配置する。
+3. 本番DBバックアップと`app_keys`のバックアップを取得する。
 4. 必要に応じて`docker compose --profile tools run --rm migrate`でDBマイグレーションを実行する。
-5. `docker compose up -d`でサービスを更新する。
-6. `docker compose ps`で起動状態を確認する。
-7. 共通Caddyを含む公開URLから`curl -fsS`で`/health/live`、`/health/ready`を確認する。
-8. 管理者ログイン、記事一覧、記事作成ジョブ登録を確認する。
-9. Caddyログとアプリログに異常がないことを確認する。
+5. `scripts/scan-image.ps1 -Build`でイメージをビルドし、同じ成果物をスキャンする。
+6. `docker compose up -d --no-build`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
+7. `docker compose ps`で起動状態を確認する。
+8. 公開URLから`curl -fsS`で`/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
+9. 管理者でログインし、`/health/deps`が`Healthy`であることを確認する。外部APIキーの設定漏れはここでしか検知できない。
+10. 記事一覧、記事作成ジョブ登録を確認する。
+11. Caddyログとアプリログに異常がないことを確認する。
+
+CIでスキャンしたイメージはレジストリへ push していないため、VPSへは配布されない。
+本番へ出る成果物はVPS上でビルドしたものになるので、ゲートもVPS上で通す必要がある。
+CIのスキャンはコード変更時点の確認であり、本番成果物の保証ではない。
 
 ### 14.3 ロールバック方針
 
@@ -476,7 +501,7 @@ DBスキーマ変更を含むリリースでは、アプリの前後方互換性
 2. 直近のデプロイ、設定変更、外部API障害情報を確認する。
 3. `docker compose ps`でサービス状態を確認する。
 4. Caddy、app、postgresのログを確認する。
-5. `/health/live`、`/health/ready`を確認する。
+5. `/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
 6. 必要に応じて一時的にジョブ投入を停止する。
 
 ### 15.3 主な切り分け
@@ -718,7 +743,7 @@ docker compose exec -T postgres \
     --dbname "$POSTGRES_DB"' < "$RESTORE_FILE"
 
 docker compose up -d app
-curl -fsS https://example.com/health/ready
+curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
 
 復元後確認:
@@ -739,14 +764,17 @@ docker run --rm \
   alpine:3.20 \
   tar -xzf "/backup/$(basename "$KEYS_RESTORE_FILE")" -C /target
 docker compose up -d app
-curl -fsS https://example.com/health/ready
+curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
 
 ### 19.5 ヘルスチェック
 
 ```bash
+# インターネットから確認できるのは /health/live だけ
 curl -fsS https://example.com/health/live
-curl -fsS https://example.com/health/ready
+
+# /health/ready はVPS上からループバック経由で確認する
+curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
 
 ## 20. 運用受け入れ基準

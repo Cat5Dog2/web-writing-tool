@@ -11,6 +11,7 @@
 | [basic-design.md](basic-design.md) | 全体アーキテクチャ、レイヤー責務、主要な設計判断 |
 | [coding-guidelines.md](coding-guidelines.md) | 実装規約、レイヤー別ルール、禁止事項 |
 | [../todo.md](../todo.md) | 実装フェーズ、タスクID、完了条件 |
+| [../RELEASE_NOTES.md](../RELEASE_NOTES.md) | リリース単位の変更概要。リリース前チェックで参照する |
 
 ## 設計書
 
@@ -54,6 +55,7 @@
 | Markdown、HTML、サニタイズ、WordPress投稿本文が変わる | [content-rendering-design.md](content-rendering-design.md), [security-design.md](security-design.md) |
 | 公開後の記事更新、再検証、統合、削除が変わる | [content-update-maintenance.md](content-update-maintenance.md), [operation-design.md](operation-design.md) |
 | ログ、監視、アラート、運用手順が変わる | [observability-logging.md](observability-logging.md), [operation-design.md](operation-design.md), [ci-cd-design.md](ci-cd-design.md) |
+| リリース内容、デプロイ手順、品質ゲートが変わる | [ci-cd-design.md](ci-cd-design.md), [operation-design.md](operation-design.md), [../RELEASE_NOTES.md](../RELEASE_NOTES.md) |
 | 実装規約、プロジェクト構成、開発手順が変わる | [coding-guidelines.md](coding-guidelines.md), [environment-setup.md](environment-setup.md), [../README.md](../README.md) |
 
 ## 整理ルール

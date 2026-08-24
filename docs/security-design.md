@@ -589,27 +589,77 @@ MVPでは同一オリジン利用を基本とし、CORSは原則無効にする�
 
 ### 18.2 セキュリティヘッダー
 
-CaddyまたはASP.NET Core Middlewareで以下を付与する。
+`SecurityHeadersMiddleware`で付与する。
 
-| ヘッダー | 方針 |
-| --- | --- |
-| `Strict-Transport-Security` | 本番HTTPSで有効 |
-| `X-Content-Type-Options` | `nosniff` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `X-Frame-Options` | `DENY`またはCSP `frame-ancestors 'none'` |
-| `Content-Security-Policy` | 段階導入。インラインスクリプトを減らす |
+| ヘッダー | 値 | 実装 |
+| --- | --- | --- |
+| `Strict-Transport-Security` | 本番HTTPSで有効 | `UseHsts`。`Security__RequireHttps=true`のときのみ |
+| `X-Content-Type-Options` | `nosniff` | `SecurityHeadersMiddleware` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | `SecurityHeadersMiddleware` |
+| `X-Frame-Options` | `DENY` | `SecurityHeadersMiddleware` |
+| `Content-Security-Policy` | 18.3参照 | `SecurityHeadersMiddleware` |
+
+Caddyではなくアプリ側で付与する。共通Caddy構成（`docker-compose.shared-caddy.yml`）では同梱Caddyが
+profileで停止し、リポジトリの`Caddyfile`が読まれないため、リバースプロキシ側に置くと構成によって欠落する。
+
+ヘッダーは応答送信直前の`OnStarting`で書く。`UseExceptionHandler`はエラーページ再実行の前に
+`Response.Clear()`でヘッダーを消すため、直接書くと500応答から欠落する。
 
 ### 18.3 CSP方針
 
-MVP初期はレポートモードで導入し、画面確認後に強制へ移行する。
+`Security__ContentSecurityPolicyMode`で段階導入を制御する。既定は`ReportOnly`。
 
-基本方針:
+| 値 | 挙動 |
+| --- | --- |
+| `ReportOnly` | `Content-Security-Policy-Report-Only`へ目標ポリシーを送る。`Content-Security-Policy`には`frame-ancestors 'none'`だけを強制する |
+| `Enforce` | `Content-Security-Policy`へ目標ポリシーを送る |
+| `Disabled` | アプリ側ではCSPを付与しない |
 
-- `default-src 'self'`
-- 画像は必要な外部ドメインのみ許可
-- API通信は自ドメインと必要な外部APIのみ許可
-- `frame-ancestors 'none'`
-- 危険なインラインスクリプト依存を増やさない
+目標ポリシー:
+
+```text
+default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none';
+form-action 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'
+```
+
+`ReportOnly`でも`frame-ancestors 'none'`だけを強制するのは、Blazorが対話コンポーネントの応答へ
+`Content-Security-Policy: frame-ancestors 'self'`を自動付与するためである。`frame-ancestors`は
+`X-Frame-Options`より優先されるため、上書きしないと同一オリジンからのframe埋め込みを許してしまう。
+
+`Enforce`へ移行する前に解消が必要な既知の違反:
+
+- `<ImportMap />`が出力するインライン`<script type="importmap">`
+- `NavMenu.razor`のインライン`onclick`
+
+記事本文は`ContentRenderingService`が`script`、`iframe`、`img`などを除去するため、
+本文由来の外部リソース読み込みは発生しない。外部画像の保存・表示を追加する段階で`img-src`を拡張する。
+
+未定義値が設定された場合は起動時に失敗させる。数値などもEnumへはバインドされるため、
+弾かないとMiddlewareのswitchがどのcaseにも入らず、CSPヘッダーだけが黙って欠落する。
+
+#### 18.3.1 違反の確認方法
+
+MVPでは`report-uri`と`report-to`を設定せず、ブラウザーのDevToolsコンソールで違反を確認する。
+
+レポート収集エンドポイントを置かない理由:
+
+- ブラウザーは認証情報なしでレポートを送るため、公開ホスト上に匿名の書き込み経路が増える。単一VPS構成ではログ肥大とディスク枯渇の攻撃面になる。
+- CSPレポートには閲覧中のURLが含まれる。保持期間とマスキングの設計が別途必要になる。
+- 利用者が実質1名の管理ツールであり、対象画面をDevToolsで開けば違反を網羅できる。
+
+`Enforce`へ移行する前に、以下の画面をDevToolsコンソールを開いた状態で操作し、CSP違反が出ないことを確認する。
+
+| 画面 | 確認操作 |
+| --- | --- |
+| ログイン | 表示、ログイン |
+| ホーム、記事一覧 | 表示、検索、ページング |
+| 記事作成 | 入力、送信 |
+| 記事詳細 | 見出し編集、並び替え、HTML変換 |
+| 記事プレビュー | 表示 |
+| 設定、管理者ユーザー | 表示、更新操作 |
+| エラー、404 | 表示 |
+
+収集エンドポイントの追加は後続フェーズ候補として`todo.md`に置く。
 
 ## 19. Docker / VPS / Caddy設計
 

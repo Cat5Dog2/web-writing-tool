@@ -1,3 +1,8 @@
+# Keep this project name distinct from docker-compose.yml (name: web-writing-tool).
+# Without it Compose derives the project name from the directory and both files would
+# share containers and volumes such as postgres_data.
+name: web-writing-tool-dev
+
 services:
   postgres:
     image: postgres:16-alpine

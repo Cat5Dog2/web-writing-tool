@@ -39,8 +39,8 @@ AI生成やWordPress投稿など外部依存が多いため、単体テスト、
 | 結合テスト | API、DI、DB、認証、外部モック検証 | xUnit + WebApplicationFactory | PRごと |
 | DBテスト | PostgreSQL固有挙動検証 | xUnit + Testcontainers for .NET | PRごと |
 | ジョブテスト | BackgroundService、ロック、リトライ検証 | xUnit + PostgreSQL | PRごと |
-| E2Eテスト | 主要画面フロー検証 | xUnit + Playwright for .NET | PRは最小セット / main・夜間は全件 |
-| 性能テスト | 応答時間、検索、ジョブ取得の劣化検知 | 計測スクリプト + Docker Compose | main・夜間 + リリース前 |
+| E2Eテスト | 主要画面フロー検証 | xUnit + Playwright for .NET | PR・main・夜間で全件 |
+| 性能テスト | 応答時間、検索、ジョブ取得の劣化検知 | xUnit + Testcontainers for .NET | 夜間 + リリース前 |
 | 手動受け入れ | 画像に近いUI・操作性確認 | ブラウザ | リリース前 |
 
 ### 4.1 テストフレームワーク方針
@@ -82,9 +82,12 @@ tests/
     Infrastructure/
   WebWritingTool.IntegrationTests/
     Api/
+    Architecture/
     Data/
     Jobs/
-    ExternalIntegrations/
+    Performance/
+    Security/
+    Support/
   WebWritingTool.E2ETests/
     Articles/
     Settings/
@@ -478,16 +481,20 @@ tests/
 
 ### 12.3 E2E実行範囲
 
-Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行する。PRでは開発速度を落とさない最小E2Eを必須チェックにし、mainマージ後または夜間CIで全E2Eを実行する。
+Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行する。
 
 | 実行タイミング | 対象 | 方針 |
 | --- | --- | --- |
-| PR | 最小セット | `E2E-001`、`E2E-002`、`E2E-004`、`E2E-006`、`E2E-010`をChromiumで実行する |
-| mainマージ後 | 全件 | `E2E-001`から`E2E-011`までを実行し、PRで省略した投稿・通知・設定系を補完する |
-| 夜間 | 全件 + 追加検証 | 全E2Eに加え、必要に応じてDocker Composeの本番相当構成で確認する |
+| PR | 全件 | `e2e-smoke`ジョブがテストフィルターなしでE2Eプロジェクト全件をChromiumで実行する |
+| mainマージ後 | 全件 | 同じ`e2e-smoke`ジョブが実行される |
+| 夜間 | 全件 + 追加検証 | 全E2Eに加え、`docker-production`ジョブが本番相当構成を確認する |
 | リリース前 | 全件 + 手動受け入れ | 全E2E成功後、画面崩れや操作性を手動で確認する |
 
-PRの最小セットは、ログイン、記事検索、記事作成、生成結果編集、認可拒否を対象にする。外部APIはモック応答を使い、失敗時のみtrace、screenshot、videoを成果物として保存する。
+最低限押さえる観点は、ログイン（`E2E-001`）、記事検索（`E2E-002`）、記事作成（`E2E-004`）、
+生成結果編集（`E2E-006`）、認可拒否（`E2E-010`）である。現在の実行時間では絞る必要がないため
+フィルターを掛けていない。実行時間が問題になった段階でこの観点を最小セットとして導入する。
+
+外部APIはモック応答を使い、失敗時のみtrace、screenshot、videoを成果物として保存する。
 
 ### 12.4 レスポンシブ確認
 
@@ -516,30 +523,67 @@ PRの最小セットは、ログイン、記事検索、記事作成、生成結
 | `SEC-013` | サイト別ライティング設定本文のログ混入 | プロンプト全文として出力されない |
 | `SEC-014` | 本人退会 | 現在パスワード必須、最後のAdminとRunningジョブありは拒否 |
 | `SEC-015` | 本人パスワード変更 | 認証・CSRF・現在パスワードを必須とし、パスワード値をログとレスポンスへ出さない |
+| `SEC-016` | セキュリティヘッダー | `X-Content-Type-Options`、`Referrer-Policy`、`X-Frame-Options`、CSPが応答に付く |
+| `SEC-017` | CSPモード切り替え | `ReportOnly`はReport-Onlyヘッダー、`Enforce`は強制ヘッダー、`Disabled`はどちらも出さない |
+| `SEC-018` | 再実行応答のヘッダー | 404再実行後の応答にもセキュリティヘッダーが残る |
+| `SEC-019` | CSPモード未定義値 | 起動時に失敗する。ヘッダーが黙って欠落しない |
+| `SEC-020` | `/health/ready`の公開遮断 | 非privateな送信元からは404、`/health/live`は200 |
+
+| `SEC-021` | 脆弱性受容記録の書式 | `statement`、`expired_at`、`paths`/`purls`が揃い、期限切れがない |
+
+`SEC-016`から`SEC-019`は`SecurityHeadersTests`で検証する。ヘッダーの実際の値は
+[セキュリティ設計](security-design.md)18.2、18.3を正とする。
+
+`SEC-021`は`scripts/scan-image.ps1 -ValidateOnly -SelfTest`で検証する。検証ロジックはこのスクリプトだけが
+持ち、C#側へ複製しない。片方だけ退行しても気付けなくなるためである。`-SelfTest`は
+`security/trivy/testdata`のフィクスチャを使い、正常系3件と異常系7件を確認する。
+
+| 区分 | 内容 |
+| --- | --- |
+| 正常系 | `paths`指定、`purls`のみ指定、`statement`本文にエスケープされた`expired_at`がある場合 |
+| 異常系 | `id`欠落、`statement`欠落、対象（`paths`/`purls`）欠落、`expired_at`欠落、非RFC3339、期限切れ、エントリー外に`expired_at`キー |
+
+日時の書式検証はJSONの生テキストに対して行うため、エントリー外に`expired_at`キーがあると
+エントリーとの対応がずれる。推測せず失敗させる。
+JSONは文字列内の引用符をエスケープするので`statement`本文の文字列がキーと誤認されることはなく、
+その前提も正常系フィクスチャで固定する。
+
+CIはDockerを使わない`build-test`ジョブで実行する。スクリプトは`powershell`（Windows PowerShell 5.1）と
+`pwsh`（PowerShell 7）の両方で同じ結果になることを確認する。理由は[CI/CD設計](ci-cd-design.md)9.3を参照。
+
+`SEC-020`はCIの`docker-production`ジョブで検証する。Dockerのポート公開はブリッジのゲートウェイ経由になり、
+ホストからのcurlは常にprivate rangeに見える。そのためCaddyをTEST-NET-3（`203.0.113.0/24`）の
+ネットワークへ追加し、非privateな送信元アドレスからリクエストする。
 
 ## 14. 非機能テスト設計
 
 ### 14.1 性能
 
-| テストID | 対象 | 目安 |
-| --- | --- | --- |
-| `NFT-PERF-001` | 記事一覧 | 10件表示が1秒以内 |
-| `NFT-PERF-002` | 記事検索 | 1,000件規模で2秒以内 |
-| `NFT-PERF-003` | 見出し取得 | 100見出しで2秒以内 |
-| `NFT-PERF-004` | ジョブ取得 | Queued 10,000件で取得が安定 |
+| テストID | 対象 | 目安 | 実装 |
+| --- | --- | --- | --- |
+| `NFT-PERF-001` | 記事一覧 | 10件表示が1秒以内 | `DataVolumePerformanceTests` |
+| `NFT-PERF-002` | 記事検索 | 1,000件規模で2秒以内 | `DataVolumePerformanceTests` |
+| `NFT-PERF-003` | 見出し取得 | 100見出しで2秒以内 | `DataVolumePerformanceTests` |
+| `NFT-PERF-004` | ジョブ取得 | Queued 10,000件で取得が安定 | `DataVolumePerformanceTests`。20回連続取得の最大値が1秒未満 |
+
+性能テストは`Category=Performance`を付け、`scripts/test.ps1`から除外する。実行は
+`scripts/test-performance.ps1`だけが行う。計測は1回のウォームアップ後に3回測り、中央値で判定する。
+ウォームアップを外すのはEFモデル構築、接続確立、JITが1回目に乗るためである。
+
+記事1,000件、見出し100件、ジョブ10,000件を投入するため、夜間CIの「データ量増加ケース」も兼ねる。
 
 #### 14.1.1 実行方針
 
-性能テストはPR CIの必須チェックには含めない。PRでは単体、結合、DB、ジョブ、E2E smokeを品質ゲートにし、性能劣化の検知はmainマージ後または夜間CIで自動実行する。
+性能テストはPR CIの必須チェックには含めない。PRでは単体、結合、DB、ジョブ、E2E smokeを品質ゲートにし、性能劣化の検知は夜間CIと手動実行で行う。
 
 | 実行タイミング | 対象 | 方針 |
 | --- | --- | --- |
-| PR | 原則対象外 | 実行時間とCI環境差による不安定さを避ける。極端な遅延は通常テストのタイムアウトで検知する |
-| mainマージ後 | `NFT-PERF-001`から`NFT-PERF-004` | 自動計測し、基準超過時は通知して原因を確認する |
-| 夜間 | `NFT-PERF-001`から`NFT-PERF-004` + データ量増加ケース | 継続的な劣化傾向を確認する |
-| リリース前 | 本番相当構成 | Docker ComposeまたはVPS相当スペックで手動確認し、リリース判断に使う |
+| PR | 対象外 | 実行時間とCI環境差による不安定さを避ける。極端な遅延は通常テストのタイムアウトで検知する |
+| mainマージ後 | 対象外 | `performance`ジョブは`schedule`と`workflow_dispatch`でしか動かない。main pushでは実行されない |
+| 夜間 | `NFT-PERF-001`から`NFT-PERF-004` + データ量増加ケース | 継続的な劣化傾向を確認する。CIの`performance`ジョブが`continue-on-error`で実行する |
+| リリース前 | `NFT-PERF-001`から`NFT-PERF-004` | mainのコミットで`workflow_dispatch`を実行する。手順は[CI/CD設計](ci-cd-design.md)8.1 |
 
-共有CIでは実行時間が環境に左右されるため、main/夜間CIの性能テストは初期段階では劣化検知と通知を主目的にする。リリース前確認では本番相当のDB件数、ジョブ件数、同時利用想定に近い条件で基準を満たすことを確認する。
+共有CIでは実行時間が環境に左右されるため、夜間CIの性能テストは初期段階では劣化検知と通知を主目的にし、`continue-on-error`で実行する。リリース前確認では本番相当のDB件数、ジョブ件数、同時利用想定に近い条件で基準を満たすことを確認する。
 
 ### 14.2 可用性・復旧
 
@@ -610,9 +654,9 @@ mainからIssue単位で作業ブランチを切り、PRで以下を実行する
 6. E2E smoke tests
 7. publish artifact
 
-PR CIのE2Eは最小セットのみ実行する。mainマージ後または夜間CIでは全E2Eを実行し、外部APIは実APIではなくモックまたはスタブを使用する。
+PR CIのE2Eは現行workflowではフィルターなしで全件実行する。外部APIは実APIではなくモックまたはスタブを使用する。
 
-性能テストはPR CIの必須チェックには含めない。mainマージ後または夜間CIで自動実行し、リリース前は本番相当構成で手動確認する。
+性能テストはPR CIとmain CIに含めない。`performance`ジョブは`schedule`と`workflow_dispatch`でのみ実行する。リリース前はmainのコミットで`workflow_dispatch`を実行して確認する。
 
 ## 16. テスト環境設定
 

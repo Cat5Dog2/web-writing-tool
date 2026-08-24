@@ -435,6 +435,53 @@
   - 対象: パスワード変更API/画面、app healthcheck、Migration tools profile、共通Caddy用Compose override
   - 完了条件: 正常系・現在パスワード不一致・確認不一致・ポリシー違反が結合テストで検証され、共通Caddy構成のCompose検証と公開URL経由のhealth確認手順が整備される。
 
+- [x] `T-1311` セキュリティヘッダーとCSPを実装する。
+  - 参照: `docs/security-design.md`, `docs/basic-design.md`, `docs/test-design.md`
+  - 対象: `SecurityHeadersMiddleware`、`Security__ContentSecurityPolicyMode`
+  - 条件: 共通Caddy構成でも欠落しないようアプリ側で付与する。CSPは既定`ReportOnly`。
+  - 完了条件: `SEC-016`から`SEC-018`が結合テストで検証され、404再実行応答にもヘッダーが残る。
+
+- [x] `T-1312` `/health/ready`の公開範囲を絞る。
+  - 参照: `docs/operation-design.md`, `docs/basic-design.md`, `docs/environment-setup.md`
+  - 対象: `Caddyfile`、運用手順
+  - 完了条件: インターネットからは404になり、private rangeとコンテナhealthcheckからは通る。VPS上からの確認手順が文書化される。
+
+- [x] `T-1313` NuGetとDockerイメージの脆弱性ゲートをCIへ組み込む。
+  - 参照: `docs/ci-cd-design.md`
+  - 対象: `scripts/scan-nuget.ps1`, `scripts/scan-image.ps1`, `.github/workflows/ci.yaml`
+  - 条件: イメージスキャンはイメージ情報を外部送信しないツールを使う。対象は本番Composeがデプロイする全イメージ。
+  - 条件: `--ignore-unfixed`で自動通過させない。修正版がなくても個別の受容記録を必須にする。
+  - 完了条件: 受容記録のないHigh/Criticalが1件でもあればCIが失敗し、イメージのpullとビルドが`--pull`で行われ、スキャン済みイメージがそのままsmoke testに使われる。
+
+- [x] `T-1314` 性能テストを実装し夜間CIへ組み込む。
+  - 参照: `docs/test-design.md`, `docs/ci-cd-design.md`
+  - 対象: `NFT-PERF-001`から`NFT-PERF-004`、`scripts/test-performance.ps1`
+  - 条件: 通常のテスト実行から除外し、劣化検知目的で`continue-on-error`にする。
+  - 完了条件: 記事1,000件、見出し100件、ジョブ10,000件で各基準を満たす。
+
+- [x] `T-1315` リリース前チェックの未達項目を解消する。
+  - 参照: `docs/ci-cd-design.md`, `docs/configuration-reference.md`
+  - 対象: `RELEASE_NOTES.md`、`APP_IMAGE`の設定文書化、CI Migration手順の統一、開発用Composeのプロジェクト名分離
+  - 完了条件: リリース前チェックの全項目が確認できる状態になる。
+
+- [x] `T-1316` インターネット到達可能なCaddyの脆弱性を受容せず解消する。
+  - 参照: `docs/ci-cd-design.md`, `security/trivy/README.md`
+  - 対象: `Dockerfile.caddy`, `docker-compose.yml`, `security/trivy`
+  - 条件: CVE単位で到達性を評価し、到達しうるものは受容せず修正する。
+  - 完了条件: caddyイメージのHIGH/CRITICALが0件になり、受容記録は`statement`・`expired_at`・`paths`必須で検証される。
+
+- [x] `T-1317` スキャン済み成果物と本番稼働成果物を一致させる。
+  - 参照: `docs/ci-cd-design.md`, `docs/environment-setup.md`, `docs/operation-design.md`
+  - 対象: 本番デプロイ手順、`scripts/scan-image.ps1`
+  - 条件: CIのスキャンを本番成果物の保証として扱わない。
+  - 完了条件: 本番手順から`up -d --build`が消え、VPSでも「ビルド＋スキャン → `up -d --no-build`」の順になる。共通Caddy構成ではスキャン対象からcaddyが外れる。
+
+- [x] `T-1318` PowerShellの版差でスクリプトが壊れないようCIで担保する。
+  - 参照: `docs/coding-guidelines.md`, `docs/ci-cd-design.md`
+  - 対象: `scripts/check-script-encoding.ps1`, `.github/workflows/ci.yaml`
+  - 条件: CIとVPSは`pwsh`、ローカル手順は`powershell`。両方で同じ結果になることを機械的に確認する。
+  - 完了条件: `scripts/*.ps1`の非ASCIIとBOMがCIで拒否され、`windows-latest`上のWindows PowerShell 5.1でも受容記録の検証とセルフテストが通る。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
@@ -494,5 +541,6 @@ todo.md の T-1303 API結合テストを実装して。
 - Workerコンテナ分離
 - MFA
 - CSP強制化
+- CSP違反レポート収集エンドポイント（匿名書き込み経路とレポートURLの保持設計が前提）
 - Secret Manager導入
 - 脆弱性スキャンCI

@@ -1,0 +1,48 @@
+# Builds Caddy from source instead of using the published caddy image as-is.
+#
+# Reason: the published caddy:2.11.4 binary is built with Go 1.26.3, which carries
+# CVE-2026-56862 (GO-2026-6090). A client can send post-handshake KeyUpdate messages to make the
+# TLS server perform key derivation indefinitely. Caddy is the internet facing TLS terminator in
+# this deployment, so that path is reachable by any unauthenticated client. The fix is in Go
+# 1.25.13 / 1.26.6 / 1.27.0 and only a rebuild picks it up.
+#
+# The three --replace lines lift dependencies that also carry HIGH findings in the published
+# binary: x/net (DNS record parsing panic), x/text (norm.Iter infinite loop) and grpc-go
+# (xDS RBAC and HTTP/2 transport). They are plain version bumps, so no per-CVE reachability
+# judgement is needed.
+#
+# apk upgrade in the runtime stage clears the c-ares and curl findings in the base layer.
+#
+# Exit condition: once an upstream caddy image is published that is built with Go 1.26.6 or newer
+# and carries no HIGH/CRITICAL findings, delete this file and point docker-compose.yml back at the
+# official image. docs/ci-cd-design.md records the check.
+
+ARG CADDY_VERSION=2.11.4
+ARG GO_VERSION=1.27.0
+ARG XCADDY_VERSION=v0.4.7
+
+FROM golang:${GO_VERSION}-alpine AS build
+
+ARG CADDY_VERSION
+ARG XCADDY_VERSION
+
+# GOTOOLCHAIN=local keeps the build on the pinned Go version. Without it the toolchain directive
+# in Caddy's go.mod can pull a different toolchain and silently undo the reason for this image.
+ENV GOTOOLCHAIN=local \
+    CGO_ENABLED=0
+
+RUN apk add --no-cache git
+
+RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}
+
+RUN xcaddy build "v${CADDY_VERSION}" \
+    --replace golang.org/x/net=golang.org/x/net@v0.56.0 \
+    --replace golang.org/x/text=golang.org/x/text@v0.39.0 \
+    --replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1 \
+    --output /out/caddy
+
+FROM caddy:${CADDY_VERSION}
+
+RUN apk --no-cache upgrade
+
+COPY --from=build /out/caddy /usr/bin/caddy

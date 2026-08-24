@@ -1,0 +1,180 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2025-61726",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2025-61729",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2025-68121",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-25679",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-27145",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-32280",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-32281",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-32283",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-33811",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-33814",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-33818",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-39820",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-39821",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-39822",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-39836",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-42499",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-42504",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-56853",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-56858",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-56859",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-56860",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-56862",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    }
+  ]
+}

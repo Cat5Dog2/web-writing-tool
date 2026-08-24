@@ -42,6 +42,7 @@ services:
       Security__RequireHttps: ${Security__RequireHttps:-true}
       Security__ForwardedHeadersEnabled: ${Security__ForwardedHeadersEnabled:-true}
       Security__AllowedForwardedHosts__0: ${Security__AllowedForwardedHosts__0:-localhost}
+      Security__ContentSecurityPolicyMode: ${Security__ContentSecurityPolicyMode:-ReportOnly}
       AdminSeed__Email: ${AdminSeed__Email:-}
       AdminSeed__Password: ${AdminSeed__Password:-}
       AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
@@ -117,7 +118,12 @@ services:
     logging: *default-logging
 
   caddy:
-    image: caddy:2
+    # 公開イメージのcaddyバイナリはGo 1.26.3ビルドで、TLSのKeyUpdate DoS（CVE-2026-56862）を含む。
+    # インターネットに面するTLS終端なので、修正版Goでビルドし直したイメージを使う。Dockerfile.caddy参照。
+    image: ${CADDY_IMAGE:-web-writing-tool-caddy:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     restart: unless-stopped
     depends_on:
       app:

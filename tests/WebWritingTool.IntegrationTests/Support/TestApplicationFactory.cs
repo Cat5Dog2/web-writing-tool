@@ -13,7 +13,10 @@ using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.IntegrationTests.Support;
 
-internal sealed class TestApplicationFactory(string connectionString, bool requireHttps = false)
+internal sealed class TestApplicationFactory(
+    string connectionString,
+    bool requireHttps = false,
+    IReadOnlyDictionary<string, string?>? configurationOverrides = null)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -39,6 +42,14 @@ internal sealed class TestApplicationFactory(string connectionString, bool requi
             {
                 // TestServer has no HTTPS binding, so the redirect middleware needs an explicit port.
                 settings["HTTPS_PORT"] = "443";
+            }
+
+            if (configurationOverrides is not null)
+            {
+                foreach (var (key, value) in configurationOverrides)
+                {
+                    settings[key] = value;
+                }
             }
 
             configuration.AddInMemoryCollection(settings);

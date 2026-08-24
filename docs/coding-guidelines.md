@@ -484,6 +484,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 slopwatch
 - warningを無視しない。
 - 生成ファイル以外の広範囲な自動整形は避ける。
 
+### 19.1 PowerShellスクリプト
+
+`scripts/*.ps1`はASCIIのみで書き、BOMを付けない。コメントも英語にする。
+
+BOMなしファイルをWindows PowerShell 5.1はANSI（日本語環境ではcp932）として読む。
+UTF-8の日本語コメントを置くと文字化けし、行末の改行を食い潰して次の行ごと構文から消える。
+エラーにならないまま挙動が変わるため、`pwsh`と5.1で結果が違うという形でしか気付けない。
+
+CIとVPSは`pwsh`、ローカル手順は`powershell`を使う。スクリプトを変更したら両方で実行して
+同じ結果になることを確認する。`pwsh`はコンテナで実行できる。タグは対応下限を固定するため
+`latest`ではなく`7.4-ubuntu-22.04`を使う。本プロジェクトの対応下限として7.4を固定しており、`-DateKind String`を持たない版で検証する必要があるためである。
+
+```powershell
+docker run --rm -v "${PWD}:/repo" -w /repo mcr.microsoft.com/powershell:7.4-ubuntu-22.04 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/<script>.ps1
+```
+
+CIも両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-latest`上の
+Windows PowerShell 5.1で、`scripts/check-script-encoding.ps1`と
+`scripts/scan-image.ps1 -ValidateOnly -SelfTest`を回す。
+
 ## 20. `todo.md`運用
 
 - 実装は`todo.md`のタスクID単位で進める。
