@@ -276,7 +276,8 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。Alpineパッケージ層の指摘は0件 |
+| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない |
+| `postgres:16-alpine` | `libcrypto3` / `libssl3`のCVE-2026-14456 | OpenSSL 3.5のQUICサーバーlistenerでのみ発生する。PostgreSQL 16はQUICを実装せず、TCP上のTLSを従来の`SSL_accept`で終端する。本番Composeは5432を公開せず、`ssl`も無効。公式イメージをそのまま使う現構成では、Alpineの修正版3.5.8-r0は上流の再ビルドで入る |
 
 `caddy`は受容記録を持たない。到達可能なTLS DoSを受容せず、自前ビルドで解消したためである。9.1参照。
 

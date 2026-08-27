@@ -1,11 +1,20 @@
 {
   "vulnerabilities": [
     {
+      "id": "CVE-2026-14456",
+      "purls": [
+        "pkg:apk/alpine/libcrypto3@3.5.7-r0",
+        "pkg:apk/alpine/libssl3@3.5.7-r0"
+      ],
+      "statement": "OpenSSL QUIC server listener only. The unbounded queue is in the listener object that OpenSSL 3.5 added for inbound QUIC INITIAL packets, and an application reaches it only by creating that listener. PostgreSQL 16 has no QUIC support: it terminates TLS over TCP through the classic SSL_accept path, and this deployment leaves ssl off and never publishes port 5432, so PostgreSQL is reachable only from the app container on the Docker network. Alpine ships the fix as 3.5.8-r0, so with the official image used as is, the finding clears once upstream rebuilds on it. The purls are pinned to 3.5.7-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
       "id": "CVE-2025-61726",
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -13,7 +22,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -21,7 +30,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -29,7 +38,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -37,7 +46,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -45,7 +54,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -53,7 +62,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -61,7 +70,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -69,7 +78,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -77,7 +86,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -85,7 +94,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -93,7 +102,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -101,7 +110,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -109,7 +118,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -117,7 +126,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -125,7 +134,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -133,7 +142,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -141,7 +150,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -149,7 +158,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -157,7 +166,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -165,7 +174,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     },
     {
@@ -173,7 +182,7 @@
       "paths": [
         "usr/local/bin/gosu"
       ],
-      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. The Alpine package layer of this image reports zero HIGH/CRITICAL findings, so only an upstream image rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
+      "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
     }
   ]
