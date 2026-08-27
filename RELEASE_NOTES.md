@@ -56,9 +56,9 @@
 
 | イメージ | HIGH / CRITICAL | 備考 |
 | --- | --- | --- |
-| アプリイメージ | 0件 | 全深刻度ではLOW 7件、MEDIUM 8件。いずれもUbuntu 24.04パッケージで修正版なし |
+| アプリイメージ | 0件 | 全深刻度ではLOW 13件、MEDIUM 15件（2026-08-27のCI時点）。大半はUbuntu 24.04パッケージで修正版なし。`openssl` / `libssl3t64`の10件のみ修正版3.0.13-0ubuntu3.15があり、`mcr.microsoft.com/dotnet/aspnet:10.0`の再ビルドで入る |
 | Caddyイメージ（自前ビルド） | 0件 | 全深刻度でもMEDIUM 1件のみ。公開イメージのHIGH 19件は再ビルドで解消 |
-| `postgres:16-alpine` | 受容記録22件 | 全件が`usr/local/bin/gosu`のGo stdlib。起動時のみ実行され、ソケットを開かず、PostgreSQLが接続を受ける前に終了する。Alpineパッケージ層は0件 |
+| `postgres:16-alpine` | 受容記録23件 | 22件は`usr/local/bin/gosu`のGo stdlib。起動時のみ実行され、ソケットを開かず、PostgreSQLが接続を受ける前に終了する。1件はAlpineパッケージ層のCVE-2026-14456（`libcrypto3` / `libssl3`）で、OpenSSL 3.5のQUICサーバーlistener限定のため到達しない |
 
 NuGetは全プロジェクトで脆弱パッケージ0件。
 受容内容と再トリアージ手順は[CI/CD設計](docs/ci-cd-design.md)9.2を参照。
@@ -70,7 +70,7 @@ NuGetは全プロジェクトで脆弱パッケージ0件。
 - Caddyを自前ビルドしている間は、Caddy本体とGoのリリース追従をこちらが持つ。上流がGo 1.26.6以降でビルドしたcaddyイメージを公開したら`Dockerfile.caddy`を削除して公式イメージへ戻す。
 - CIでビルドしたイメージはレジストリへpushしていない。本番成果物はVPS上でビルドするため、ゲートもVPS上で通す必要がある。レジストリ導入でこの二重ビルドは解消できる。
 - Caddyイメージに修正版のあるMEDIUMが1件残る（`github.com/google/cel-go`、GO-2026-6094）。ゲート基準はHIGH / CRITICALで、CEL式マッチャーを使っていないため到達しない。
-- `postgres:16-alpine`のHIGH / CRITICALは上流イメージの更新でしか解消できない。受容期限（2026-11-24）を過ぎるとCIが再び失敗し、再トリアージが必要になる。
+- `postgres:16-alpine`のHIGH / CRITICALは、公式イメージをそのまま使う現在の構成では上流の再ビルド待ちになる。受容期限（gosuのGo stdlib 22件は2026-11-24、`libcrypto3` / `libssl3`のCVE-2026-14456は2026-10-27）を過ぎるとCIが再び失敗し、再トリアージが必要になる。CVE-2026-14456はAlpineが3.5.8-r0で修正済みのため、上流イメージが再ビルドされ次第、受容記録を削除する。gosu由来の22件は`/usr/local/bin/gosu`へ直接配置されたバイナリでapkパッケージではないため、自前イメージで`apk upgrade`しても解消しない。
 - 共通Caddy構成では、リポジトリの`Caddyfile`が読まれない。`/health/ready`の遮断はVPS側の共通Caddyへ設定する。
 - 外部APIキーの設定漏れは起動時に検知しない。デプロイ後に管理者で`/health/deps`を確認する。
 - Data Protectionキー（`app_keys` volume）を失うと、WordPress Application PasswordとDiscord Webhook URLを復号できない。DBバックアップと同じタイミングで退避する。
