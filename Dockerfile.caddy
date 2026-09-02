@@ -6,10 +6,20 @@
 # this deployment, so that path is reachable by any unauthenticated client. The fix is in Go
 # 1.25.13 / 1.26.6 / 1.27.0 and only a rebuild picks it up.
 #
-# The three --replace lines lift dependencies that also carry HIGH findings in the published
-# binary: x/net (DNS record parsing panic), x/text (norm.Iter infinite loop) and grpc-go
-# (xDS RBAC and HTTP/2 transport). They are plain version bumps, so no per-CVE reachability
-# judgement is needed.
+# The --replace lines lift dependencies that carry HIGH or CRITICAL findings: x/crypto
+# (CVE-2026-56854, ssh source-address restrictions), x/net (DNS record parsing panic), x/text
+# (norm.Iter infinite loop) and grpc-go (xDS RBAC, HTTP/2 transport, CVE-2026-84304). They are
+# plain version bumps, so no per-CVE reachability judgement is needed.
+#
+# Every --replace is a hard override, not a floor: it holds the module at that exact version in
+# both directions. That is why grpc sat on v1.82.1 after the CVE-2026-84304 fix shipped in
+# v1.83.1, and why x/crypto is listed explicitly rather than left to minimal version selection,
+# where a later change to the x/net pin could drop it back below v0.55.0. Re-read the whole list
+# whenever one entry moves, and check compatibility rather than always taking the newest tag.
+#
+# CVE-2026-56854 affects every x/crypto below v0.55.0, so the v0.53.0 this image carried was not
+# introduced by the x/net pin. The v0.52.0 Caddy asks for was affected just the same. Only the
+# bump to v0.55.0 clears it.
 #
 # apk upgrade in the runtime stage clears the c-ares and curl findings in the base layer.
 #
@@ -36,9 +46,10 @@ RUN apk add --no-cache git
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}
 
 RUN xcaddy build "v${CADDY_VERSION}" \
-    --replace golang.org/x/net=golang.org/x/net@v0.56.0 \
-    --replace golang.org/x/text=golang.org/x/text@v0.39.0 \
-    --replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1 \
+    --replace golang.org/x/crypto=golang.org/x/crypto@v0.55.0 \
+    --replace golang.org/x/net=golang.org/x/net@v0.58.0 \
+    --replace golang.org/x/text=golang.org/x/text@v0.41.0 \
+    --replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2 \
     --output /out/caddy
 
 FROM caddy:${CADDY_VERSION}
