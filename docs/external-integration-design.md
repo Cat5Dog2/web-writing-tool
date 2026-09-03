@@ -83,7 +83,7 @@ public sealed class ExternalIntegrationOptions
 
 | Options | 主な項目 |
 | --- | --- |
-| `AiProviderOptions` | Provider、Model、ApiKey、Timeout、MaxInputChars。MVPの既定はGoogle Gemini 3.7 Flash |
+| `AiProviderOptions` | Provider、Model、ApiKey、Timeout、MaxInputChars。MVPの既定はGoogle Gemini 3.8 Flash |
 | `SearchProviderOptions` | TavilyEndpoint、TavilyApiKey、XEndpoint、XBearerToken、DefaultRegion、MaxResults、環境別CacheTtl |
 | `WordpressOptions` | Timeout、RetryCount、AllowedSchemes |
 | `NotificationOptions` | Provider、Timeout。Discord Webhook URLはユーザー別にDB暗号化保存する |
@@ -166,7 +166,7 @@ public sealed class ExternalIntegrationOptions
 - 長文化
 - リライト
 
-MVPの採用ProviderはGoogle Gemini、既定モデルはGoogle Gemini 3.7 Flashとする。APIモデルIDは`gemini-3.7-flash`、利用可能リージョンはJapanとする。Google Gemini 3.6 Flash（`gemini-3.6-flash`）とGoogle Gemini 3.5 Flash（`gemini-3.5-flash`）も選択可能なモデルとして残す。
+MVPの採用ProviderはGoogle Gemini、既定モデルはGoogle Gemini 3.8 Flashとする。APIモデルIDは`gemini-3.8-flash`、利用可能リージョンはJapanとする。Google Gemini 3.7 Flash（`gemini-3.7-flash`）、Google Gemini 3.6 Flash（`gemini-3.6-flash`）、Google Gemini 3.5 Flash（`gemini-3.5-flash`）も選択可能なモデルとして残す。
 Gemini以外のAI Provider対応はMVP対象外とし、後続フェーズでOpenAI GPT、Anthropic Claudeなどを選択可能にする。
 
 ### 8.2 共通インターフェース
@@ -198,7 +198,7 @@ public sealed class AiTextGenerationRequest
 
 サンプリングパラメーター:
 
-- Gemini 3.xでは`temperature`、`top_p`、`top_k`が非推奨であり、公式ガイドは全リクエストからの削除を案内している。`gemini-3.6-flash`と`gemini-3.5-flash`も対象に含む。
+- Gemini 3.xでは`temperature`、`top_p`、`top_k`が非推奨であり、公式ガイドは全リクエストからの削除を案内している。`gemini-3.7-flash`、`gemini-3.6-flash`、`gemini-3.5-flash`も対象に含む。
 - 将来モデルでは送信するとHTTP 400になる。
 - Gemini Clientは`Temperature`を`generationConfig`へ載せず、`generationConfig`自体を送信しない。
 - `AiTextGenerationRequest.Temperature`はProvider共通DTOとして残す。後続フェーズで追加するOpenAI GPT、Anthropic Claudeでは有効なため、Provider側の制約はClientが吸収する。

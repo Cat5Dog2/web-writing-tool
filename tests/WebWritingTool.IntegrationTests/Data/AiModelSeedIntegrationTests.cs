@@ -15,8 +15,9 @@ namespace WebWritingTool.IntegrationTests.Data;
 public class AiModelSeedIntegrationTests(IntegrationTestFixture fixture)
 {
     private const string Provider = "GoogleGemini";
-    private const string DefaultModel = "gemini-3.7-flash";
-    private const string PreviousModel = "gemini-3.6-flash";
+    private const string DefaultModel = "gemini-3.8-flash";
+    private const string PreviousModel = "gemini-3.7-flash";
+    private const string OlderModel = "gemini-3.6-flash";
     private const string LegacyModel = "gemini-3.5-flash";
 
     [Fact]
@@ -39,7 +40,8 @@ public class AiModelSeedIntegrationTests(IntegrationTestFixture fixture)
             var settings = await GetGeminiModelsAsync();
             Assert.Equal(0, settings[DefaultModel].SortOrder);
             Assert.Equal(1, settings[PreviousModel].SortOrder);
-            Assert.Equal(2, settings[LegacyModel].SortOrder);
+            Assert.Equal(2, settings[OlderModel].SortOrder);
+            Assert.Equal(3, settings[LegacyModel].SortOrder);
         }
         finally
         {
@@ -92,7 +94,7 @@ public class AiModelSeedIntegrationTests(IntegrationTestFixture fixture)
                 .Select(setting => setting.Model)
                 .ToListAsync();
 
-            Assert.Equal(3, models.Count);
+            Assert.Equal(4, models.Count);
             Assert.Equal(models.Count, models.Distinct().Count());
         }
         finally
@@ -116,6 +118,7 @@ public class AiModelSeedIntegrationTests(IntegrationTestFixture fixture)
         var models = options.GenerationModels.Select(model => model.Model).ToArray();
         Assert.Equal(DefaultModel, models[0]);
         Assert.Contains(PreviousModel, models);
+        Assert.Contains(OlderModel, models);
         Assert.Contains(LegacyModel, models);
     }
 

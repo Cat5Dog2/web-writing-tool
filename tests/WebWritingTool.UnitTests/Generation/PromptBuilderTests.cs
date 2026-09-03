@@ -16,7 +16,7 @@ public class PromptBuilderTests
             new TitleGenerationPayload(
                 article.ArticleId,
                 null,
-                "gemini-3.7-flash",
+                "gemini-3.8-flash",
                 5,
                 "Ai",
                 null,

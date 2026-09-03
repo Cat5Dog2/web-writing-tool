@@ -153,7 +153,7 @@ public class DataVolumePerformanceTests(IntegrationTestFixture fixture, ITestOut
                 Title = $"perf article {index:D4}",
                 Status = ArticleStatus.Draft,
                 Tags = ["perf"],
-                GenerationModel = "gemini-3.7-flash",
+                GenerationModel = "gemini-3.8-flash",
                 OutlineMethod = "Keyword",
                 NotificationMode = "None",
                 IsDomesticOnly = true
