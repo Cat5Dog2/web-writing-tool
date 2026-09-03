@@ -10,6 +10,13 @@
 
 ## 未リリース
 
+### 既定の生成モデル
+
+既定の執筆モデルを `gemini-3.7-flash` から `gemini-3.8-flash` へ切り替えた。`gemini-3.7-flash`、
+`gemini-3.6-flash`、`gemini-3.5-flash` は選択肢として残す。既存環境へ適用すると、シードが
+`AiModelSettings` の `SortOrder` を再整列し、既定モデルが自動的に `gemini-3.8-flash` へ切り替わる。
+既存行の `Enabled` は上書きしない。旧モデルへ戻す手順は[運用設計](docs/operation-design.md)を参照。
+
 ### 脆弱性
 
 | 対象 | 内容 |

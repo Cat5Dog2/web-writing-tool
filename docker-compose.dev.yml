@@ -44,7 +44,7 @@ services:
       AdminSeed__Email: ${AdminSeed__Email:-}
       AdminSeed__Password: ${AdminSeed__Password:-}
       AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
-      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.7-flash}
+      AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.8-flash}
       AiProviders__Gemini__Region: ${AiProviders__Gemini__Region:-Japan}
       AiProviders__Gemini__TimeoutSeconds: ${AiProviders__Gemini__TimeoutSeconds:-120}
       SearchProviders__DefaultRegion: ${SearchProviders__DefaultRegion:-Japan}
