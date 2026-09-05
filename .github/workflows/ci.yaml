@@ -203,6 +203,22 @@ jobs:
             test "$recorded" = "$actual"
           done
 
+      # migrate is behind the tools profile, so the scan above does not see it, yet it is the only
+      # service that writes to the production database. Gated in its own run rather than by
+      # widening that one: its image is a digest in the Compose file with no variable to pin, so
+      # adding it to the manifest would only make the manifest disagree with the wrapper's scope.
+      # -ServiceName keeps this to the one image the deployment scan did not already cover.
+      - name: Migration image vulnerability scan
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+
+      # The pin is the reason the scan above means anything. A tag here would let an unreviewed
+      # image write to the production database on the next deployment.
+      - name: The migration image is pinned by digest
+        run: |
+          image=$(docker compose --profile tools config --format json | jq -r '.services.migrate.image')
+          echo "migrate image: $image"
+          echo "$image" | grep -qE '@sha256:[0-9a-f]{64}$'
+
       # Needs a daemon, which is why it is a separate switch from the -SelfTest run in the
       # validation job. It covers the two properties the argument assertions cannot reach: that
       # Trivy really stops on a Java archive with no index cached, which is the only reason Java is

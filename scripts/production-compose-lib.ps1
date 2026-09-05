@@ -14,9 +14,17 @@ function Get-ProductionComposeCommandInfo {
         throw "No compose command was given. For example: -ComposeCommand 'up -d --no-build app'"
     }
 
-    # migrate is deliberately outside the image gate until its SDK image has its own scheduled
-    # scan and triage. Keep that residual risk to one exact command; never let a caller turn either
-    # profile into an `up` that adds an unapproved service after scope checking.
+    # migrate stays outside the manifest, but no longer outside the gate. Its image is a digest
+    # written into the Compose file rather than a variable, so there is nothing here to pin: the
+    # reference cannot move between the scan and the run, and putting it in the manifest would only
+    # make the manifest disagree with the scope checked below. It is gated by its own scan, which
+    # the deployment procedure runs before it touches the database:
+    #
+    #   scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+    #
+    # A new HIGH in that image therefore stops the next deployment instead of only being reported.
+    # Keep the exception to one exact command; never let a caller turn either profile into an `up`
+    # that adds an unapproved service after scope checking.
     $migrationArguments = @('--profile', 'tools', 'run', '--rm', 'migrate')
     if (Test-ExactArguments -Actual $Arguments -Expected $migrationArguments) {
         return [pscustomobject]@{ Command = 'run'; IsToolsMigration = $true }

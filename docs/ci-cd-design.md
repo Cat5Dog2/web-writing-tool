@@ -588,9 +588,48 @@ manifestにスコープ外のサービスがある、image変数が定義され�
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 
+### migrateイメージ
+
+`migrate`は本番DBへ書き込む唯一のコンポーネントでありながら、`tools` profileにいるため
+`docker compose config`に現れず、デプロイ時のスキャンスコープへ入らない。しかも実行内容は
+ネットワーク越しの`dotnet restore`と`dotnet tool restore`である。タグのままにすると、レビューして
+いない内容が次のデプロイで本番DBを書き換えうる。
+
+そのため次の3点をセットで行う。どれか1つでも欠けると残りが意味を失う。
+
+| 対策 | 場所 | 欠けたときに起きること |
+| --- | --- | --- |
+| digest固定 | `docker-compose.yml`の`migrate.image` | タグが差し替われば未レビューのイメージが動く |
+| 受容記録 | `security/trivy/sdk.trivyignore.yaml` | HIGHが残りゲートが常に赤で、誰も見なくなる |
+| デプロイ時スキャン | `-ComposeProfile tools -ServiceName migrate` | 固定と受容記録がどの自動実行でも使われない |
+
+```powershell
+scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+```
+
+`-ComposeProfile`がないとprofile内のサービスはスコープに入らない。`-ServiceName`はデプロイ時の
+スキャンが既に見たイメージを再スキャンしないための絞り込みで、`-ProvenanceOutputPath`とは併用できない。
+一部のサービスしか載らないmanifestは、残りをタグから起動させてしまうためである。
+
+migrateはmanifestへ入れない。digest固定なのでピン留めする対象がなく、入れると
+`production-compose.ps1`のスコープ検査と食い違う。
+
+現在の受容内容は`System.Security.Cryptography.Xml` 10.0.6 の5件で、いずれもSDKイメージへ同梱された
+PowerShell 7.6.4 に含まれる。migrateはbashから`dotnet`を実行するだけでpwshを起動せず、署名付きXMLも
+扱わない。appイメージは`mcr.microsoft.com/dotnet/aspnet`ベースでPowerShellを含まないため、稼働中の
+アプリからは到達しない。上流が更新版PowerShellでSDKイメージを作り直せば解消する。
+
+digestを更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALをトリアージしてから
+`docker-compose.yml`を変える。受容記録のファイル名はリポジトリ名から決まるため、digestが変わっても
+`sdk.trivyignore.yaml`のままである。
+
 将来の選択肢として、CIでビルド・スキャンしたイメージをレジストリへpushし、VPSではdigest指定で
 pullして`up --no-build`する方式がある。VPSからビルドツールチェーンを外せ、ロールバックも
 digest指定で済む。レジストリの選定と認証情報の配置が前提になるため、導入時に別途決める。
+
+`migrate`については、EF Coreのmigration bundleをイメージビルド時に作り、実行時はSDKもネットワーク
+restoreも不要にする案もある。SDKイメージ自体を本番から外せるが、`dotnet ef migrations bundle`が設計時に
+`DbContext`を生成するため、ビルド時に接続文字列かデザインタイムファクトリが要る。導入時に別途決める。
 
 ## 10. テスト実行範囲
 

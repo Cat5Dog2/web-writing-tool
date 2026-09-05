@@ -30,6 +30,26 @@
 param(
     [string] $AppImage = 'web-writing-tool-app:local',
     [string[]] $ComposeFile = @('docker-compose.yml'),
+    # Compose profiles to bring into scope. Without one, a profiled service is absent from
+    # "docker compose config" and so from this scan.
+    #
+    # 'tools' pulls in migrate, which is the only service that writes to the production database.
+    # It used to be left out because its SDK image was neither pinned nor triaged, which made
+    # gating on it meaningless churn. Now that it is pinned by digest and its findings are recorded
+    # in security/trivy/sdk.trivyignore.yaml, scanning it is what makes those two facts enforced
+    # rather than decorative: a new HIGH in that image stops the next deployment.
+    [string[]] $ComposeProfile = @(),
+    # Restrict the scan to these services. Without it every service in scope is scanned.
+    #
+    # Used to gate one profiled service without re-scanning everything the deployment scan already
+    # covered. It may not be combined with -ProvenanceOutputPath: a manifest that names only some
+    # of the services would let the wrapper start the rest from tags nothing checked, which is the
+    # failure the manifest exists to prevent.
+    #
+    # Named ServiceName, not Service: PowerShell variable names are case-insensitive, so a $Service
+    # parameter is the same variable as the $service loop cursor further down, and the loop would
+    # silently overwrite the parameter before it was ever read.
+    [string[]] $ServiceName = @(),
     [switch] $Build,
     [switch] $SkipPull,
     [switch] $ValidateOnly,
@@ -121,7 +141,17 @@ function Clear-ProvenanceOutput {
     Remove-Item -LiteralPath $Path -Force
 }
 
+$ServiceName = @($ServiceName | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
 if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
+    # Refused rather than silently producing a partial manifest. production-compose.ps1 requires
+    # the manifest to cover every service in scope, so a manifest written from a filtered scan
+    # would either be rejected there or, worse, be trusted for the services it does list while the
+    # rest started from tags this run never inspected.
+    if ($ServiceName.Count -gt 0) {
+        throw '-ServiceName cannot be combined with -ProvenanceOutputPath. A manifest has to cover every service the deployment starts.'
+    }
+
     if (-not [System.IO.Path]::IsPathRooted($ProvenanceOutputPath)) {
         $ProvenanceOutputPath = Join-Path $repoRoot $ProvenanceOutputPath
     }
@@ -350,6 +380,18 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {
 # Bump when the manifest shape changes. Readers must refuse a version they were not written for
 # rather than guess, so scripts/production-compose.ps1 checks this exact value.
 $script:ProvenanceSchemaVersion = 1
+
+# The repository part of a reference, used to name its acceptance file.
+#
+# The digest has to come off before the tag. "repo@sha256:abc" split on ':' first would yield
+# "repo@sha256", so a digest-pinned image would get an acceptance file named after the digest - and
+# every time the pin moved, the old file would be silently orphaned and its triage lost while the
+# gate went green on an unreviewed image. Splitting on '@' first keeps one file per repository.
+function Get-ImageRepository {
+    param([Parameter(Mandatory)] [string] $Image)
+
+    return $Image.Split('@')[0].Split(':')[0]
+}
 
 # Rejects anything that is not a full sha256 image ID. A reader that accepts a tag here would
 # undo the point of the manifest, and Docker takes both in the same position.
@@ -1009,6 +1051,12 @@ function Invoke-ScannerSelfTest {
         # The manifest decides which images a deployment starts, so its failure modes are checked
         # here rather than left to a real run. All of these are pure or filesystem-only, which is
         # why they belong in the argument-level self test and not the Docker one.
+        # An acceptance file is found by repository name, so a digest pin must not change it.
+        # Otherwise moving the pin orphans the triage and the gate goes green on an unreviewed image.
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image 'postgres:16-alpine') -ceq 'postgres') 'a tagged reference did not reduce to its repository.'
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image ('mcr.microsoft.com/dotnet/sdk@sha256:' + ('e' * 64))) -ceq 'mcr.microsoft.com/dotnet/sdk') 'a digest reference kept the digest in its repository, so its acceptances would be orphaned whenever the pin moves.'
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image 'web-writing-tool-app:local') -ceq 'web-writing-tool-app') 'a local tagged reference did not reduce to its repository.'
+
         Assert-ScannerSelfTest (Test-ImageIdFormat -ImageId ('sha256:' + ('a' * 64))) 'a valid image ID was rejected.'
         Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId 'postgres:16-alpine')) 'a tag was accepted as an image ID, which is the substitution the manifest exists to prevent.'
         Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId ('sha256:' + ('a' * 63)))) 'a short digest was accepted as an image ID.'
@@ -1419,6 +1467,12 @@ foreach ($file in $ComposeFile) {
     $composeOptions += @('-f', $path)
 }
 
+# Same comma splitting as -ComposeFile, so "powershell -File" callers can pass more than one.
+$ComposeProfile = @($ComposeProfile | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+foreach ($profileName in $ComposeProfile) {
+    $composeOptions += @('--profile', $profileName)
+}
+
 # The shell environment wins over --env-file in Compose, so APP_IMAGE resolves to the image that
 # was actually built here even when the env file carries the placeholder value.
 $env:APP_IMAGE = $AppImage
@@ -1448,6 +1502,28 @@ foreach ($service in $config.services.PSObject.Properties) {
             # different artifact, so they are built locally instead.
             IsLocal = $null -ne $service.Value.build
         })
+}
+
+if ($ServiceName.Count -gt 0) {
+    $missingServices = @($ServiceName | Where-Object { -not $serviceImages.Contains($_) })
+    if ($missingServices.Count -gt 0) {
+        throw "These services are not in scope: $($missingServices -join ', '). In scope: $(($serviceImages.Keys) -join ', '). Add the profile that defines them with -ComposeProfile."
+    }
+
+    $selected = [ordered]@{}
+    foreach ($name in $ServiceName) {
+        $selected[$name] = $serviceImages[$name]
+    }
+
+    $serviceImages = $selected
+    $targets = New-Object System.Collections.Generic.List[object]
+    foreach ($name in $serviceImages.Keys) {
+        $selectedService = $config.services.PSObject.Properties | Where-Object { $_.Name -ceq $name }
+        $targets.Add([pscustomobject]@{
+                Image   = $serviceImages[$name]
+                IsLocal = $null -ne $selectedService.Value.build
+            })
+    }
 }
 
 $targets = @($targets | Sort-Object -Property Image -Unique)
@@ -1538,7 +1614,7 @@ try {
         }
         $scanned.Add([pscustomobject]@{ Image = $image; ImageId = $resolvedImageId })
 
-        $repository = $image.Split(':')[0]
+        $repository = Get-ImageRepository -Image $image
         $ignoreName = ($repository.Split('/') | Select-Object -Last 1) + '.trivyignore.yaml'
 
         $scanParameters = @{

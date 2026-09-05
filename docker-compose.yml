@@ -90,7 +90,14 @@ services:
     logging: *default-logging
 
   migrate:
-    image: mcr.microsoft.com/dotnet/sdk:10.0
+    # digestで固定する。このサービスは本番DBへ書き込む唯一のコンポーネントで、`tools` profileに
+    # いるためデプロイ時のイメージゲート対象に入らない。タグのままだと、レビューしていない内容が
+    # 次のデプロイで本番DBを書き換えうる。
+    #
+    # 対応するタグは 10.0。更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALを
+    # security/trivy/sdk.trivyignore.yaml へトリアージしてからこの行を変える。手順は
+    # docs/ci-cd-design.md「migrateイメージ」を参照。
+    image: mcr.microsoft.com/dotnet/sdk@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c
     profiles:
       - tools
     depends_on:
