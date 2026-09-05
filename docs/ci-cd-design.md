@@ -515,6 +515,60 @@ appがループバックにだけ公開されることを確認する。
 
 新しい外部Caddy構成そのものをマージ前に検証できるよう、`external-caddy`はPRを含むすべてのCIトリガーで動かす。
 
+### スキャンした成果物を起動する
+
+`--no-build`だけでは、スキャンを通った成果物が起動する保証にならない。塞ぐべき穴が2つある。
+
+**1つ目は呼び出し側の環境。** `docker-compose.yml`は`${APP_IMAGE}`、`${POSTGRES_IMAGE}`、`${CADDY_IMAGE}`で
+イメージを選ぶ。Composeでは`--env-file`よりシェルの環境変数が優先される。`scan-image.ps1`は自プロセス内で
+`APP_IMAGE`を設定するので正しい成果物を検査するが、その後の`docker compose up`を`APP_IMAGE`をexportした
+シェルで実行すると、**別のイメージが正常に起動する**。デプロイの失敗ではなく、ゲートを通っていないものの
+デプロイになる。
+
+**2つ目はタグの再解決。** 起動時にタグを引き直す方式も安全ではない。スキャンと起動の間にタグが
+別のイメージへ差し替えられる余地が残る。スキャナ自身はこれを避けており、タグを image ID へ解決してから
+その ID を`docker save`する。同じ保証を起動側にも持たせる必要がある。
+
+そのため`scan-image.ps1 -ProvenanceOutputPath <path>`が、実際に検査した image ID を機械可読な形で記録する。
+
+```json
+{
+  "schemaVersion": 1,
+  "gateResult": "passed",
+  "generatedAt": "2026-09-05T09:26:58Z",
+  "scannerImage": "aquasec/trivy@sha256:...",
+  "services": {
+    "app": { "reference": "web-writing-tool-app:local", "imageId": "sha256:..." },
+    "postgres": { "reference": "postgres:16-alpine", "imageId": "sha256:..." }
+  }
+}
+```
+
+このファイルの扱いには2つの規則がある。**書くのは全イメージがゲートを通過した後だけ**で、**スキャン開始前に
+既存ファイルを削除する**。両方が必要である。前回成功したmanifestが失敗した実行を生き延びると、ゲートが
+拒否したイメージがそのままデプロイされる。
+
+キーはイメージではなくサービスである。スキャンは同じイメージを二度検査しないよう重複排除するが、デプロイは
+サービスごとに変数を設定するため、2つのサービスが同じイメージを共有する場合も両方の項目が要る。
+
+`scripts/production-compose.ps1`がこのmanifestを読み、image ID を Compose へ渡す。タグを引き直さず、
+呼び出し側の環境変数は上書きする。`up`の後は、起動中コンテナの`.Image`をmanifestと突き合わせる。
+`powershell -File`は引数をすべてパラメータとして解釈するため、Composeコマンドは`-ComposeCommand`へ
+1つの文字列で渡す。
+
+```powershell
+pwsh -File scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'
+```
+
+次のいずれかに当たると起動を拒否する。manifestが無い、JSONとして壊れている、`schemaVersion`が想定外、
+`gateResult`が`passed`でない、image IDが64桁のsha256形式でない、スコープ内のサービスがmanifestに無い、
+manifestにスコープ外のサービスがある、image変数が定義されていないサービスがある、`up`の後に照合できる
+コンテナが1つも無い。
+
+`docker-production`ジョブがこの経路を通す。起動ステップでは3つのimage変数へ存在しないタグを意図的に
+設定しており、ラッパーがmanifestで上書きしなければイメージが見つからず失敗する。実機では同じ取り違えが
+静かに成功してしまうので、CIでは失敗する形にしてある。
+
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 
 将来の選択肢として、CIでビルド・スキャンしたイメージをレジストリへpushし、VPSではdigest指定で

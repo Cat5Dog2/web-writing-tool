@@ -8,7 +8,9 @@ x-logging: &default-logging
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # 既定はタグのまま。scripts/production-compose.ps1 が、スキャンを通った成果物の image ID を
+    # ここへ入れる。変数が無いと、スキャンとup の間でタグが差し替わっても検出できない。
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-web_writing_tool}

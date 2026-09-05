@@ -648,23 +648,30 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.p
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
-  -Build
+  -Build \
+  -ProvenanceOutputPath artifacts/scanned-images.json
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.external-caddy.yml \
-  up -d postgres
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeCommand 'up -d postgres'
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.external-caddy.yml \
-  --profile tools run --rm migrate
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeCommand '--profile tools run --rm migrate'
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.external-caddy.yml \
-  up -d --no-build app
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeCommand 'up -d --no-build app'
 ```
+
+`production-compose.ps1`の`-ComposeFile`の既定は`docker-compose.yml,docker-compose.external-caddy.yml`
+なので、この構成では省略できる。スキャン以降のcompose呼び出しは、最後の`up`だけでなくすべてラッパー経由に
+する。一部だけタグ解決にすると、同じ実行の中でpostgresの解決結果が変わり、Composeが稼働中のコンテナを
+作り直す。
+
+起動に`docker compose up`を直接使わないのは、`--no-build`だけではスキャンを通った成果物が起動する保証に
+ならないためである。Composeでは`--env-file`よりシェルの環境変数が優先されるので、`APP_IMAGE`や
+`POSTGRES_IMAGE`をexportしたシェルでデプロイすると、別のイメージが**正常に**起動する。
+`production-compose.ps1`は`-ProvenanceOutputPath`で記録されたimage IDをmanifestから読んで渡し、
+`up`の後に起動中コンテナの`.Image`を突き合わせる。manifestが無い、壊れている、スコープと食い違う
+場合は起動を拒否する。詳細は[CI/CD設計](ci-cd-design.md)「スキャンした成果物を起動する」を参照。
 
 共通Caddy側の例。`wwt-app`はaliasなので、Compose project名やコンテナ名が変わっても影響しない。
 

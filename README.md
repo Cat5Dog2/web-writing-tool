@@ -189,6 +189,15 @@ NuGetはHigh/Criticalが1件でもあれば失敗する。
 
 イメージスキャンは本番Composeがデプロイする全イメージ（app、caddy、postgres）を対象とし、対象一覧は `docker compose config` から取得する。`--ignore-unfixed` は使わず、修正版がない指摘も `security/trivy/<イメージ名>.trivyignore.yaml` へ理由と期限付きで記録しない限りCIを止める。Trivyは脆弱性DBを取得するだけで、イメージやそのメタデータを外部へ送信しない。スキャナにはDocker socketを渡さず、`docker save` したtarを `--input` で読ませる。スキャナイメージはdigestで固定し、各スキャンは `--network none` で実行する。理由は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「スキャナへ渡すもの」を参照。
 
+`-ProvenanceOutputPath` を付けると、実際に検査した image ID を機械可読な manifest に記録する。書き出すのは全イメージがゲートを通過したときだけで、スキャン開始前に既存ファイルを削除する。前回成功した manifest が失敗した実行を生き延びると、ゲートが拒否したイメージがそのままデプロイされるためである。
+
+本番起動は `scripts/production-compose.ps1` を使う。`--no-build` だけではスキャンを通った成果物が起動する保証にならない。Compose では `--env-file` よりシェルの環境変数が優先されるので、`APP_IMAGE` を export したシェルでデプロイすると別のイメージが**正常に**起動する。ラッパーは manifest の image ID を渡し、`up` の後に起動中コンテナの `.Image` を突き合わせる。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'
+```
+
 現在の受容内容と再トリアージ手順は [docs/ci-cd-design.md](docs/ci-cd-design.md) を参照。
 
 ## 秘密情報の扱い

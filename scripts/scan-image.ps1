@@ -62,7 +62,21 @@ param(
     # not from what is comfortable locally, and raise them here rather than in the builders.
     [string] $ScanMemoryLimit = '1g',
     [string] $ScanCpuLimit = '1',
-    [string] $ScanPidsLimit = '512'
+    [string] $ScanPidsLimit = '512',
+    # Where to record what this run actually scanned, so a deployment can start those exact images
+    # rather than re-resolving the tags. Optional: without it the script behaves as it did before.
+    #
+    # Re-resolving is the hole this closes. The scanner resolves each tag to an image ID and
+    # exports that ID, so the scan itself cannot be pointed at a different image by a tag that
+    # moves mid-run. A deployment that then reads the tag again gets no such guarantee: between the
+    # scan and the start, the tag can be repointed at an image the gate never saw.
+    #
+    # The file is written only after every image in scope passes, and any existing file at the path
+    # is removed before scanning begins. Both halves matter. A manifest that outlived a failed run
+    # is exactly how an image the gate rejected gets deployed.
+    #
+    # Relative paths resolve against the repository root. artifacts/ is already ignored by Git.
+    [string] $ProvenanceOutputPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -284,6 +298,143 @@ function Invoke-SelfTest {
 $script:IsLinuxHost = $false
 if ($PSVersionTable.PSVersion.Major -ge 6) {
     $script:IsLinuxHost = [bool] $IsLinux
+}
+
+# Bump when the manifest shape changes. Readers must refuse a version they were not written for
+# rather than guess, so scripts/production-compose.ps1 checks this exact value.
+$script:ProvenanceSchemaVersion = 1
+
+# Rejects anything that is not a full sha256 image ID. A reader that accepts a tag here would
+# undo the point of the manifest, and Docker takes both in the same position.
+function Test-ImageIdFormat {
+    param([string] $ImageId)
+
+    # -cmatch, not -match. PowerShell compares case-insensitively by default, which would accept an
+    # uppercase digest here and then hand Docker something it does not resolve.
+    return ($ImageId -cmatch '^sha256:[0-9a-f]{64}$')
+}
+
+function New-ProvenanceDocument {
+    param(
+        [Parameter(Mandatory)] $ServiceImages,
+        [Parameter(Mandatory)] $Scanned,
+        [Parameter(Mandatory)] [string] $ScannerImage
+    )
+
+    $idByImage = @{}
+    foreach ($entry in $Scanned) {
+        $idByImage[$entry.Image] = $entry.ImageId
+    }
+
+    # Keyed by service, not by image. Scanning deduplicates by image because scanning the same
+    # export twice is waste, but a deployment sets one variable per service, and two services are
+    # free to share an image.
+    $services = [ordered]@{}
+    foreach ($service in $ServiceImages.Keys) {
+        $reference = $ServiceImages[$service]
+
+        if (-not $idByImage.ContainsKey($reference)) {
+            throw "No scan result for '$reference', used by service '$service'. The manifest has to cover every service in scope."
+        }
+
+        $imageId = $idByImage[$reference]
+        if (-not (Test-ImageIdFormat -ImageId $imageId)) {
+            throw "Service '$service' resolved to '$imageId', which is not a sha256 image ID."
+        }
+
+        $services[$service] = [ordered]@{
+            reference = $reference
+            imageId   = $imageId
+        }
+    }
+
+    if ($services.Count -eq 0) {
+        throw 'No services resolved to an image, so there is nothing to record.'
+    }
+
+    return [ordered]@{
+        schemaVersion = $script:ProvenanceSchemaVersion
+        gateResult    = 'passed'
+        generatedAt   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        scannerImage  = $ScannerImage
+        services      = $services
+    }
+}
+
+function Get-ProvenanceDirectory {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $directory = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($directory)) {
+        return '.'
+    }
+
+    return $directory
+}
+
+function Clear-ProvenanceOutput {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $directory = Get-ProvenanceDirectory -Path $Path
+    if (Test-Path -LiteralPath $directory -PathType Leaf) {
+        throw "The directory for -ProvenanceOutputPath is a file: $directory"
+    }
+
+    # Created rather than demanded. The documented location is artifacts/, which Git ignores and a
+    # fresh checkout therefore does not have, so requiring it would fail every first deployment and
+    # every CI run for no protection.
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    if (Test-Path -LiteralPath $Path -PathType Container) {
+        throw "-ProvenanceOutputPath points at a directory: $Path"
+    }
+
+    # Removed before scanning rather than overwritten after it. A run that fails the gate, or that
+    # never reaches the write at all, must leave no manifest behind: a deployment reading the
+    # previous run's file would start images this run rejected.
+    Remove-Item -LiteralPath $Path -Force
+}
+
+function Write-ProvenanceDocument {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] $Document
+    )
+
+    $json = $Document | ConvertTo-Json -Depth 6
+
+    # Written under a temporary name in the same directory and then renamed. A reader never sees a
+    # partial file, and an interrupted write leaves no manifest rather than a truncated one that
+    # would fail to parse at deploy time.
+    $directory = Get-ProvenanceDirectory -Path $Path
+    $temporary = Join-Path $directory ([System.IO.Path]::GetRandomFileName() + '.provenance.tmp')
+
+    try {
+        [System.IO.File]::WriteAllText($temporary, $json, (New-Object System.Text.UTF8Encoding $false))
+
+        # The manifest names what is about to run in production. On the deployment host it sits
+        # next to the checkout, so it is kept owner-only for the same reason the export workspace
+        # is.
+        if ($script:IsLinuxHost) {
+            & chmod 600 $temporary
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to restrict permissions on $temporary (chmod exited $LASTEXITCODE)."
+            }
+        }
+
+        [System.IO.File]::Move($temporary, $Path)
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force
+        }
+    }
 }
 
 # Runs a docker command and returns only its exit code; the command's own output goes straight to
@@ -848,6 +999,81 @@ function Invoke-ScannerSelfTest {
 
         Write-Output 'Scanner self test ok: no Docker socket, scan sealed with --network none, refresh has no tar in reach.'
 
+        # The manifest decides which images a deployment starts, so its failure modes are checked
+        # here rather than left to a real run. All of these are pure or filesystem-only, which is
+        # why they belong in the argument-level self test and not the Docker one.
+        Assert-ScannerSelfTest (Test-ImageIdFormat -ImageId ('sha256:' + ('a' * 64))) 'a valid image ID was rejected.'
+        Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId 'postgres:16-alpine')) 'a tag was accepted as an image ID, which is the substitution the manifest exists to prevent.'
+        Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId ('sha256:' + ('a' * 63)))) 'a short digest was accepted as an image ID.'
+        Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId ('SHA256:' + ('A' * 64)))) 'an uppercase digest was accepted; Docker reports lowercase and a case difference would break comparison.'
+
+        $selfTestServiceImages = [ordered]@{
+            app      = 'web-writing-tool-app:local'
+            postgres = 'postgres:16-alpine'
+            migrate  = 'postgres:16-alpine'
+        }
+        $selfTestScanned = @(
+            [pscustomobject]@{ Image = 'web-writing-tool-app:local'; ImageId = 'sha256:' + ('b' * 64) },
+            [pscustomobject]@{ Image = 'postgres:16-alpine'; ImageId = 'sha256:' + ('c' * 64) }
+        )
+
+        $selfTestDocument = New-ProvenanceDocument -ServiceImages $selfTestServiceImages -Scanned $selfTestScanned -ScannerImage 'aquasec/trivy@sha256:'
+        Assert-ScannerSelfTest ($selfTestDocument.gateResult -eq 'passed') 'the manifest does not record gateResult passed.'
+        Assert-ScannerSelfTest ($selfTestDocument.schemaVersion -eq $script:ProvenanceSchemaVersion) 'the manifest does not record the schema version.'
+        Assert-ScannerSelfTest ($selfTestDocument.services.Count -eq 3) 'the manifest dropped a service; scanning deduplicates by image but a deployment needs one entry per service.'
+        Assert-ScannerSelfTest ($selfTestDocument.services['postgres'].imageId -eq $selfTestDocument.services['migrate'].imageId) 'two services sharing an image did not resolve to the same ID.'
+        Assert-ScannerSelfTest ($selfTestDocument.services['app'].imageId -eq ('sha256:' + ('b' * 64))) 'a service resolved to the wrong image ID.'
+
+        $unscannedServices = [ordered]@{ app = 'never-scanned:local' }
+        $unscannedRejected = $false
+        try {
+            New-ProvenanceDocument -ServiceImages $unscannedServices -Scanned $selfTestScanned -ScannerImage 'x' | Out-Null
+        }
+        catch {
+            $unscannedRejected = $true
+        }
+        Assert-ScannerSelfTest $unscannedRejected 'a service with no scan result was recorded, so a deployment could start an image the gate never saw.'
+
+        $provenanceWorkspace = New-ScanWorkspace
+        try {
+            $provenancePath = Join-Path $provenanceWorkspace 'manifest.json'
+
+            Set-Content -LiteralPath $provenancePath -Value 'stale manifest from an earlier run'
+            Clear-ProvenanceOutput -Path $provenancePath
+            Assert-ScannerSelfTest (-not (Test-Path -LiteralPath $provenancePath)) 'a previous manifest survived the pre-scan clear, so a failed run would leave an approved-looking file behind.'
+
+            Write-ProvenanceDocument -Path $provenancePath -Document $selfTestDocument
+            Assert-ScannerSelfTest (Test-Path -LiteralPath $provenancePath) 'the manifest was not written.'
+
+            $roundTrip = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+            Assert-ScannerSelfTest ($roundTrip.services.app.imageId -eq ('sha256:' + ('b' * 64))) 'the written manifest does not round-trip through JSON.'
+
+            $leftovers = @(Get-ChildItem -LiteralPath $provenanceWorkspace -Filter '*.provenance.tmp' -File)
+            Assert-ScannerSelfTest ($leftovers.Count -eq 0) 'the atomic write left its temporary file behind.'
+
+            $createdDirectory = Join-Path $provenanceWorkspace 'not-yet-there'
+            Clear-ProvenanceOutput -Path (Join-Path $createdDirectory 'manifest.json')
+            Assert-ScannerSelfTest (Test-Path -LiteralPath $createdDirectory -PathType Container) 'the output directory was not created, so a first deployment would fail on the missing artifacts directory.'
+
+            $fileAsDirectory = Join-Path $provenanceWorkspace 'a-file'
+            Set-Content -LiteralPath $fileAsDirectory -Value 'not a directory'
+            $fileAsDirectoryRejected = $false
+            try {
+                Clear-ProvenanceOutput -Path (Join-Path $fileAsDirectory 'manifest.json')
+            }
+            catch {
+                $fileAsDirectoryRejected = $true
+            }
+            Assert-ScannerSelfTest $fileAsDirectoryRejected 'a manifest path under a regular file was accepted, so the failure would land after the build instead of before it.'
+        }
+        finally {
+            if (Test-Path -LiteralPath $provenanceWorkspace) {
+                Remove-Item -LiteralPath $provenanceWorkspace -Recurse -Force
+            }
+        }
+
+        Write-Output 'Scanner self test ok: the manifest covers every service, records only a passed gate, and clears a stale file before scanning.'
+
         # The flow is driven through a recorder rather than Docker, so the failure paths - which a
         # real run only reaches when something is already wrong - are exercised every build.
         $recorded = New-Object System.Collections.Generic.List[object]
@@ -1164,6 +1390,17 @@ if ($DockerSelfTest) {
 # real array both work.
 $ComposeFile = @($ComposeFile | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
+# Resolved and cleared before the build and the scans, not after them. A bad path should fail here,
+# in seconds, rather than after a twenty minute build; and clearing first is what makes the
+# manifest's presence mean "this run passed" instead of "some run passed at some point".
+if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
+    if (-not [System.IO.Path]::IsPathRooted($ProvenanceOutputPath)) {
+        $ProvenanceOutputPath = Join-Path $repoRoot $ProvenanceOutputPath
+    }
+
+    Clear-ProvenanceOutput -Path $ProvenanceOutputPath
+}
+
 $composeOptions = @()
 $envFile = Join-Path $repoRoot '.env'
 if (-not (Test-Path -LiteralPath $envFile)) {
@@ -1197,11 +1434,17 @@ if ($LASTEXITCODE -ne 0) {
 
 $config = ($configJson | Out-String) | ConvertFrom-Json
 $targets = New-Object System.Collections.Generic.List[object]
+# Kept alongside $targets rather than derived from it: $targets is deduplicated by image, which is
+# right for scanning and wrong for the manifest, where each service needs its own entry even when
+# two of them share an image.
+$serviceImages = [ordered]@{}
 foreach ($service in $config.services.PSObject.Properties) {
     $image = $service.Value.image
     if ([string]::IsNullOrWhiteSpace($image)) {
         continue
     }
+
+    $serviceImages[$service.Name] = $image
 
     $targets.Add([pscustomobject]@{
             Image   = $image
@@ -1342,4 +1585,13 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Output 'Image vulnerability gate passed for all images in scope.'
+
+# Only here. Every earlier exit path leaves no manifest, so a reader cannot mistake a rejected or
+# abandoned run for an approved one.
+if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
+    $document = New-ProvenanceDocument -ServiceImages $serviceImages -Scanned $scanned -ScannerImage $TrivyImage
+    Write-ProvenanceDocument -Path $ProvenanceOutputPath -Document $document
+    Write-Output "Recorded the scanned image IDs at $ProvenanceOutputPath."
+}
+
 exit 0

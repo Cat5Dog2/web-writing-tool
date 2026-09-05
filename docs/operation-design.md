@@ -457,11 +457,11 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 1. 本番VPSへログインする。
 2. 対象リリースのソースを配置する。
 3. Caddyコンテナ構成の場合、`scripts/preflight-external-caddy.ps1`を実行する。何も変更しないので、必ずここで行う。
-4. `scripts/scan-image.ps1 -Build`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。
+4. `scripts/scan-image.ps1 -Build -ProvenanceOutputPath artifacts/scanned-images.json`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。manifestも書かれない。
 5. `docker compose stop app`でappを停止する。
 6. 本番DBバックアップと`app_keys`のバックアップを取得する。
-7. 必要に応じて`docker compose --profile tools run --rm migrate`でDBマイグレーションを実行する。
-8. `docker compose up -d --no-build`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
+7. 必要に応じて`scripts/production-compose.ps1 -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
+8. `scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
 9. `docker compose ps`で起動状態を確認する。
 10. 公開URLから`curl -fsS`で`/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
 11. 管理者でログインし、`/health/deps`が`Healthy`であることを確認する。外部APIキーの設定漏れはここでしか検知できない。
@@ -478,6 +478,16 @@ Migrationを先に適用してからスキャンが失敗すると、新しい�
 旧appがそれに接続したまま残る。手順を中断しても元に戻らない状態になる。
 スキャンが先なら、失敗しても変わっているのはビルド成果物だけで、DBと稼働中のappは無傷で済む。
 CIの`docker-production`ジョブも同じ順序で動く。
+
+起動に`docker compose up`を直接使わないのは、`--no-build`だけではスキャンを通った成果物が起動する保証に
+ならないためである。Composeでは`--env-file`よりシェルの環境変数が優先されるので、`APP_IMAGE`をexportした
+シェルでデプロイすると、別のイメージが**正常に**起動する。`production-compose.ps1`はスキャン時に記録した
+image IDをmanifestから読んで渡し、`up`の後に起動中コンテナの`.Image`を突き合わせる。詳細は
+[CI/CD設計](ci-cd-design.md)「スキャンした成果物を起動する」を参照。
+
+**スキャン以降のcompose呼び出しは、最後の`up`だけでなくすべてラッパー経由にする。** 一部だけタグ解決に
+すると、同じ実行の中でpostgresの解決結果が変わり、Composeが稼働中のコンテナを作り直す。構成に応じて
+`-ComposeFile`を渡す（Caddyコンテナ構成は既定、ホストCaddy構成は`docker-compose.yml,docker-compose.shared-caddy.yml`）。
 
 appを停止してからバックアップとMigrationを行うのは、Migration中に旧appが新しいスキーマへ
 書き込むのを防ぐためである。停止から`up -d --no-build`までがダウンタイムになる。
