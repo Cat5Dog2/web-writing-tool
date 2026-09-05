@@ -488,6 +488,17 @@ function New-TrivyScanArguments {
     return @('run', '--rm', '--network', 'none') +
         (New-HardenedRunOptions -MemoryLimit $MemoryLimit -CpuLimit $CpuLimit -PidsLimit $PidsLimit) +
         @(
+        # The one capability handed back, and only to this step. New-ScanWorkspace makes the export
+        # directory readable by its owner alone so no other user on the host can read an image, but
+        # the scanner runs as root inside the container while that directory belongs to whoever
+        # started this script - a different uid. Root without DAC_OVERRIDE cannot cross that, and
+        # Trivy fails with "permission denied" on its own input; this was invisible on Docker
+        # Desktop, where a bind mount carries no POSIX ownership, and only appeared on Linux CI.
+        #
+        # It buys nothing else. Everything this container can see is the tar it must read, a
+        # read-only cache and a read-only ignore directory. The other steps read Docker volumes,
+        # which are root-owned already, so none of them ask for this.
+        '--cap-add', 'DAC_OVERRIDE',
         '--volume', "$($CacheVolume):/root/.cache/trivy:ro",
         '--volume', "$($ScanDirectory):/scan:ro",
         '--volume', "$($IgnoreDirectory):/ignore:ro",
@@ -753,14 +764,24 @@ function Invoke-ScannerSelfTest {
             @('--rm', '--network', 'none') + $hardening + $cacheReadOnly + @('--entrypoint', 'sh'))
         Assert-DockerOptions -Arguments $version -ImageReference $trivyImage -Step 'version check' -Expected (
             @('--rm', '--network', 'none') + $hardening + $cacheReadOnly)
+        # Only the scan gets DAC_OVERRIDE back, because it is the only step that reads a host
+        # directory this script deliberately closed to other users.
         Assert-DockerOptions -Arguments $scan -ImageReference $trivyImage -Step 'scan' -Expected (
-            @('--rm', '--network', 'none') + $hardening + $cacheReadOnly + @(
+            @('--rm', '--network', 'none') + $hardening + @('--cap-add', 'DAC_OVERRIDE') + $cacheReadOnly + @(
                 '--volume', "$($workspace):/scan:ro",
                 '--volume', "$($ignoreDirectory):/ignore:ro"))
         Assert-DockerOptions -Arguments $fixturePrep -ImageReference $trivyImage -Step 'cache fixture preparation' -Expected (
             @('--rm', '--network', 'none') + $hardening + @(
                 '--volume', "$($cacheVolume):/root/.cache/trivy",
                 '--entrypoint', 'sh'))
+
+        foreach ($other in @(
+                @{ Arguments = $refresh; Step = 'database refresh' },
+                @{ Arguments = $cacheCheck; Step = 'cache content check' },
+                @{ Arguments = $version; Step = 'version check' },
+                @{ Arguments = $fixturePrep; Step = 'cache fixture preparation' })) {
+            Assert-ScannerSelfTest (-not ($other.Arguments -contains 'DAC_OVERRIDE')) "the $($other.Step) takes DAC_OVERRIDE back; only the scan reads a host path that needs it."
+        }
 
         Assert-ScannerSelfTest (-not ($refresh -contains '--input')) 'the database refresh reads an image tar.'
 
