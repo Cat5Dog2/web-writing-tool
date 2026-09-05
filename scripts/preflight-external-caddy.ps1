@@ -72,15 +72,26 @@ function ConvertTo-EmptyableArray {
 # does it.
 $ComposeFile = @($ComposeFile | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
+$composeOptions = @()
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
-    $EnvFile = Join-Path $repoRoot '.env'
+    # Use the real repository-local environment when it exists, but never substitute the
+    # committed example silently: a production preflight must not validate placeholder values.
+    $defaultEnvFile = Join-Path $repoRoot '.env'
+    if (Test-Path -LiteralPath $defaultEnvFile) {
+        $EnvFile = $defaultEnvFile
+    }
+}
+else {
+    if (-not [System.IO.Path]::IsPathRooted($EnvFile)) {
+        $EnvFile = Join-Path $repoRoot $EnvFile
+    }
+
     if (-not (Test-Path -LiteralPath $EnvFile)) {
-        $EnvFile = Join-Path $repoRoot '.env.production.example'
+        throw "Environment file was not found at $EnvFile"
     }
 }
 
-$composeOptions = @()
-if (Test-Path -LiteralPath $EnvFile) {
+if (-not [string]::IsNullOrWhiteSpace($EnvFile)) {
     $composeOptions += @('--env-file', $EnvFile)
 }
 

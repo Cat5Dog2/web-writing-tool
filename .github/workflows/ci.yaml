@@ -243,7 +243,6 @@ jobs:
   external-caddy:
     name: External Caddy topology
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 25
     env:
       # Every docker compose call in this job picks both files up, so no step can accidentally
@@ -270,6 +269,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Preflight refuses an explicit missing environment file
+        run: |
+          set +e
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1 \
+            -EnvFile .ci-env-does-not-exist > preflight-missing-env.log 2>&1
+          status=$?
+          set -e
+          cat preflight-missing-env.log
+          test "$status" -ne 0
+          grep -q "Environment file was not found" preflight-missing-env.log
 
       # The whole reason the preflight exists. Compose validates an external network only at "up",
       # which on a deployment host lands after the build, the app stop, the backup and the

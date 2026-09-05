@@ -513,7 +513,7 @@ DBへ入り、旧appがそれに接続したまま残る。手順を中断して
 こと、そこからPostgreSQLへ名前でもアドレスでも到達できないこと、PostgreSQLがホストへ公開されないこと、
 appがループバックにだけ公開されることを確認する。
 
-`docker-production`と同じく、PRでは動かない。
+新しい外部Caddy構成そのものをマージ前に検証できるよう、`external-caddy`はPRを含むすべてのCIトリガーで動かす。
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 

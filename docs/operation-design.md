@@ -86,7 +86,7 @@ flowchart LR
 - 本番では`restart: unless-stopped`を設定する。
 - `app`はヘルスチェック成功後にCaddyから疎通確認する。
 - `app`コンテナのhealthcheckは`/health/ready`を確認し、付属Caddyは`service_healthy`後に起動する。
-- ホストの共通Caddyを使う場合は`docker-compose.shared-caddy.yml`を重ね、appとPostgreSQLを`127.0.0.1`だけへ公開し、付属Caddyを起動しない。
+- ホストの共通Caddyを使う場合は`docker-compose.shared-caddy.yml`を重ね、appを`127.0.0.1`へ公開し、付属Caddyを起動しない。PostgreSQLのループバック公開はCaddy要件ではなく、既存互換の保守用経路として扱う。
 
 ### 5.2 サービス起動順
 
