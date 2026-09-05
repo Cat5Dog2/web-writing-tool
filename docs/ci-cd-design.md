@@ -645,6 +645,49 @@ digest指定で済む。レジストリの選定と認証情報の配置が前�
 restoreも不要にする案もある。SDKイメージ自体を本番から外せるが、`dotnet ef migrations bundle`が設計時に
 `DbContext`を生成するため、ビルド時に接続文字列かデザインタイムファクトリが要る。導入時に別途決める。
 
+### NuGetのlockファイル
+
+イメージのdigest固定は「何がマイグレーションを実行するか」を決めるが、「それが何をダウンロードするか」
+までは決めない。`migrate`は実行のたびにコンテナ内で`dotnet restore`を行う。csprojの範囲指定に収まる
+新しい推移的依存が公開されれば、同じソース、同じイメージからでも別のバイナリで本番マイグレーションが
+走りうる。
+
+`Directory.Build.props`の`RestorePackagesWithLockFile`で各プロジェクトに`packages.lock.json`を生成し、
+Git管理する。lockファイルの生成と更新はここで行い、不一致を失敗にするのはlock modeを有効にした場所だけ
+である。ローカルの`build.ps1`と`test.ps1`は従来どおり動き、パッケージを足したときはlockファイルが
+更新される。差分はコミットへ含める。
+
+| 場所 | 指定 | 目的 |
+| --- | --- | --- |
+| `Dockerfile`のrestore | `--locked-mode` | appイメージのビルドを同じ依存グラフに固定する |
+| `docker-compose.yml`の`migrate` | `--locked-mode` | 本番DBを書き換える実行の依存グラフを固定する |
+| `build-test`ジョブ | package lock policy + locked restore | 上2つが依拠するlockファイルの陳腐化、不在、未追跡生成を検出する |
+
+**`--locked-mode`はlockファイルの不在を失敗にしない。** lockファイルが無い状態でも`dotnet restore`は
+成功し、そのまま新しいlockファイルを書く。したがってCIのpackage lock policyは3つを別々に見る。
+
+1. restoreしうるコマンドより先に、Git管理中の全`.csproj`から期待する`packages.lock.json`を動的に導出し、
+   lockファイル自体もGit管理中で実在することを確認する。`Directory.Build.props`が読めない状態でも
+   `dotnet restore`はエラーにならず終了コード0で成功し、lockファイルだけが静かに作られないことがある。
+   この検査をGitの追跡状態に対して行うため、先行restoreによる未追跡ファイルの再生成では欠落を隠せない。
+2. `restore --locked-mode`が成功すること。csprojとlockファイルの依存グラフが異なる場合は`NU1004`などで
+   失敗する。`NU1403`は、同じpackage ID・versionの内容がlockファイルのcontent hashと異なる場合である。
+3. restore後の`git status --porcelain --untracked-files=all`で、lockファイルに追跡済みの差分も未追跡の
+   生成物も無いことを確認する。CIが解決したものと、リポジトリが記録し、本番のrestoreが縛られるものを
+   一致させる。
+
+この方針は`scripts/verify-package-locks.ps1`に実装し、欠落、先行restoreによる未追跡再生成、新規project、
+restore後の追跡済み・未追跡差分を`scripts/test-package-locks.ps1`で回帰テストする。
+
+lockファイルを更新するときは、solution全体でrestoreして差分をコミットする。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx
+```
+
+`dotnet tool restore`は対象外である。`.config/dotnet-tools.json`が`rollForward: false`つきで
+バージョンを固定しているため、別の仕組みで決定的になっている。
+
 ## 10. テスト実行範囲
 
 | 実行タイミング | 単体 | 結合 | DB | ジョブ | E2E | 性能 | 本番Docker |

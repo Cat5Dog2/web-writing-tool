@@ -1,0 +1,5 @@
+# NuGet writes packages.lock.json with LF endings and rewrites the whole file whenever it
+# regenerates one. core.autocrlf is true on Windows, so without this the files check out as CRLF
+# and the next local restore turns them back, leaving a permanent diff in every Windows working
+# tree and making the CI lock file check impossible to reason about.
+packages.lock.json text eol=lf

@@ -21,6 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # This must run before format, package listing, build, or any other command that can restore.
+      # The verifier derives the expected locks from tracked projects and requires the locks
+      # themselves to be tracked, so an earlier restore cannot conceal a deleted lock file.
+      - name: Test package lock policy
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-package-locks.ps1
+
+      - name: Verify tracked package lock files
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase BeforeRestore
+
       - name: Check Docker
         run: |
           docker --version
@@ -53,6 +62,14 @@ jobs:
       - name: Test production Compose safeguards
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
+      # The pre-restore check above proves every tracked project starts with a tracked lock. Locked
+      # mode rejects a changed dependency graph, and the final policy check catches both tracked
+      # rewrites and untracked lock files generated during restore.
+      - name: Restore with package locks
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
@@ -72,6 +89,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Test package lock policy
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-package-locks.ps1
 
       - name: Report host version
         run: $PSVersionTable.PSVersion.ToString()

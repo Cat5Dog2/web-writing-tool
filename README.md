@@ -167,8 +167,8 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 
 | Job | 実行内容 | 対象 |
 | --- | --- | --- |
-| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録と本番Compose保護の検証、build、E2Eと性能を除くtest | すべてのトリガー |
-| `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
+| `build-test` | NuGet lockファイル方針の回帰テストと追跡状態検査、Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録と本番Compose保護の検証、build、E2Eと性能を除くtest | すべてのトリガー |
+| `script-compat` | `windows-latest`上のWindows PowerShell 5.1でNuGet lockファイル方針、文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
 | `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
 | `migration-image-gate` | tools profileのmigrateイメージをスキャンし、単回使用receiptを検証 | PR |
@@ -187,6 +187,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Buil
 ```
 
 NuGetはHigh/Criticalが1件でもあれば失敗する。
+
+### NuGetのlockファイル
+
+各プロジェクトの `packages.lock.json` をGit管理し、依存グラフを固定する。イメージのdigest固定は「何がマイグレーションを実行するか」を決めるが、「それが何をダウンロードするか」までは決めない。`migrate` は実行のたびにコンテナ内で `dotnet restore` を行うため、csprojの範囲指定に収まる新しい推移的依存が公開されると、同じソース・同じイメージからでも別のバイナリで本番マイグレーションが走りうる。
+
+生成と更新は `Directory.Build.props` の `RestorePackagesWithLockFile` が行う。ローカルのビルドとテストは従来どおりで、パッケージを足したときにlockファイルが更新される。**差分はコミットへ含めること。**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx
+```
+
+不一致を失敗にするのは、appイメージのビルドと `migrate` のrestore、そしてCIの Lock file check である。詳細は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「NuGetのlockファイル」を参照。
 
 イメージスキャンは本番Composeがデプロイする全イメージ（app、caddy、postgres）を対象とし、対象一覧は `docker compose config` から取得する。`--ignore-unfixed` は使わず、修正版がない指摘も `security/trivy/<イメージ名>.trivyignore.yaml` へ理由と期限付きで記録しない限りCIを止める。Trivyは脆弱性DBを取得するだけで、イメージやそのメタデータを外部へ送信しない。スキャナにはDocker socketを渡さず、`docker save` したtarを `--input` で読ませる。スキャナイメージはdigestで固定し、各スキャンは `--network none` で実行する。理由は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「スキャナへ渡すもの」を参照。
 

@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      NuGetの依存グラフをpackages.lock.jsonへ固定する。
+
+      理由はデプロイ側にある。migrateサービスは本番DBへ書き込む唯一のコンポーネントで、実行のたびに
+      コンテナ内で`dotnet restore`を行う。イメージをdigestで固定しても、restoreが取得する内容までは
+      固定されない。csprojの範囲指定に収まる新しい推移的依存が公開されれば、同じソース、同じイメージ
+      からでも別のバイナリで本番マイグレーションが走りうる。lockファイルはその差分を検出可能にする。
+
+      このプロパティはlockファイルの生成と更新だけを行い、不一致を失敗にはしない。失敗させるのは
+      RestoreLockedModeを有効にした場所である。DockerfileとmigrateのrestoreがそれにあたるほかCIが
+      solution全体で確認する。ローカルのbuildやtestは従来どおり動き、パッケージを足したときは
+      lockファイルが更新される。差分をコミットに含めること。
+
+      注意: XMLコメントにハイフン2個を連続で書くとMSBuildがこのファイルを読めなくなる。そのとき
+      `dotnet restore`はエラーにならず成功し、lockファイルだけが静かに作られなくなる。CIはrestore
+      より先に、Git管理中の全csprojから期待するlockファイルを導出し、lockファイル自体もGit管理中
+      であることを確認する。このため、前段のrestoreによる再生成や新規プロジェクトの追加で欠落を
+      隠すことはできない。既存のlockファイルは、その存在自体がlock modeを有効にする。
+    -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>
