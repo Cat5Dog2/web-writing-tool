@@ -530,6 +530,7 @@ Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行�
 | `SEC-020` | `/health/ready`の公開遮断 | 非privateな送信元からは404、`/health/live`は200 |
 
 | `SEC-021` | 脆弱性受容記録の書式 | `statement`、`expired_at`、`paths`/`purls`が揃い、期限切れがない |
+| `SEC-022` | スキャン済みイメージの固定起動 | Composeスコープを後から変える引数を拒否し、`up`対象の全サービスをimage IDで照合し、早期失敗でも古いmanifestを残さない |
 
 `SEC-016`から`SEC-019`は`SecurityHeadersTests`で検証する。ヘッダーの実際の値は
 [セキュリティ設計](security-design.md)18.2、18.3を正とする。
@@ -548,8 +549,14 @@ Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行�
 JSONは文字列内の引用符をエスケープするので`statement`本文の文字列がキーと誤認されることはなく、
 その前提も正常系フィクスチャで固定する。
 
-CIはDockerを使わない`build-test`ジョブで実行する。スクリプトは`powershell`（Windows PowerShell 5.1）と
-`pwsh`（PowerShell 7）の両方で同じ結果になることを確認する。理由は[CI/CD設計](ci-cd-design.md)9.3を参照。
+`SEC-022`は`scripts/test-production-compose.ps1`で検証する。Composeグローバルオプションとスキャン後の
+build/pullを拒否すること、明示した`up`対象だけを必須の照合対象にすること、対象appが不在のときに別の
+postgresが稼働していても失敗することをDocker非依存で確認する。また子PowerShellで`scan-image.ps1`を
+リソース値エラーにし、スキャン前の早期失敗でも既存manifestが削除される実際の制御順序を確認する。
+
+CIはDockerを使わない`build-test`ジョブで`SEC-021`と`SEC-022`を実行する。スクリプトは`powershell`
+（Windows PowerShell 5.1）と`pwsh`（PowerShell 7）の両方で同じ結果になることを確認する。理由は
+[CI/CD設計](ci-cd-design.md)9.3を参照。
 
 `SEC-020`はCIの`docker-production`ジョブで検証する。Dockerのポート公開はブリッジのゲートウェイ経由になり、
 ホストからのcurlは常にprivate rangeに見える。そのためCaddyをTEST-NET-3（`203.0.113.0/24`）の

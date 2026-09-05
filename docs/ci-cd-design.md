@@ -484,21 +484,24 @@ CIは両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-
 
 スキャンを通した成果物と、実際に起動する成果物を一致させる。
 
-`docker-production`ジョブはスキャン後に`docker compose up -d --no-build`で起動する。
-`--build`を付けるとスキャン対象と起動対象が別のビルド成果物になるためである。
+`docker-production`ジョブはスキャン後に`scripts/production-compose.ps1`でmanifestのimage IDを渡して
+起動する。`--build`を付けるとスキャン対象と起動対象が別のビルド成果物になるため、ラッパーが拒否する。
 
 本番も同じ制約を持つ。CIでビルドしたイメージはレジストリへpushしていないため、VPSへ配布されない。
 本番へ出る成果物はVPS上でビルドしたものであり、**CIのスキャンは本番成果物の保証にはならない**。
 そのためVPSでも次の順序を守る。
 
-1. `scripts/scan-image.ps1 -Build`。`docker compose build --pull`でビルドし、同じタグをスキャンする。
-2. DBマイグレーションが必要なら`docker compose --profile tools run --rm migrate`。必ずスキャンより後に行う。
-3. `docker compose up -d --no-build`。
+1. `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`。
+   `docker compose build --pull`でビルドし、解決したimage IDをスキャンしてmanifestへ記録する。
+2. DBマイグレーションが必要なら`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`。必ずスキャンより後に行う。
+3. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build'`。
+
+上記は付属Caddy構成の値である。overrideを使う場合は、1から3の`-ComposeFile`へ同じファイル一覧を渡す。
 
 2を1より先に置いてはならない。Migrationを適用してからスキャンが失敗すると、新しいスキーマだけが
 DBへ入り、旧appがそれに接続したまま残る。手順を中断しても元に戻らない。
 スキャンが先なら、失敗して変わっているのはビルド成果物だけで、DBと稼働中のappは無傷で済む。
-`docker-production`ジョブもbuild、scan、PostgreSQL起動、Migration、`up -d --no-build`の順で動く。
+`docker-production`ジョブもbuild、scan、ラッパー経由のPostgreSQL起動、Migration、app/Caddy起動の順で動く。
 デプロイ手順の全体は[運用設計](operation-design.md)14.2を参照。
 
 ### 外部ネットワークの前提
@@ -514,6 +517,74 @@ DBへ入り、旧appがそれに接続したまま残る。手順を中断して
 appがループバックにだけ公開されることを確認する。
 
 新しい外部Caddy構成そのものをマージ前に検証できるよう、`external-caddy`はPRを含むすべてのCIトリガーで動かす。
+
+### スキャンした成果物を起動する
+
+`--no-build`だけでは、スキャンを通った成果物が起動する保証にならない。塞ぐべき穴が2つある。
+
+**1つ目は呼び出し側の環境。** `docker-compose.yml`は`${APP_IMAGE}`、`${POSTGRES_IMAGE}`、`${CADDY_IMAGE}`で
+イメージを選ぶ。Composeでは`--env-file`よりシェルの環境変数が優先される。`scan-image.ps1`は自プロセス内で
+`APP_IMAGE`を設定するので正しい成果物を検査するが、その後の`docker compose up`を`APP_IMAGE`をexportした
+シェルで実行すると、**別のイメージが正常に起動する**。デプロイの失敗ではなく、ゲートを通っていないものの
+デプロイになる。
+
+**2つ目はタグの再解決。** 起動時にタグを引き直す方式も安全ではない。スキャンと起動の間にタグが
+別のイメージへ差し替えられる余地が残る。スキャナ自身はこれを避けており、タグを image ID へ解決してから
+その ID を`docker save`する。同じ保証を起動側にも持たせる必要がある。
+
+そのため`scan-image.ps1 -ProvenanceOutputPath <path>`が、実際に検査した image ID を機械可読な形で記録する。
+
+```json
+{
+  "schemaVersion": 1,
+  "gateResult": "passed",
+  "generatedAt": "2026-09-05T09:26:58Z",
+  "scannerImage": "aquasec/trivy@sha256:...",
+  "services": {
+    "app": { "reference": "web-writing-tool-app:local", "imageId": "sha256:..." },
+    "postgres": { "reference": "postgres:16-alpine", "imageId": "sha256:..." }
+  }
+}
+```
+
+このファイルの扱いには2つの規則がある。**書くのは全イメージがゲートを通過した後だけ**で、**パラメーター
+バインド後の最初の失敗可能処理として既存ファイルを削除する**。両方が必要である。scanner digest、リソース値、
+受容記録、Docker有無の検証で早期終了した場合も、前回成功したmanifestを残さない。古いmanifestが失敗した
+実行を生き延びると、ゲートが拒否したイメージがそのままデプロイされる。
+
+キーはイメージではなくサービスである。スキャンは同じイメージを二度検査しないよう重複排除するが、デプロイは
+サービスごとに変数を設定するため、2つのサービスが同じイメージを共有する場合も両方の項目が要る。
+
+`scripts/production-compose.ps1`がこのmanifestを読み、image ID を Compose へ渡す。タグを引き直さず、
+呼び出し側の環境変数は上書きする。`up`の後は、コマンドが選択した各サービスの稼働中コンテナについて
+`.Image`をmanifestと突き合わせる。他の承認済みサービスが稼働しているだけでは成功にしない。
+`powershell -File`は引数をすべてパラメータとして解釈するため、Composeコマンドは`-ComposeCommand`へ
+1つの文字列で渡す。
+
+```powershell
+pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app'
+```
+
+`scan-image.ps1`と`production-compose.ps1`の`-ComposeFile`は同じ値を使う。両方の既定は
+`docker-compose.yml`である。overrideを使う構成では両方へ明示する。`-ComposeCommand`内の`-f`、
+`--project-name`、`--profile`等は、manifest検証後にプロジェクトやサービス範囲を変更できるため拒否する。
+未スキャンのMigrationイメージに関する既知の残存リスクは、完全一致する
+`--profile tools run --rm migrate`だけに限定する。`build`、`pull`、`up --build`、`up --pull`も
+スキャン後にイメージを変更できるため拒否する。
+
+次のいずれかに当たると起動を拒否する。manifestが無い、JSONとして壊れている、`schemaVersion`が想定外、
+`gateResult`が`passed`でない、image IDが64桁のsha256形式でない、スコープ内のサービスがmanifestに無い、
+manifestにスコープ外のサービスがある、image変数が定義されていないサービスがある、Composeのスコープを
+変えるオプションが`-ComposeCommand`にある、スキャン後にbuild/pullする指示がある、`up`が選択した
+サービスのいずれかに稼働中コンテナが無い、またはそのimage IDが一致しない。
+
+`docker-production`ジョブがこの経路を通す。起動ステップでは3つのimage変数へ存在しないタグを意図的に
+設定しており、ラッパーがmanifestで上書きしなければイメージが見つからず失敗する。実機では同じ取り違えが
+静かに成功してしまうので、CIでは失敗する形にしてある。
+
+`build-test`と`script-compat`は`scripts/test-production-compose.ps1`も実行する。profileや追加Compose
+ファイルによるスコープ変更の拒否、対象appが不在でも別のpostgresだけで成功しないこと、リソース値検証のような
+早期失敗でも古いmanifestが削除されることを、PowerShell 7とWindows PowerShell 5.1の両方で固定する。
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 

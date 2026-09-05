@@ -50,6 +50,9 @@ jobs:
       - name: Validate vulnerability acceptances
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
 
+      - name: Test production Compose safeguards
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
@@ -78,6 +81,9 @@ jobs:
 
       - name: Validate vulnerability acceptances
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
+
+      - name: Test production Compose safeguards
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
   e2e-smoke:
     name: E2E smoke
@@ -177,8 +183,25 @@ jobs:
         run: docker compose build --pull app caddy
 
       # Scans every image docker-compose.yml deploys: app, caddy and postgres.
+      # -ProvenanceOutputPath records what was scanned, so the start step below can use those exact
+      # image IDs instead of resolving the tags again.
       - name: Image vulnerability scan
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci -ProvenanceOutputPath artifacts/scanned-images.json
+
+      # The start step trusts the manifest, so this checks it names the artifacts that were really
+      # built rather than whatever the tags point at now.
+      - name: The manifest names the images that were scanned
+        run: |
+          cat artifacts/scanned-images.json
+          test "$(jq -r .gateResult artifacts/scanned-images.json)" = "passed"
+          test "$(jq -r .schemaVersion artifacts/scanned-images.json)" = "1"
+          for service in app postgres caddy; do
+            recorded=$(jq -r --arg s "$service" '.services[$s].imageId' artifacts/scanned-images.json)
+            reference=$(jq -r --arg s "$service" '.services[$s].reference' artifacts/scanned-images.json)
+            actual=$(docker image inspect --format '{{.Id}}' "$reference")
+            echo "$service: reference=$reference recorded=$recorded actual=$actual"
+            test "$recorded" = "$actual"
+          done
 
       # Needs a daemon, which is why it is a separate switch from the -SelfTest run in the
       # validation job. It covers the two properties the argument assertions cannot reach: that
@@ -189,18 +212,41 @@ jobs:
       - name: Scanner Docker self test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -DockerSelfTest
 
+      # Every compose call that resolves or starts an image after the scan goes through the wrapper.
+      # Mixing the two would leave some calls resolving postgres through its tag and others through
+      # the pinned ID, and Compose recreates a running container when its resolved image changes.
       - name: Start PostgreSQL
-        run: docker compose up -d postgres
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+            -ComposeFile docker-compose.yml \
+            -ComposeCommand 'up -d postgres'
 
       # Use the same tools profile the deployment procedure uses, so the documented
       # migration path is exercised by CI instead of a CI-only variant.
       - name: Apply migrations
-        run: docker compose --profile tools run --rm migrate
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+            -ComposeFile docker-compose.yml \
+            -ComposeCommand '--profile tools run --rm migrate'
 
-      # --no-build so the smoke test runs the exact image the scan above inspected.
-      # Rebuilding here would produce a different artifact than the one that passed the gate.
-      - name: Start production compose
-        run: docker compose up -d --no-build app caddy
+      # --no-build so the smoke test runs the exact image the scan above inspected. Rebuilding here
+      # would produce a different artifact than the one that passed the gate.
+      #
+      # Started through the wrapper, so the smoke test exercises the deployment path rather than
+      # only proving the images exist. The three image variables are deliberately set to tags that
+      # do not exist: Compose lets the shell environment win over --env-file, so if the wrapper did
+      # not overwrite them from the manifest this step could not find an image at all. On a
+      # deployment host the same mistake is silent, because there the exported tag usually does
+      # resolve, just to something the gate never saw.
+      - name: Start production compose from the manifest
+        env:
+          APP_IMAGE: web-writing-tool-app:not-scanned
+          POSTGRES_IMAGE: postgres:not-scanned
+          CADDY_IMAGE: web-writing-tool-caddy:not-scanned
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+            -ComposeFile docker-compose.yml \
+            -ComposeCommand 'up -d --no-build app caddy'
 
       - name: Check health through Caddy
         run: |

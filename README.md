@@ -167,8 +167,8 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 
 | Job | 実行内容 | 対象 |
 | --- | --- | --- |
-| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録の検証、build、E2Eと性能を除くtest | すべてのトリガー |
-| `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード検査と受容記録の検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
+| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録と本番Compose保護の検証、build、E2Eと性能を除くtest | すべてのトリガー |
+| `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
 | `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
 | `docker-production` | 本番イメージbuild（`--pull`）、イメージ脆弱性スキャン、PostgreSQL起動、Migration、`app`/`caddy`起動、Caddy経由のhealth check | `main`へのpush、schedule、手動実行。PRでは実行しない |
@@ -176,7 +176,7 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 
 現行workflowの `e2e-smoke` はテストフィルターを指定していないため、現在のE2Eプロジェクト全件を実行する。Production Docker smokeでは `/health/live` と `/health/ready` を確認する。`/health/deps` は実装済みだが管理者認可が必要で、CI smokeの確認対象外である。
 
-Migrationは本番デプロイ手順と同じ `docker compose --profile tools run --rm migrate` を使う。CI専用の手順を持たない。
+Migrationは本番デプロイ手順と同じ `production-compose.ps1 -ComposeCommand '--profile tools run --rm migrate'` を使う。CI専用の手順を持たない。
 
 ### 脆弱性スキャン
 
@@ -188,6 +188,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Buil
 NuGetはHigh/Criticalが1件でもあれば失敗する。
 
 イメージスキャンは本番Composeがデプロイする全イメージ（app、caddy、postgres）を対象とし、対象一覧は `docker compose config` から取得する。`--ignore-unfixed` は使わず、修正版がない指摘も `security/trivy/<イメージ名>.trivyignore.yaml` へ理由と期限付きで記録しない限りCIを止める。Trivyは脆弱性DBを取得するだけで、イメージやそのメタデータを外部へ送信しない。スキャナにはDocker socketを渡さず、`docker save` したtarを `--input` で読ませる。スキャナイメージはdigestで固定し、各スキャンは `--network none` で実行する。理由は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「スキャナへ渡すもの」を参照。
+
+`-ProvenanceOutputPath` を付けると、実際に検査した image ID を機械可読な manifest に記録する。書き出すのは全イメージがゲートを通過したときだけで、スキャン開始前に既存ファイルを削除する。前回成功した manifest が失敗した実行を生き延びると、ゲートが拒否したイメージがそのままデプロイされるためである。
+
+本番起動は `scripts/production-compose.ps1` を使う。`--no-build` だけではスキャンを通った成果物が起動する保証にならない。Compose では `--env-file` よりシェルの環境変数が優先されるので、`APP_IMAGE` を export したシェルでデプロイすると別のイメージが**正常に**起動する。ラッパーは manifest の image ID を渡し、`up` の後に起動中コンテナの `.Image` を突き合わせる。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app'
+```
 
 現在の受容内容と再トリアージ手順は [docs/ci-cd-design.md](docs/ci-cd-design.md) を参照。
 
@@ -232,17 +241,17 @@ VPS上の共通Caddyを使う場合は、その動かし方に合わせてoverri
 | `docker-compose.external-caddy.yml` | 別Composeプロジェクトのコンテナ | 外部ネットワーク経由で`wwt-app:8080` | ホストへ公開しない |
 
 ```bash
-pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d postgres
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml --profile tools run --rm migrate
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d --no-build app
+pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand 'up -d postgres'
+pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand '--profile tools run --rm migrate'
+pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand 'up -d --no-build app'
 ```
 
 Caddyコンテナ構成では、外部ネットワークが先に存在している必要がある。不在でも `docker compose config` は成功し、`docker compose up` で初めて失敗するため、状態を変える前に `scripts/preflight-external-caddy.ps1` で確認する。詳細は [docs/environment-setup.md](docs/environment-setup.md) 7.12 を参照。
 
 スキャンはMigrationより前に置く。逆順にすると、スキャンが失敗したときに新しいスキーマだけがDBへ入り、旧appがそれに接続したまま残る。
 
-`scripts/scan-image.ps1 -Build` が `docker compose build --pull` でイメージを作り、そのまま同じタグをスキャンする。起動は `--no-build` にする。`--build` を付けると、スキャンを通した成果物ではなくその場で作り直した別の成果物が動く。
+`scripts/scan-image.ps1 -Build` が `docker compose build --pull` でイメージを作り、解決したimage IDをスキャンする。起動は同じComposeファイルとmanifestを `production-compose.ps1` へ渡す。`--build` を付けると、スキャンを通した成果物ではなくその場で作り直した別の成果物が動くため、ラッパーが拒否する。
 
 CIでスキャンしたイメージはレジストリへ push していないため、本番へ出る成果物はVPS上でビルドしたものになる。ゲートはVPS上でも通す必要があり、そのためVPS要件にPowerShell 7を含める。
 
