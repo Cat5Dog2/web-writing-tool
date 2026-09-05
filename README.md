@@ -167,8 +167,8 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 
 | Job | 実行内容 | 対象 |
 | --- | --- | --- |
-| `build-test` | Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録と本番Compose保護の検証、build、E2Eと性能を除くtest | すべてのトリガー |
-| `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
+| `build-test` | NuGet lockファイル方針の回帰テストと追跡状態検査、Docker確認、開発用.NET SDKコンテナ確認、format check、Slopwatch、NuGet脆弱性スキャン、スクリプト文字コード検査、脆弱性受容記録と本番Compose保護の検証、build、E2Eと性能を除くtest | すべてのトリガー |
+| `script-compat` | `windows-latest`上のWindows PowerShell 5.1でNuGet lockファイル方針、文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
 | `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
 | `migration-image-gate` | tools profileのmigrateイメージをスキャンし、単回使用receiptを検証 | PR |

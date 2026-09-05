@@ -661,18 +661,23 @@ Git管理する。lockファイルの生成と更新はここで行い、不一�
 | --- | --- | --- |
 | `Dockerfile`のrestore | `--locked-mode` | appイメージのビルドを同じ依存グラフに固定する |
 | `docker-compose.yml`の`migrate` | `--locked-mode` | 本番DBを書き換える実行の依存グラフを固定する |
-| `build-test`ジョブ | Lock file check | 上2つが依拠するlockファイルの陳腐化と不在を検出する |
+| `build-test`ジョブ | package lock policy + locked restore | 上2つが依拠するlockファイルの陳腐化、不在、未追跡生成を検出する |
 
 **`--locked-mode`はlockファイルの不在を失敗にしない。** lockファイルが無い状態でも`dotnet restore`は
-成功し、そのまま新しいlockファイルを書く。したがってCIのLock file checkは3つを別々に見る。
+成功し、そのまま新しいlockファイルを書く。したがってCIのpackage lock policyは3つを別々に見る。
 
-1. 各プロジェクトに`packages.lock.json`があること。`--locked-mode`では代替できない。
-   `Directory.Build.props`が読めない状態でも`dotnet restore`はエラーにならず終了コード0で成功し、
-   lockファイルだけが静かに作られなくなる。XMLコメントにハイフン2個を連続で書くだけでこの状態になる。
-2. `restore --locked-mode`が成功すること。csprojが動いてlockファイルを再生成していない場合、
-   `NU1403`で失敗する。
-3. `git diff --exit-code`でlockファイルに差分が出ないこと。CIが解決したものと、リポジトリが記録し、
-   本番のrestoreが縛られるものが一致することを確かめる。
+1. restoreしうるコマンドより先に、Git管理中の全`.csproj`から期待する`packages.lock.json`を動的に導出し、
+   lockファイル自体もGit管理中で実在することを確認する。`Directory.Build.props`が読めない状態でも
+   `dotnet restore`はエラーにならず終了コード0で成功し、lockファイルだけが静かに作られないことがある。
+   この検査をGitの追跡状態に対して行うため、先行restoreによる未追跡ファイルの再生成では欠落を隠せない。
+2. `restore --locked-mode`が成功すること。csprojとlockファイルの依存グラフが異なる場合は`NU1004`などで
+   失敗する。`NU1403`は、同じpackage ID・versionの内容がlockファイルのcontent hashと異なる場合である。
+3. restore後の`git status --porcelain --untracked-files=all`で、lockファイルに追跡済みの差分も未追跡の
+   生成物も無いことを確認する。CIが解決したものと、リポジトリが記録し、本番のrestoreが縛られるものを
+   一致させる。
+
+この方針は`scripts/verify-package-locks.ps1`に実装し、欠落、先行restoreによる未追跡再生成、新規project、
+restore後の追跡済み・未追跡差分を`scripts/test-package-locks.ps1`で回帰テストする。
 
 lockファイルを更新するときは、solution全体でrestoreして差分をコミットする。
 
