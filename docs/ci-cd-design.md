@@ -491,7 +491,14 @@ CIは両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-
 そのためVPSでも次の順序を守る。
 
 1. `scripts/scan-image.ps1 -Build`。`docker compose build --pull`でビルドし、同じタグをスキャンする。
-2. `docker compose up -d --no-build`。
+2. DBマイグレーションが必要なら`docker compose --profile tools run --rm migrate`。必ずスキャンより後に行う。
+3. `docker compose up -d --no-build`。
+
+2を1より先に置いてはならない。Migrationを適用してからスキャンが失敗すると、新しいスキーマだけが
+DBへ入り、旧appがそれに接続したまま残る。手順を中断しても元に戻らない。
+スキャンが先なら、失敗して変わっているのはビルド成果物だけで、DBと稼働中のappは無傷で済む。
+`docker-production`ジョブもbuild、scan、PostgreSQL起動、Migration、`up -d --no-build`の順で動く。
+デプロイ手順の全体は[運用設計](operation-design.md)14.2を参照。
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 
