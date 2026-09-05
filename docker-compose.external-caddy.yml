@@ -1,0 +1,45 @@
+# 別Composeプロジェクトで動くCaddyコンテナへappを公開するためのoverride。
+#
+#   docker compose -f docker-compose.yml -f docker-compose.external-caddy.yml <command>
+#
+# docker-compose.shared-caddy.yml との違い:
+#
+#   shared-caddy    ホスト上で動くCaddy（systemd等）から 127.0.0.1:8081 へ到達させる。
+#                   Dockerネットワークを共有しないので、PostgreSQLもループバックへ公開する。
+#   external-caddy  Caddyもコンテナで動かし、外部ネットワーク経由で app:8080 へ直接つなぐ。
+#                   PostgreSQLをホストへ公開しない。
+#
+# どちらも実在する構成で、置き換え関係ではない。どちらを使うかはVPS側のCaddyの動かし方で決まる。
+# 詳細は docs/environment-setup.md 7.12 を参照。
+#
+# 前提: CADDY_NETWORK のネットワークが先に存在していること。存在しないと `up` が
+# "network ... declared as external, but could not be found" で失敗する。`config` では
+# 検出できないため、状態を変える前に scripts/preflight-external-caddy.ps1 で確認する。
+services:
+  app:
+    # VPS内から /health/ready を確認するために残す。共通Caddyはこのポートを使わず、
+    # caddy ネットワーク経由で app:8080 へ直接つなぐ。
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8081}:8080"
+    # default を明示しないと、networks を書いた時点で既定の接続が置き換わり、
+    # app が postgres を見失う。
+    networks:
+      default:
+      caddy:
+        aliases:
+          - wwt-app
+
+  # postgres には何も足さない。共通Caddyはネットワーク経由でappへ到達するので
+  # ホストへの公開に用途がなく、公開するとVPS上の他プロセスから到達できるようになる。
+  # 管理操作は `docker compose exec postgres ...` を使う。
+  #
+  # postgres を caddy ネットワークへ参加させてはいけない。Caddyから見えるのは app だけにする。
+
+  caddy:
+    profiles:
+      - bundled-caddy
+
+networks:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-web-writing-tool-caddy}

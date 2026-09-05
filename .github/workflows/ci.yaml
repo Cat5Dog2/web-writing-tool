@@ -239,3 +239,165 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose down -v
+
+  external-caddy:
+    name: External Caddy topology
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Every docker compose call in this job picks both files up, so no step can accidentally
+      # exercise the base topology instead of the external-Caddy one.
+      COMPOSE_FILE: docker-compose.yml:docker-compose.external-caddy.yml
+      COMPOSE_PROJECT_NAME: web-writing-tool
+      CADDY_NETWORK: ci-external-caddy
+      ASPNETCORE_ENVIRONMENT: Production
+      APP_IMAGE: web-writing-tool-app:ci-external-caddy
+      App__BaseUrl: http://localhost:8081
+      APP_HOST_PORT: 8081
+      POSTGRES_DB: web_writing_tool
+      POSTGRES_USER: web_writing_tool
+      POSTGRES_PASSWORD: ci-postgres-password
+      Security__RequireHttps: "false"
+      Security__AllowedForwardedHosts__0: localhost
+      AdminSeed__Email: admin@example.test
+      AdminSeed__Password: Change-this-CI-password-123!
+      AiProviders__Gemini__ApiKey: ci-placeholder
+      SearchProviders__Tavily__ApiKey: ci-placeholder
+      SearchProviders__X__BearerToken: ci-placeholder
+      SearchCache__Policy: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Preflight refuses an explicit missing environment file
+        run: |
+          set +e
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1 \
+            -EnvFile .ci-env-does-not-exist > preflight-missing-env.log 2>&1
+          status=$?
+          set -e
+          cat preflight-missing-env.log
+          test "$status" -ne 0
+          grep -q "Environment file was not found" preflight-missing-env.log
+
+      # The whole reason the preflight exists. Compose validates an external network only at "up",
+      # which on a deployment host lands after the build, the app stop, the backup and the
+      # migration. This asserts the preflight refuses while nothing has been changed yet.
+      - name: Preflight refuses when the external network is missing
+        run: |
+          set +e
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1 > preflight-missing.log 2>&1
+          status=$?
+          set -e
+          cat preflight-missing.log
+          test "$status" -ne 0
+          grep -q "does not exist" preflight-missing.log
+
+      # Confirms the gap the preflight closes is real, rather than the preflight guarding against
+      # something Compose already rejects on its own.
+      - name: Compose config alone does not catch the missing network
+        run: docker compose config --quiet
+
+      - name: Create the external network
+        run: docker network create "$CADDY_NETWORK"
+
+      - name: Preflight passes once the network exists
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1
+
+      - name: Build the app image
+        run: docker compose build --pull app
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Apply migrations
+        run: docker compose --profile tools run --rm migrate
+
+      - name: Start app
+        run: docker compose up -d --no-build --wait app
+
+      - name: The bundled Caddy stays out of scope
+        run: |
+          docker compose config --services | sort > services.actual
+          printf 'app\npostgres\n' > services.expected
+          diff services.expected services.actual
+          test -z "$(docker compose ps -q caddy || true)"
+
+      # A shared Caddy resolves the app by alias, so the alias is what has to work, not the
+      # service name.
+      - name: A container on the Caddy network reaches the app by its alias
+        run: |
+          code=$(docker run --rm --network "$CADDY_NETWORK" curlimages/curl:8.21.0 \
+            -s -o /dev/null -w '%{http_code}' --retry 10 --retry-all-errors --retry-delay 3 \
+            http://wwt-app:8080/health/live)
+          echo "wwt-app:8080/health/live = $code"
+          test "$code" = "200"
+
+      - name: PostgreSQL is not attached to the Caddy network
+        run: |
+          attached=$(docker network inspect "$CADDY_NETWORK" --format '{{range .Containers}}{{.Name}} {{end}}')
+          echo "attached: $attached"
+          echo "$attached" | grep -q -- "-app-"
+          if echo "$attached" | grep -q -- "-postgres-"; then
+            echo "postgres is attached to the Caddy network" >&2
+            exit 1
+          fi
+
+      # Name resolution failing is not proof of isolation, because the address could still be
+      # routable. curl exits 7 or 28 when the TCP connection never completes, and 52 or 56 when it
+      # completes and the reply is not HTTP, which is what a reachable PostgreSQL would produce.
+      - name: PostgreSQL is unreachable from the Caddy network by address
+        run: |
+          postgres=$(docker compose ps -q postgres)
+          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$postgres" | awk '{print $1}')
+          echo "postgres ip: $ip"
+          test -n "$ip"
+          set +e
+          docker run --rm --network "$CADDY_NETWORK" curlimages/curl:8.21.0 \
+            -s -o /dev/null --connect-timeout 5 "http://$ip:5432"
+          status=$?
+          set -e
+          echo "curl exit: $status"
+          case "$status" in
+            7|28) echo "connection refused or timed out, as expected" ;;
+            *) echo "unexpected curl exit $status, the TCP connection may have succeeded" >&2; exit 1 ;;
+          esac
+
+      # Matching on the port number alone would fail on an unpublished container: docker ps prints
+      # "5432/tcp" for a merely exposed port. A host mapping is what "->" marks, as in
+      # "127.0.0.1:5433->5432/tcp", so that is what this looks for.
+      - name: PostgreSQL is not published to the host
+        run: |
+          published=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "name=postgres" --format '{{.Names}} {{.Ports}}')
+          echo "$published"
+          test -n "$published"
+          if echo "$published" | grep -q -- '->'; then
+            echo "postgres publishes a host port" >&2
+            exit 1
+          fi
+
+      - name: The app is published on loopback only
+        run: |
+          curl -fsS http://127.0.0.1:8081/health/live
+          ports=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --format '{{.Ports}}')
+          echo "app ports: $ports"
+          echo "$ports" | grep -q '127.0.0.1:8081'
+          if echo "$ports" | grep -qE '0\.0\.0\.0:8081|\[::\]:8081'; then
+            echo "app is published beyond loopback" >&2
+            exit 1
+          fi
+
+      - name: Show compose status on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail=200 app
+          docker compose logs --tail=200 postgres
+          docker network inspect "$CADDY_NETWORK" || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v || true
+          docker network rm "$CADDY_NETWORK" || true

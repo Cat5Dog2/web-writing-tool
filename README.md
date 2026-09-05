@@ -172,6 +172,7 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
 | `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
 | `docker-production` | 本番イメージbuild（`--pull`）、イメージ脆弱性スキャン、PostgreSQL起動、Migration、`app`/`caddy`起動、Caddy経由のhealth check | `main`へのpush、schedule、手動実行。PRでは実行しない |
+| `external-caddy` | 外部Caddyネットワークのpreflight、`wwt-app` alias経由の到達性、PostgreSQLのネットワーク分離とホスト非公開を検証 | すべてのトリガー |
 
 現行workflowの `e2e-smoke` はテストフィルターを指定していないため、現在のE2Eプロジェクト全件を実行する。Production Docker smokeでは `/health/live` と `/health/ready` を確認する。`/health/deps` は実装済みだが管理者認可が必要で、CI smokeの確認対象外である。
 
@@ -223,14 +224,21 @@ NuGetはHigh/Criticalが1件でもあれば失敗する。
 
 MVPではWebアプリとBackgroundServiceを同じ `app` コンテナで動かす。ジョブ量が増えた場合は、同一イメージからWebとWorkerを分離する。
 
-VPS上の共通Caddyを使う場合は、`docker-compose.shared-caddy.yml`を重ねる。付属Caddyはprofileで停止し、appとPostgreSQLは`127.0.0.1`だけへ公開する。Migrationはバージョン固定済みのtools profileで明示実行する。
+VPS上の共通Caddyを使う場合は、その動かし方に合わせてoverrideを重ねる。どちらも付属Caddyをprofileで停止し、Migrationはバージョン固定済みのtools profileで明示実行する。どちらを使うかは共通Caddyの動かし方で決まり、置き換え関係ではない。
+
+| override | 共通Caddy | appへの経路 | PostgreSQL |
+| --- | --- | --- | --- |
+| `docker-compose.shared-caddy.yml` | ホスト上のsystemd等 | `127.0.0.1:8081` | 既存の保守用経路として`127.0.0.1:5433`へ公開（Caddyは使用しない） |
+| `docker-compose.external-caddy.yml` | 別Composeプロジェクトのコンテナ | 外部ネットワーク経由で`wwt-app:8080` | ホストへ公開しない |
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d postgres
 pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build
+docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d postgres
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml --profile tools run --rm migrate
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d --no-build app
 ```
+
+Caddyコンテナ構成では、外部ネットワークが先に存在している必要がある。不在でも `docker compose config` は成功し、`docker compose up` で初めて失敗するため、状態を変える前に `scripts/preflight-external-caddy.ps1` で確認する。詳細は [docs/environment-setup.md](docs/environment-setup.md) 7.12 を参照。
 
 スキャンはMigrationより前に置く。逆順にすると、スキャンが失敗したときに新しいスキーマだけがDBへ入り、旧appがそれに接続したまま残る。
 

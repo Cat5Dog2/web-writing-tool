@@ -131,6 +131,7 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 | 性能テスト | `NFT-PERF-001`から`NFT-PERF-004` | `performance`ジョブ。`scripts/test-performance.ps1` |
 | データ量増加ケース | 記事、見出し、ジョブ件数を増やした確認 | 性能テストが記事1,000件、見出し100件、ジョブ10,000件を投入して兼ねる |
 | Docker Compose確認 | 本番相当構成の起動確認 | `docker-production`ジョブ |
+| 共通Caddy構成確認 | 外部ネットワーク経由の到達性と分離 | `external-caddy`ジョブ |
 | 期限切れデータ確認 | X投稿生データTTL、検索キャッシュ削除 | 結合テスト |
 | 脆弱性確認 | NuGet、Dockerイメージ | `scripts/scan-nuget.ps1`、`scripts/scan-image.ps1` |
 
@@ -499,6 +500,20 @@ DBへ入り、旧appがそれに接続したまま残る。手順を中断して
 スキャンが先なら、失敗して変わっているのはビルド成果物だけで、DBと稼働中のappは無傷で済む。
 `docker-production`ジョブもbuild、scan、PostgreSQL起動、Migration、`up -d --no-build`の順で動く。
 デプロイ手順の全体は[運用設計](operation-design.md)14.2を参照。
+
+### 外部ネットワークの前提
+
+`docker-compose.external-caddy.yml`を使う構成では、共通Caddyとの外部ネットワークが先に存在している
+必要がある。不在のとき`docker compose config`は成功し、`docker compose up`だけが失敗する。静的検証で
+捕まらないため、デプロイ手順の途中で当たると、ビルド、app停止、バックアップ、Migrationまで進んだ後で
+止まる。前節と同じ理由で、状態を変える前に`scripts/preflight-external-caddy.ps1`で確認する。
+
+`external-caddy`ジョブがこの前提を検証する。ネットワーク不在でpreflightが止まること、同じ状態で
+`docker compose config`は通ってしまうこと、Caddyネットワーク上のコンテナが`wwt-app:8080`へ到達できる
+こと、そこからPostgreSQLへ名前でもアドレスでも到達できないこと、PostgreSQLがホストへ公開されないこと、
+appがループバックにだけ公開されることを確認する。
+
+新しい外部Caddy構成そのものをマージ前に検証できるよう、`external-caddy`はPRを含むすべてのCIトリガーで動かす。
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 
