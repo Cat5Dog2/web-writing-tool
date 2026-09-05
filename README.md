@@ -227,10 +227,12 @@ VPS上の共通Caddyを使う場合は、`docker-compose.shared-caddy.yml`を重
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d postgres
-docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml --profile tools run --rm migrate
 pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build
+docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml --profile tools run --rm migrate
 docker compose -f docker-compose.yml -f docker-compose.shared-caddy.yml up -d --no-build app
 ```
+
+スキャンはMigrationより前に置く。逆順にすると、スキャンが失敗したときに新しいスキーマだけがDBへ入り、旧appがそれに接続したまま残る。
 
 `scripts/scan-image.ps1 -Build` が `docker compose build --pull` でイメージを作り、そのまま同じタグをスキャンする。起動は `--no-build` にする。`--build` を付けると、スキャンを通した成果物ではなくその場で作り直した別の成果物が動く。
 

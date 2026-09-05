@@ -483,7 +483,12 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-### 7.10 初回Migration
+### 7.10 ビルドとスキャン、初回Migration
+
+**DBへ触れる前に、ビルドとイメージスキャンを済ませる。** スキャンが失敗したらここで中断し、
+DBは変更しないまま残す。逆順にすると、スキャンが落ちたときに新しいスキーマだけがDBへ入り、
+旧appがそれに接続したまま残る。手順を中断しても元に戻らない状態になる。
+CIの`docker-production`ジョブも同じ順序で動く。詳細は[CI/CD設計](ci-cd-design.md)を参照。
 
 本番DBへMigrationを適用する前に、必ずバックアップを取得する。
 初回は空DBのためバックアップ対象がない場合でも、手順として確認する。
@@ -492,21 +497,22 @@ docker compose ps
 
 ```bash
 docker compose up -d postgres
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
 docker compose --profile tools run --rm migrate
 ```
 
 更新時は[運用設計 19.3 PostgreSQLバックアップ](operation-design.md#193-postgresqlバックアップ)を実行してから適用する。Migrationサービスは起動時にソースをコンテナ内へコピーするため、ホスト側の`bin`/`obj`を書き換えない。
+更新時のappの停止タイミングを含む全体の順序は[運用設計](operation-design.md)14.2に従う。
 
 ### 7.11 起動確認
 
-Migration成功後にappと付属Caddyを起動する。
+スキャンとMigrationが成功してから、appと付属Caddyを起動する。
 
-`scripts/scan-image.ps1 -Build`が`docker compose build --pull`でイメージを作り、そのまま同じタグを
-スキャンする。起動は`--no-build`にする。`up -d --build`にすると、スキャンを通した成果物ではなく
-その場で作り直した別の成果物が動く。
+7.10の`scripts/scan-image.ps1 -Build`が`docker compose build --pull`でイメージを作り、そのまま同じ
+タグをスキャンしている。起動は`--no-build`にする。`up -d --build`にすると、スキャンを通した成果物
+ではなくその場で作り直した別の成果物が動く。
 
 ```bash
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
 docker compose up -d --no-build app caddy
 ```
 
@@ -547,11 +553,6 @@ docker compose \
   -f docker-compose.shared-caddy.yml \
   up -d postgres
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.shared-caddy.yml \
-  --profile tools run --rm migrate
-
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
   -Build
@@ -559,8 +560,16 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.shared-caddy.yml \
+  --profile tools run --rm migrate
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.shared-caddy.yml \
   up -d --no-build app
 ```
+
+ここでもスキャンがMigrationより前に来る。理由は7.10と同じで、スキャンが失敗したときに
+DBを変更しないまま中断できるようにするためである。
 
 この構成では付属Caddyが`bundled-caddy` profileへ隔離されるため、`docker compose config`から外れ、
 スキャン対象にも入らない。TLS終端はVPS側の共通Caddyが担うので、そちらの脆弱性管理は別途行う。
@@ -861,13 +870,15 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 
 ```powershell
 docker compose up -d postgres
-docker compose --profile tools run --rm migrate
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
+docker compose --profile tools run --rm migrate
 docker compose up -d --no-build app caddy
 docker compose ps
 docker compose logs -f app
 docker compose down
 ```
+
+スキャンはMigrationより前に置く。理由は7.10を参照。
 
 ## 14. トラブルシュート
 
