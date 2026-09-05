@@ -184,6 +184,62 @@
       ],
       "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-53612",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "A TOCTOU race in the mount program while setting up a loop device. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-53613",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "A TOCTOU race in the mount program reached through the mount target. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-53614",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "A SUID mount(8) that lets nosuid and noexec be bypassed. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-76642",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "A failed external mount helper leaving state behind. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-78408",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "nsenter --join-cgroup leaking root privileges. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-78409",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "X-mount.subdir handling on a detached tree. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-78410",
+      "purls": [
+        "pkg:apk/alpine/libuuid@2.42.1-r0"
+      ],
+      "statement": "Restricted bind mounts that do not pin their target. util-linux advisory, which Alpine attributes to every subpackage built from that source, including libuuid. In this image libuuid ships only usr/lib/libuuid.so.1 and usr/lib/libuuid.so.1.3.0, verified with apk info -L: it contains no programs, and no other util-linux package is installed. The vulnerable code is in the util-linux mount, umount and nsenter programs, and none of them is present: /bin/mount, /bin/umount and /usr/bin/nsenter are busybox symlinks, and busybox carries its own implementations that these CVEs do not cover. The postgres binary does not link libuuid at all, and the server runs as uid 70 rather than root. PostgreSQL is also never published outside the Docker network in either Compose configuration. Alpine ships the fix as 2.42.3-r0, so with the official image used as is this clears once upstream rebuilds on it. The purl is pinned to 2.42.1-r0 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
     }
   ]
 }
