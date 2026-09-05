@@ -545,7 +545,23 @@ curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 
 ### 7.12 VPSの共通Caddyを使う構成
 
-同じVPSのホストCaddyで複数アプリを公開する場合は、付属Caddyを起動せず、リポジトリ同梱のoverrideを明示的に重ねる。
+同じVPSで複数アプリを公開する場合は、付属Caddyを起動せず、共通のCaddyへTLS終端を寄せる。
+共通Caddyの動かし方によってoverrideが2つある。**どちらも実在する構成で、置き換え関係ではない。**
+
+| override | 共通Caddyの動かし方 | appへの経路 | PostgreSQL |
+| --- | --- | --- | --- |
+| `docker-compose.shared-caddy.yml` | ホスト上のsystemd等 | `127.0.0.1:${APP_HOST_PORT:-8081}` | `127.0.0.1:${POSTGRES_HOST_PORT:-5433}`へ公開 |
+| `docker-compose.external-caddy.yml` | 別Composeプロジェクトのコンテナ | 外部ネットワーク経由で`wwt-app:8080` | ホストへ公開しない |
+
+ホストCaddyはDockerネットワークに参加しないのでループバック経由でしか到達できず、PostgreSQLの公開もその
+構成の都合である。Caddyもコンテナで動かす場合は同じDockerネットワークに載るため、どちらも不要になる。
+
+どちらのoverrideでも付属Caddyは`bundled-caddy` profileへ隔離されるため、`docker compose config`から外れ、
+スキャン対象にも入らない。TLS終端は共通Caddyが担うので、そちらの脆弱性管理は別途行う。
+
+#### ホストCaddy構成
+
+付属Caddyを起動せず、リポジトリ同梱のoverrideを明示的に重ねる。
 
 ```bash
 docker compose \
@@ -598,6 +614,94 @@ curl -fsS https://writing.example.com/health/live
 # 共通Caddyでも/health/readyを外部へ出さない設定にした場合は、appへ直接確認する。
 curl -fsS http://127.0.0.1:8081/health/ready
 ```
+
+#### Caddyコンテナ構成
+
+`docker-compose.external-caddy.yml`を重ねる。appは外部ネットワークへ`wwt-app`というaliasで参加し、
+共通Caddyはそのaliasで`wwt-app:8080`へ到達する。PostgreSQLはホストへ公開しない。
+
+**前提として、外部ネットワークが先に存在している必要がある。**
+
+```bash
+docker network create web-writing-tool-caddy
+```
+
+存在しない場合、`docker compose config`は成功するのに`docker compose up`が
+`network ... declared as external, but could not be found`で失敗する。静的な検証では捕まらないため、
+デプロイ手順の途中で当たると、ビルド、app停止、バックアップ、Migrationまで進んだ後で止まる。
+状態を変える前に確認する。
+
+```bash
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1
+```
+
+このpreflightは読み取りだけを行い、何も変更しない。外部ネットワークの存在に加えて、appが`default`と
+`caddy`の両方に参加していること、`wwt-app` aliasがあること、PostgreSQLが`caddy`ネットワークに参加せず
+ホストへも公開されていないこと、appがループバックにだけ公開されていること、付属Caddyがスコープ外で
+あることを確認する。
+
+デプロイの順序は7.10と同じで、スキャンがMigrationより前に来る。
+
+```bash
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-external-caddy.ps1
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.external-caddy.yml \
+  up -d postgres
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
+  -Build
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.external-caddy.yml \
+  --profile tools run --rm migrate
+
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.external-caddy.yml \
+  up -d --no-build app
+```
+
+共通Caddy側の例。`wwt-app`はaliasなので、Compose project名やコンテナ名が変わっても影響しない。
+
+```caddyfile
+writing.example.com {
+    encode zstd gzip
+
+    request_body {
+        max_size 20MB
+    }
+
+    # /health/ready はDBとBackgroundServiceの内部状態を返すので外部へ出さない。
+    handle /health/ready {
+        respond 404
+    }
+
+    handle {
+        reverse_proxy wwt-app:8080 {
+            header_up Host {host}
+        }
+    }
+}
+```
+
+共通Caddyは`web-writing-tool-caddy`ネットワークにだけ参加させる。appのPostgreSQLは別ネットワークに
+残るので、Caddyからは到達できない。
+
+```bash
+curl -fsS https://writing.example.com/health/live
+
+# /health/ready は外部から404になるので、VPS内のループバックで確認する。
+curl -fsS http://127.0.0.1:8081/health/ready
+```
+
+CIの`external-caddy`ジョブが、この構成の前提をpush時に検証する。preflightがネットワーク不在で止まること、
+`docker compose config`だけでは同じ不在を検出できないこと、Caddyネットワーク上のコンテナが`wwt-app:8080`へ
+到達できること、同じネットワークからPostgreSQLへ名前でもアドレスでも到達できないこと、PostgreSQLが
+ホストへ公開されないことを確認する。
 
 ## 8. appsettings方針
 
