@@ -53,6 +53,29 @@ jobs:
       - name: Test production Compose safeguards
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
+      # Three checks, because none of them covers the others.
+      #
+      # The existence loop is first because --locked-mode does not imply it: a restore with no lock
+      # file present succeeds and simply writes one. That is how the pinning can disappear without
+      # anything failing - an unparsable Directory.Build.props, for instance, leaves dotnet restore
+      # exiting 0 while quietly producing no lock file at all.
+      #
+      # --locked-mode is what refuses a dependency graph the lock files do not already name, which
+      # is the case where a csproj moved and the lock files were not regenerated.
+      #
+      # The diff catches a restore that rewrote a lock file anyway, so what CI resolved is what the
+      # repository records and what the production restores will be held to.
+      - name: Lock file check
+        run: |
+          for project in src/WebWritingTool.Domain src/WebWritingTool.Application src/WebWritingTool.Infrastructure src/WebWritingTool.Web tests/WebWritingTool.UnitTests tests/WebWritingTool.IntegrationTests tests/WebWritingTool.E2ETests; do
+            if [ ! -f "$project/packages.lock.json" ]; then
+              echo "$project has no packages.lock.json. Run scripts/dotnet.ps1 restore WebWritingTool.slnx and commit the result." >&2
+              exit 1
+            fi
+          done
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
+          git diff --exit-code -- '*packages.lock.json'
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 

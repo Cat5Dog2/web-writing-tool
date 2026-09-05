@@ -111,14 +111,21 @@ services:
     volumes:
       - ./.config:/source/.config:ro
       - ./global.json:/source/global.json:ro
+      # RestorePackagesWithLockFile を持つ。packages.lock.json は src 配下なので上のマウントに含まれる。
+      - ./Directory.Build.props:/source/Directory.Build.props:ro
       - ./src:/source/src:ro
     entrypoint: ["/bin/bash", "-lc"]
+    # restore は locked mode で行う。イメージを digest で固定しても、restore が取得する内容までは
+    # 固定されない。csproj の範囲指定に収まる新しい推移的依存が公開されれば、同じソース、同じ
+    # イメージからでも別のバイナリで本番マイグレーションが走る。lock ファイルに無いものを
+    # 解決しようとした時点で失敗させる。
     command:
       - >-
         cp -a /source/.config /work/.config &&
         cp /source/global.json /work/global.json &&
+        cp /source/Directory.Build.props /work/Directory.Build.props &&
         cp -a /source/src /work/src &&
-        dotnet restore src/WebWritingTool.Web/WebWritingTool.Web.csproj &&
+        dotnet restore src/WebWritingTool.Web/WebWritingTool.Web.csproj --locked-mode &&
         dotnet tool restore &&
         dotnet tool run dotnet-ef database update
         --project src/WebWritingTool.Infrastructure/WebWritingTool.Infrastructure.csproj

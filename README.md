@@ -188,6 +188,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Buil
 
 NuGetはHigh/Criticalが1件でもあれば失敗する。
 
+### NuGetのlockファイル
+
+各プロジェクトの `packages.lock.json` をGit管理し、依存グラフを固定する。イメージのdigest固定は「何がマイグレーションを実行するか」を決めるが、「それが何をダウンロードするか」までは決めない。`migrate` は実行のたびにコンテナ内で `dotnet restore` を行うため、csprojの範囲指定に収まる新しい推移的依存が公開されると、同じソース・同じイメージからでも別のバイナリで本番マイグレーションが走りうる。
+
+生成と更新は `Directory.Build.props` の `RestorePackagesWithLockFile` が行う。ローカルのビルドとテストは従来どおりで、パッケージを足したときにlockファイルが更新される。**差分はコミットへ含めること。**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx
+```
+
+不一致を失敗にするのは、appイメージのビルドと `migrate` のrestore、そしてCIの Lock file check である。詳細は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「NuGetのlockファイル」を参照。
+
 イメージスキャンは本番Composeがデプロイする全イメージ（app、caddy、postgres）を対象とし、対象一覧は `docker compose config` から取得する。`--ignore-unfixed` は使わず、修正版がない指摘も `security/trivy/<イメージ名>.trivyignore.yaml` へ理由と期限付きで記録しない限りCIを止める。Trivyは脆弱性DBを取得するだけで、イメージやそのメタデータを外部へ送信しない。スキャナにはDocker socketを渡さず、`docker save` したtarを `--input` で読ませる。スキャナイメージはdigestで固定し、各スキャンは `--network none` で実行する。理由は [docs/ci-cd-design.md](docs/ci-cd-design.md) の「スキャナへ渡すもの」を参照。
 
 `migrate` は `tools` profile にいるためこの一覧へ入らないが、本番DBへ書き込む唯一のコンポーネントである。イメージは `docker-compose.yml` 内で digest 固定し、デプロイのたびに専用のスキャンでゲートを通す。
