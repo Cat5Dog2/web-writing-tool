@@ -42,12 +42,93 @@ function Assert-UpSelectionRejected {
     Assert-Test ($message -like "*$ExpectedMessage*") "the up rejection for '$($Arguments -join ' ')' did not explain the cause: $message"
 }
 
+function Copy-TestObject {
+    param([Parameter(Mandatory)] $Value)
+
+    return (($Value | ConvertTo-Json -Depth 8) | ConvertFrom-Json)
+}
+
+function Assert-MigrationReceiptRejected {
+    param(
+        [Parameter(Mandatory)] $Receipt,
+        [Parameter(Mandatory)] [string] $ExpectedReference,
+        [Parameter(Mandatory)] [datetime] $Now,
+        [Parameter(Mandatory)] [string] $ExpectedMessage
+    )
+
+    $message = $null
+    try {
+        Get-ValidatedMigrationReceipt -Receipt $Receipt -ExpectedReference $ExpectedReference -Now $Now | Out-Null
+    }
+    catch {
+        $message = $_.Exception.Message
+    }
+
+    Assert-Test (-not [string]::IsNullOrWhiteSpace($message)) 'an invalid migration scan receipt was accepted.'
+    Assert-Test ($message -like "*$ExpectedMessage*") "the migration receipt rejection did not explain the cause: $message"
+}
+
 $up = Get-ProductionComposeCommandInfo -Arguments @('up', '-d', '--no-build', 'app')
 Assert-Test ($up.Command -ceq 'up') 'a normal up command was not recognized.'
 Assert-Test (-not $up.IsToolsMigration) 'a normal up command was classified as the migration exception.'
 
 $migration = Get-ProductionComposeCommandInfo -Arguments @('--profile', 'tools', 'run', '--rm', 'migrate')
 Assert-Test ($migration.Command -ceq 'run' -and $migration.IsToolsMigration) 'the one documented migration command was rejected.'
+
+$receiptNow = [datetime]::SpecifyKind([datetime]::Parse('2026-09-05T12:00:00Z'), [DateTimeKind]::Utc)
+$migrationReference = 'registry.example:5000/team/sdk@sha256:' + ('d' * 64)
+$migrationImageId = 'sha256:' + ('e' * 64)
+$validMigrationReceipt = [pscustomobject]@{
+    schemaVersion                  = 1
+    gateResult                    = 'passed'
+    generatedAt                   = '2026-09-05T11:55:00Z'
+    scannerImage                  = 'aquasec/trivy@sha256:' + ('f' * 64)
+    scannerVersion                = '0.74.0'
+    vulnerabilityDatabaseUpdatedAt = '2026-09-05T10:00:00Z'
+    services                      = [pscustomobject]@{
+        migrate = [pscustomobject]@{
+            reference = $migrationReference
+            imageId   = $migrationImageId
+        }
+    }
+}
+
+$validatedReceipt = Get-ValidatedMigrationReceipt -Receipt $validMigrationReceipt -ExpectedReference $migrationReference -Now $receiptNow
+Assert-Test ($validatedReceipt.ImageId -ceq $migrationImageId) 'a valid migration scan receipt returned the wrong image ID.'
+
+$dateObjectReceipt = Copy-TestObject -Value $validMigrationReceipt
+$dateObjectReceipt.generatedAt = [datetime]::SpecifyKind([datetime]::Parse('2026-09-05T11:55:00Z'), [DateTimeKind]::Utc)
+$dateObjectReceipt.vulnerabilityDatabaseUpdatedAt = [datetimeoffset]::Parse('2026-09-05T10:00:00Z')
+$validatedDateObjectReceipt = Get-ValidatedMigrationReceipt -Receipt $dateObjectReceipt -ExpectedReference $migrationReference -Now $receiptNow
+Assert-Test ($validatedDateObjectReceipt.ImageId -ceq $migrationImageId) 'PowerShell 7-style DateTime receipt fields were rejected.'
+
+$expiredReceipt = Copy-TestObject -Value $validMigrationReceipt
+$expiredReceipt.generatedAt = '2026-09-04T11:59:59Z'
+Assert-MigrationReceiptRejected -Receipt $expiredReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'older than'
+
+$wrongReferenceReceipt = Copy-TestObject -Value $validMigrationReceipt
+$wrongReferenceReceipt.services.migrate.reference = 'registry.example:5000/team/sdk@sha256:' + ('a' * 64)
+Assert-MigrationReceiptRejected -Receipt $wrongReferenceReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'does not match'
+
+$missingMetadataReceipt = Copy-TestObject -Value $validMigrationReceipt
+$missingMetadataReceipt.scannerVersion = ''
+Assert-MigrationReceiptRejected -Receipt $missingMetadataReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'scannerVersion'
+
+$unpinnedScannerReceipt = Copy-TestObject -Value $validMigrationReceipt
+$unpinnedScannerReceipt.scannerImage = 'aquasec/trivy:0.74.0'
+Assert-MigrationReceiptRejected -Receipt $unpinnedScannerReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'not pinned by digest'
+
+$staleDatabaseReceipt = Copy-TestObject -Value $validMigrationReceipt
+$staleDatabaseReceipt.vulnerabilityDatabaseUpdatedAt = '2026-09-03T11:59:59Z'
+Assert-MigrationReceiptRejected -Receipt $staleDatabaseReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'database older than'
+
+$extraServiceReceipt = Copy-TestObject -Value $validMigrationReceipt
+$extraServiceReceipt.services | Add-Member -NotePropertyName app -NotePropertyValue ([pscustomobject]@{ reference = 'app:local'; imageId = 'sha256:' + ('b' * 64) })
+Assert-MigrationReceiptRejected -Receipt $extraServiceReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'exactly the migrate service'
+
+$badIdReceipt = Copy-TestObject -Value $validMigrationReceipt
+$badIdReceipt.services.migrate.imageId = 'registry.example:5000/team/sdk:latest'
+Assert-MigrationReceiptRejected -Receipt $badIdReceipt -ExpectedReference $migrationReference -Now $receiptNow -ExpectedMessage 'sha256 image ID'
 
 Assert-Rejected -Arguments @('--profile', 'bundled-caddy', 'up', '-d', 'caddy') -ExpectedMessage 'only supported profile command'
 Assert-Rejected -Arguments @('-f', 'other.yml', 'up', '-d', 'app') -ExpectedMessage 'may not contain the global option'
@@ -135,6 +216,22 @@ try {
 
     Assert-Test ($exitCode -ne 0) 'the deliberately invalid scanner invocation unexpectedly succeeded.'
     Assert-Test (-not (Test-Path -LiteralPath $staleManifest)) "an early scanner failure left the stale manifest behind. Output: $($output -join ' ')"
+
+    $staleReceipt = Join-Path $workspace 'scanned-migrate.json'
+    Set-Content -LiteralPath $staleReceipt -Value 'stale migration approval'
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'scan-image.ps1') -ScanReceiptOutputPath $staleReceipt -ServiceName migrate -ScanMemoryLimit 0 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    Assert-Test ($exitCode -ne 0) 'the deliberately invalid migration scanner invocation unexpectedly succeeded.'
+    Assert-Test (-not (Test-Path -LiteralPath $staleReceipt)) "an early scanner failure left the stale migration receipt behind. Output: $($output -join ' ')"
 }
 finally {
     if (Test-Path -LiteralPath $workspace) {

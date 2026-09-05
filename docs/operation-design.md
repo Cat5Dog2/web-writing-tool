@@ -458,15 +458,23 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 2. 対象リリースのソースを配置する。
 3. Caddyコンテナ構成の場合、`scripts/preflight-external-caddy.ps1`を実行する。何も変更しないので、必ずここで行う。
 4. `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。manifestも書かれない。
-5. `docker compose stop app`でappを停止する。
-6. 本番DBバックアップと`app_keys`のバックアップを取得する。
-7. 必要に応じて`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
-8. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app'`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
-9. `docker compose ps`で起動状態を確認する。
-10. 公開URLから`curl -fsS`で`/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
-11. 管理者でログインし、`/health/deps`が`Healthy`であることを確認する。外部APIキーの設定漏れはここでしか検知できない。
-12. 記事一覧、記事作成ジョブ登録を確認する。
-13. Caddyログとアプリログに異常がないことを確認する。
+5. マイグレーションを行う場合は、`scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json`でmigrateイメージをスキャンする。これもDBへ触れる前に行う。
+6. `docker compose stop app`でappを停止する。
+7. 本番DBバックアップと`app_keys`のバックアップを取得する。
+8. 必要に応じて`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
+9. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app'`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
+10. `docker compose ps`で起動状態を確認する。
+11. 公開URLから`curl -fsS`で`/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
+12. 管理者でログインし、`/health/deps`が`Healthy`であることを確認する。外部APIキーの設定漏れはここでしか検知できない。
+13. 記事一覧、記事作成ジョブ登録を確認する。
+14. Caddyログとアプリログに異常がないことを確認する。
+
+migrateのスキャンを別実行にしているのは、migrateが`tools` profileにいて手順4のスコープへ入らないためである。
+このサービスは本番DBへ書き込む唯一のコンポーネントなので、イメージはComposeファイル内でdigest固定し、
+デプロイのたびにゲートを通す。`-ServiceName`があるので、手順4で見た3イメージを再スキャンしない。
+長期稼働サービスのmanifestへは入れず、migrateだけを記録する単回使用receiptを別に作る。
+`production-compose.ps1`はreceiptの鮮度、scannerとDB metadata、Composeのdigest、ローカルimage IDを検証し、
+Migration開始前に原子的に消費する。失敗時も再利用しない。詳細は[CI/CD設計](ci-cd-design.md)「migrateイメージ」を参照。
 
 preflightを最初に置くのも、スキャンをMigrationより前に置くのと同じ理由である。外部ネットワークの
 不在は`docker compose config`では検出できず、`docker compose up`で初めて失敗する。手順の末尾で

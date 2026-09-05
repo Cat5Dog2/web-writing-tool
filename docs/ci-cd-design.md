@@ -159,7 +159,8 @@ main CIで失敗した場合は、原因を確認し、必要に応じて修正P
 ### 8.1 リリース手順
 
 現行workflowは`pull_request`、`main`へのpush、`schedule`、`workflow_dispatch`で起動する。
-**tag pushでは起動しない。** またPRでは`docker-production`ジョブが動かない。
+**tag pushでは起動しない。** またPRでは`docker-production`ジョブが動かない。tools profileの変更だけは
+PR用の`migration-image-gate`ジョブがスキャンとreceipt生成を実行する。
 そのためtagは、mainへマージしてCIが成功したコミットへ打つ。
 
 1. 作業ブランチを作る。mainへ直接コミットしない。
@@ -418,8 +419,9 @@ CVE-2026-56854（GO-2026-6303、2026-08-28公開）はv0.55.0未満のx/crypto�
 上流がGo 1.26.6以降でビルドしたcaddyイメージを公開したら、`Dockerfile.caddy`を削除して
 公式イメージへ戻す。`docker compose config`から対象を取るため、戻してもスキャン範囲は変わらない。
 
-toolsプロファイルの`migrate`（`mcr.microsoft.com/dotnet/sdk:10.0`）はゲート対象外にする。
-デプロイ時だけ起動して終了する一時コンテナで、ソケットを開かず常駐しないためである。
+toolsプロファイルの`migrate`は通常の長期稼働サービス用manifestには含めないが、別のスキャンゲートを
+必須にする。本番DBへ書き込むコンポーネントなので、短命でソケットを開かないことは未検査でよい理由に
+ならない。digest固定、path限定の受容記録、単回使用receiptの詳細は「migrateイメージ」を参照する。
 
 自前イメージのビルドにも必ず`--pull`を付ける。ベースイメージがローカルキャッシュのまま古いと、
 上流で修正済みのパッチを取り込めず、避けられる脆弱性でゲートが失敗する。
@@ -493,12 +495,13 @@ CIは両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-
 
 1. `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`。
    `docker compose build --pull`でビルドし、解決したimage IDをスキャンしてmanifestへ記録する。
-2. DBマイグレーションが必要なら`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`。必ずスキャンより後に行う。
-3. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build'`。
+2. DBマイグレーションが必要なら`scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json`。
+3. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`。必ず2の直後に行う。
+4. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build'`。
 
-上記は付属Caddy構成の値である。overrideを使う場合は、1から3の`-ComposeFile`へ同じファイル一覧を渡す。
+上記は付属Caddy構成の値である。overrideを使う場合は、1から4の`-ComposeFile`へ同じファイル一覧を渡す。
 
-2を1より先に置いてはならない。Migrationを適用してからスキャンが失敗すると、新しいスキーマだけが
+3を1と2より先に置いてはならない。Migrationを適用してからスキャンが失敗すると、新しいスキーマだけが
 DBへ入り、旧appがそれに接続したまま残る。手順を中断しても元に戻らない。
 スキャンが先なら、失敗して変わっているのはビルド成果物だけで、DBと稼働中のappは無傷で済む。
 `docker-production`ジョブもbuild、scan、ラッパー経由のPostgreSQL起動、Migration、app/Caddy起動の順で動く。
@@ -588,9 +591,59 @@ manifestにスコープ外のサービスがある、image変数が定義され�
 
 この経路を成立させるため、VPS要件にPowerShell 7を含める。[環境構築](environment-setup.md)3.2を参照。
 
+### migrateイメージ
+
+`migrate`は本番DBへ書き込む唯一のコンポーネントでありながら、`tools` profileにいるため
+`docker compose config`に現れず、デプロイ時のスキャンスコープへ入らない。しかも実行内容は
+ネットワーク越しの`dotnet restore`と`dotnet tool restore`である。タグのままにすると、レビューして
+いない内容が次のデプロイで本番DBを書き換えうる。
+
+そのため次の3点をセットで行う。どれか1つでも欠けると残りが意味を失う。
+
+| 対策 | 場所 | 欠けたときに起きること |
+| --- | --- | --- |
+| digest固定 | `docker-compose.yml`の`migrate.image` | タグが差し替われば未レビューのイメージが動く |
+| 受容記録 | `security/trivy/sdk.trivyignore.yaml` | HIGHが残りゲートが常に赤で、誰も見なくなる |
+| デプロイ時スキャンと単回使用receipt | `-ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json` | 固定と受容記録が実際のMigrationに結び付かない |
+
+```powershell
+scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json
+```
+
+`-ComposeProfile`がないとprofile内のサービスはスコープに入らない。`-ServiceName`はデプロイ時の
+スキャンが既に見たイメージを再スキャンしないための絞り込みで、`-ProvenanceOutputPath`とは併用できない。
+一部のサービスしか載らないmanifestは、残りをタグから起動させてしまうためである。
+
+migrateは長期稼働サービスのmanifestへ入れない。代わりにmigrateだけのreceiptをゲート通過後に原子的に
+書き出す。receiptにはimage reference / image ID、scanner digest / version、脆弱性DBの更新時刻、生成時刻を
+含める。`production-compose.ps1`は次をすべて満たさない限りMigrationを開始しない。
+
+- receiptが24時間以内で、脆弱性DBの更新時刻が48時間以内である
+- scanner imageがdigest固定で、gateResultが`passed`である
+- 記録されたreferenceが現在のComposeのmigrate digestと完全一致する
+- 記録されたimage IDが、そのdigestからローカルで解決したimage IDと完全一致する
+- receiptがmigrate 1サービスだけを含む
+
+検証前に同一filesystem内でreceiptを原子的にclaimし、Migrationの成功・失敗にかかわらず消費する。これにより
+並行実行や後日の再利用を拒否する。再試行は新しいスキャンから行う。PRでは`migration-image-gate`、main / schedule /
+手動実行では`docker-production`がこの経路を検証する。
+
+現在の受容内容は`System.Security.Cryptography.Xml` 10.0.6 の5件で、いずれもSDKイメージへ同梱された
+PowerShell 7.6.4 に含まれる。migrateはbashから`dotnet`を実行するだけでpwshを起動せず、署名付きXMLも
+扱わない。appイメージは`mcr.microsoft.com/dotnet/aspnet`ベースでPowerShellを含まないため、稼働中の
+アプリからは到達しない。上流が更新版PowerShellでSDKイメージを作り直せば解消する。
+
+digestを更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALをトリアージしてから
+`docker-compose.yml`を変える。受容記録のファイル名はリポジトリ名から決まるため、digestが変わっても
+`sdk.trivyignore.yaml`のままである。
+
 将来の選択肢として、CIでビルド・スキャンしたイメージをレジストリへpushし、VPSではdigest指定で
 pullして`up --no-build`する方式がある。VPSからビルドツールチェーンを外せ、ロールバックも
 digest指定で済む。レジストリの選定と認証情報の配置が前提になるため、導入時に別途決める。
+
+`migrate`については、EF Coreのmigration bundleをイメージビルド時に作り、実行時はSDKもネットワーク
+restoreも不要にする案もある。SDKイメージ自体を本番から外せるが、`dotnet ef migrations bundle`が設計時に
+`DbContext`を生成するため、ビルド時に接続文字列かデザインタイムファクトリが要る。導入時に別途決める。
 
 ## 10. テスト実行範囲
 

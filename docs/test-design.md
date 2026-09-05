@@ -531,6 +531,7 @@ Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行�
 
 | `SEC-021` | 脆弱性受容記録の書式 | `statement`、`expired_at`、`paths`/`purls`が揃い、期限切れがない |
 | `SEC-022` | スキャン済みイメージの固定起動 | Composeスコープを後から変える引数を拒否し、`up`対象の全サービスをimage IDで照合し、早期失敗でも古いmanifestを残さない |
+| `SEC-023` | Migrationスキャンreceipt | migrateだけを記録し、期限切れ、別digest、不正image ID、scanner/DB metadata欠落を拒否して単回使用する |
 
 `SEC-016`から`SEC-019`は`SecurityHeadersTests`で検証する。ヘッダーの実際の値は
 [セキュリティ設計](security-design.md)18.2、18.3を正とする。
@@ -554,7 +555,12 @@ build/pullを拒否すること、明示した`up`対象だけを必須の照合
 postgresが稼働していても失敗することをDocker非依存で確認する。また子PowerShellで`scan-image.ps1`を
 リソース値エラーにし、スキャン前の早期失敗でも既存manifestが削除される実際の制御順序を確認する。
 
-CIはDockerを使わない`build-test`ジョブで`SEC-021`と`SEC-022`を実行する。スクリプトは`powershell`
+`SEC-023`は同じスクリプトでreceiptの鮮度、Compose referenceとの完全一致、image ID形式、scannerと
+脆弱性DB metadata、migrateだけのscopeをDocker非依存で検証する。子PowerShellでは早期失敗時に古いreceiptが
+削除されることも確認する。PRの`migration-image-gate`ジョブは実Dockerでprofile/service選択、SDKスキャン、
+receipt内のimage IDとローカルイメージの一致まで確認する。
+
+CIはDockerを使わない`build-test`ジョブで`SEC-021`から`SEC-023`を実行する。スクリプトは`powershell`
 （Windows PowerShell 5.1）と`pwsh`（PowerShell 7）の両方で同じ結果になることを確認する。理由は
 [CI/CD設計](ci-cd-design.md)9.3を参照。
 
