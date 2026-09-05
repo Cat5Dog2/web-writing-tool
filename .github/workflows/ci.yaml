@@ -180,6 +180,15 @@ jobs:
       - name: Image vulnerability scan
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci
 
+      # Needs a daemon, which is why it is a separate switch from the -SelfTest run in the
+      # validation job. It covers the two properties the argument assertions cannot reach: that
+      # Trivy really stops on a Java archive with no index cached, which is the only reason Java is
+      # out of scope, and that the cache check really refuses a volume a scan has written to. Both
+      # were established by hand during review; this is what keeps them true when the pinned
+      # scanner version moves. Placed after the scan so the database is already in the cache.
+      - name: Scanner Docker self test
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -DockerSelfTest
+
       - name: Start PostgreSQL
         run: docker compose up -d postgres
 

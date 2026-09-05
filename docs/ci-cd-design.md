@@ -222,6 +222,160 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Buil
 イメージスキャンにはTrivyを使う。Trivyは脆弱性DBをダウンロードするだけで、イメージやその
 メタデータを外部サービスへ送信しない。Docker Scoutはイメージ由来情報を外部へ送るため使わない。
 
+#### スキャナへ渡すもの
+
+TrivyへDocker socketは渡さない。各イメージは`docker save`でtarへ書き出し、`--input`で読ませる。
+socketを渡すとスキャナコンテナがDockerデーモンを操作でき、これはホストのroot相当である。
+9.4のとおり本スクリプトはデプロイ先で実行するため、そのデーモンは同一ホストへ配置した
+他アプリのコンテナとvolumeも所有する。第三者イメージへ渡してよい権限ではない。
+
+同じ理由で、スキャナイメージはタグではなくdigestで固定する。`-TrivyImage`は引数なので、
+セルフテストではなく**通常実行の開始時**に`^[^@\s]+@sha256:[0-9a-fA-F]{64}$`で検証し、
+一致しなければ即座に停止する。部分一致では`host@sha256:x`のような固定されていない値を通してしまう。
+
+各スキャンは`--network none`で実行する。スキャナ自身がネットワーク通信を行えなくするためである。
+これはスキャナがネットワークへ到達しないという保証であって、イメージ内容がホストから出ないという
+保証ではない。スキャナのstdout/stderrはレポートそのものであり、通常のコマンド出力と同様に
+コンソールとCIログへ出る。
+Trivyには脆弱性DB以外にもJava index、regoチェック、バージョン通知、VEXリポジトリという更新経路と
+telemetryがあり、ネットワークがないと黙って飛ばさず失敗するため、いずれも明示的に抑止する。
+
+`--skip-java-db-update`により、**Javaは意図的にスキャン対象外**とする。現在の対象
+（.NETアプリ、Goバイナリ、Alpine）にJARは含まれない。Java indexの取得費用は
+916 MiBのダウンロード、ディスク1.4 GB、55秒である（2026-09-04、`mirror.gcr.io`からの参考値。
+環境で変動する）。CIはキャッシュボリュームを実行間で保持しないため、これを毎ビルド支払うことになる。
+
+正確な方針は「Javaをスキャンしない」ではなく、**Java成果物を含むイメージは、Java対応を有効化するまで
+拒否する**である。JARを含むイメージだけを作り、Java indexのないキャッシュに対して本番と同じフラグで
+スキャンした結果、Trivy 0.74.0は部分的な結果を返さずexit 1で停止した（2026-09-05実測）。
+
+```text
+ERROR [javadb] The first run cannot skip downloading Java DB
+FATAL '--skip-java-db-update' cannot be specified on the first run
+```
+
+**ただしこの停止は「Java indexがキャッシュに存在しない間」しか成立しない。** `--skip-java-db-update`は
+indexの更新を止めるだけで、使用を止めるものではない。古いindexがボリュームへ残っていれば
+first-runエラーは発生せず、そのindexで処理される。キャッシュボリュームは`-TrivyCacheVolume`で
+任意に変更できるため、前提が崩れる経路も存在する。
+
+そのため、**DB更新より前にキャッシュボリュームの内容を毎回検査する**。`--network none`、
+キャッシュ読取り専用の使い捨てコンテナで`/root/.cache/trivy`直下を列挙し、**`db`以外が
+存在すれば停止する**許可リスト方式である。空（初回）は通過する。
+
+列挙結果はいったん変数へ代入し、その終了コードを検査してから走査する。コマンド置換の中で直接
+展開すると、`ls`が失敗した場合に展開結果が空になってループが0回で終わり、**読めなかったキャッシュを
+「異常なし」と報告してしまう**（fail-open）。
+
+Java index単体ではなく内容全体の許可リストにしている理由は2つある。1つはJava index以外の
+未知のキャッシュ種別も拾うため。もう1つは、`-TrivyCacheVolume`に旧`web-writing-tool-trivy-cache`
+のようなscan cache（`fanal`）入りのボリュームを指定された場合、**ネットワークを保つDB更新工程へ
+渡す前に**止める必要があるためである。検査をDB更新の後に置くと、問題を報告する時点では
+すでにネットワーク付きコンテナへそのデータを渡し終えている。
+
+契機はJARが現れること自体であり、Composeへ新しいサービスを追加する場合だけでなく、
+既存イメージの中へ混入する場合も含む。その時点でDB更新工程へ`--download-java-db-only`を追加する。
+
+固定するスキャナバージョンを上げる際は、この挙動を再確認する。
+
+```bash
+printf 'FROM scratch\nCOPY test.jar /opt/test.jar\n' > Dockerfile   # test.jar は任意のzipでよい
+docker build -t trivy-java-fixture:local . && docker save trivy-java-fixture:local -o img.tar
+docker run --rm --network none --volume <DB専用volume>:/root/.cache/trivy:ro --volume "$PWD:/scan:ro" \
+  <trivy@digest> image --input /scan/img.tar --scanners vuln --cache-backend memory \
+  --skip-db-update --skip-java-db-update --offline-scan --severity HIGH,CRITICAL --exit-code 1
+```
+
+キャッシュは、DB更新工程では書込み可、スキャン工程では読取り専用でマウントし、スキャン側は
+`--cache-backend memory`で自身の成果物をメモリに保持する。Trivyのキャッシュには脆弱性DBだけでなく
+package listなどスキャン結果も入るため、書込み可で共有すると、ネットワークを保つDB更新工程が
+スキャン対象由来のデータを読めてしまう。Trivy 0.74.0で、読取り専用マウントでも
+`--skip-db-update`スキャンが成立することを実測している。`--cache-backend`は上流でexperimental
+扱いのため、固定するスキャナバージョンを上げる際は再実測する。
+
+キャッシュボリューム名は`web-writing-tool-trivy-db-cache`へ移行した。旧`web-writing-tool-trivy-cache`は
+スキャンが書込み可で共有していた時代のpackage listなどを保持しているため、名前を変えて
+「スキャンが一度も書いていないボリューム」から開始する。
+
+#### 旧キャッシュボリュームの撤去
+
+新ボリュームに`db`以外が現れないことを確認してから、旧ボリュームを削除する。前リビジョンの
+checkoutが残っているホストでは、削除するとそちらのスキャンがDBを再取得することになる。
+
+```bash
+# 新ボリュームの中身が db だけであること
+docker run --rm --network none --volume web-writing-tool-trivy-db-cache:/root/.cache/trivy:ro \
+  --entrypoint sh <trivy@digest> -c 'ls -1 /root/.cache/trivy'
+
+# 前リビジョンのcheckoutが残っていないことを確認したうえで
+docker volume rm web-writing-tool-trivy-cache
+```
+
+#### スキャンコンテナのリソース上限
+
+**すべてのTrivyコンテナ**（DB更新、Java index確認、スキャン、証跡取得）に`--memory`、
+`--memory-swap`、`--cpus`、`--pids-limit`を設定する。デプロイ先では別アプリと同一ホストを
+共有するため、大きなイメージや異常な入力に加え、第三者が配布するDBの取得・展開もホスト全体を
+圧迫してはならない。
+
+既定値はメモリ1 GiB、CPU 1、プロセス512である。スコープ内最大のイメージ（112 MBのexport）が
+256 MiBで完走すること、およびDB更新（1.2 GBの新規ダウンロードと展開）がこの上限のまま
+51秒で完走することを実測した（2026-09-05）。前者に対して約4倍の余裕がある。`--cpus`を1にしているのは、
+デプロイ先が小規模VPSであり、2では実質的にマシン全体を占有して同居アプリが毎回影響を受けるため
+である。ランナーを専有するCIでは引き上げてよい。**値はローカルで快適な数字ではなく、実行する
+ホストの容量から決める。** `--memory-swap`を`--memory`と同値にしてswapを無効化するのは、
+ホストがswapし始めると同居アプリが影響を受けるためである。
+
+値は`-ScanMemoryLimit`、`-ScanCpuLimit`、`-ScanPidsLimit`で上書きできるが、**開始時に検証する**。
+Dockerは`--memory 0`、`--cpus 0`、`--pids-limit 0`および`-1`をいずれも「無制限」として受け付けるため、
+指定したつもりで無制限になる経路を塞ぐ必要がある。ゼロ、負数、空、非数値は起動前に拒否する。
+
+#### ディスクはコンテナ上限の外側
+
+`docker save`が書き出すtarは、リソース上限のかかったコンテナの**外**で、一時ディレクトリを
+持つfilesystemへ直接書かれる。デプロイ先では、同居アプリのデータが載るのと同じfilesystemである。
+`--memory`などでは防げないため、**イメージごとにexport直前で空き容量を検査**し、
+イメージサイズの1.5倍を確保できなければ開始せずに停止する。exportは1つずつ作って消すため、
+必要なのは最大イメージ1つ分であり合計ではない。
+
+**この検査が守るのは一時tar用のfilesystemだけである。** Docker data-root側は対象外で、
+主な消費源は次のとおりである（短命コンテナのwritable layerなども消費し得る）。
+
+- `docker compose build --pull`（build cacheとイメージレイヤー）
+- 第三者イメージの`docker pull`
+- scannerイメージ自体のpull
+- Trivy DB用ボリューム（1.2 GB）
+
+また、検査は事前確認であって予約ではない。同時に走る別処理が空き容量を減らす場合までは防げない。
+共有VPSでは次のいずれかを運用側で用意する。quotaまたは専用filesystemが最も確実である。
+
+- 事前の空き容量確認と予約余力
+- quota付きの専用一時filesystem
+- Docker data-rootとアプリDBのfilesystem分離
+
+ネットワークを保つTrivy工程はDB更新の1つだけで、この工程はキャッシュ以外を一切マウントしない。
+DBを取得するためにネットワークを保つことは、他の通信を許す理由にならないため、この工程にも
+`--skip-version-check`、`--skip-vex-repo-update`、`--disable-telemetry`を渡す。上流ではこれらは
+それぞれ独立した呼び出しであり、1つ止めても他は止まらない。
+
+証跡用の`trivy --version`実行もDockerを起動するため、他と同じく引数構築関数を通す。関数を通らない
+引数列はセルフテストが検査できず、将来socketや書込みmountが混入しても気付けないためである。
+セルフテストは、DB更新工程のマウントを許可リストとして検証し、スキャン工程と証跡工程についても
+socketの不在、`--network none`、キャッシュの読取り専用マウント、capability drop、
+`no-new-privileges`を検証する。
+なお、Trivy以外ではネットワークを使う。`docker compose build --pull`、第三者イメージの`docker pull`、
+スキャナイメージ自体のpullがそれにあたる。
+
+実行ごとに、スキャナイメージのdigest、`trivy --version`が返すバージョンと脆弱性DBのタイムスタンプ、
+検査した全イメージのimage IDを出力する。指摘は、それを出したスキャナとDBの日時とセットでなければ
+意味を持たないためである。
+
+エクスポートは解決済みのimage IDに対して行う。タグはbuild/pullとスキャンの間に差し替えられ得るため、
+タグでsaveすると起動するものと別のイメージを検査し得る。これは本スクリプト内の競合を閉じるだけで、
+起動したコンテナが検査済みイメージ由来であることの検証を代替しない。tarは1イメージごとに作成し、
+スキャン直後に削除する。エクスポートはイメージ内容の可読なコピーであり、Linuxでは一時ディレクトリを
+所有者限定にする。
+
 ### 9.1 スキャン対象イメージ
 
 対象は`docker compose config`から取得する。`docker-compose.yml`と乖離しないようにするためである。
