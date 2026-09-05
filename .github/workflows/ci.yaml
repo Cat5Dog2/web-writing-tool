@@ -142,6 +142,42 @@ jobs:
       - name: Run performance tests
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-performance.ps1
 
+  migration-image-gate:
+    name: Migration image gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check Docker
+        run: |
+          docker --version
+          docker compose version
+
+      # Production Docker smoke is intentionally too expensive for every PR. This focused job still
+      # exercises the profiled service selection, pinned SDK image, acceptance file and receipt on
+      # the event where those changes are reviewed.
+      - name: Scan the migration image and issue a receipt
+        run: >-
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1
+          -ComposeProfile tools -ServiceName migrate
+          -ScanReceiptOutputPath artifacts/scanned-migrate.json
+
+      - name: Verify the migration scan receipt
+        run: |
+          test "$(jq -r .gateResult artifacts/scanned-migrate.json)" = "passed"
+          test "$(jq -r .schemaVersion artifacts/scanned-migrate.json)" = "1"
+          test -n "$(jq -r .scannerVersion artifacts/scanned-migrate.json)"
+          test -n "$(jq -r .vulnerabilityDatabaseUpdatedAt artifacts/scanned-migrate.json)"
+          reference=$(jq -r '.services.migrate.reference' artifacts/scanned-migrate.json)
+          recorded=$(jq -r '.services.migrate.imageId' artifacts/scanned-migrate.json)
+          actual=$(docker image inspect --format '{{.Id}}' "$reference")
+          echo "migrate: reference=$reference recorded=$recorded actual=$actual"
+          test "$recorded" = "$actual"
+
   docker-production:
     name: Production Docker smoke
     runs-on: ubuntu-latest
@@ -209,15 +245,23 @@ jobs:
       # adding it to the manifest would only make the manifest disagree with the wrapper's scope.
       # -ServiceName keeps this to the one image the deployment scan did not already cover.
       - name: Migration image vulnerability scan
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+        run: >-
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1
+          -ComposeProfile tools -ServiceName migrate
+          -ScanReceiptOutputPath artifacts/scanned-migrate.json
 
       # The pin is the reason the scan above means anything. A tag here would let an unreviewed
       # image write to the production database on the next deployment.
       - name: The migration image is pinned by digest
         run: |
           image=$(docker compose --profile tools config --format json | jq -r '.services.migrate.image')
-          echo "migrate image: $image"
+          recorded_reference=$(jq -r '.services.migrate.reference' artifacts/scanned-migrate.json)
+          recorded_id=$(jq -r '.services.migrate.imageId' artifacts/scanned-migrate.json)
+          actual_id=$(docker image inspect --format '{{.Id}}' "$image")
+          echo "migrate image: reference=$image recorded=$recorded_id actual=$actual_id"
           echo "$image" | grep -qE '@sha256:[0-9a-f]{64}$'
+          test "$recorded_reference" = "$image"
+          test "$recorded_id" = "$actual_id"
 
       # Needs a daemon, which is why it is a separate switch from the -SelfTest run in the
       # validation job. It covers the two properties the argument assertions cannot reach: that

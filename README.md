@@ -171,6 +171,7 @@ docker compose -p web-writing-tool -f docker-compose.dev.yml --env-file .env dow
 | `script-compat` | `windows-latest`上のWindows PowerShell 5.1で文字コード、受容記録、本番Compose保護を検証。CIとVPSは`pwsh`、ローカル手順は`powershell`のため両方で確認する | すべてのトリガー |
 | `e2e-smoke` | .NET SDKセットアップ、Playwright Chromium導入、E2Eプロジェクトのテスト実行、失敗時成果物保存 | すべてのトリガー |
 | `performance` | `NFT-PERF-001`から`NFT-PERF-004`。劣化検知目的のため `continue-on-error` | schedule、手動実行 |
+| `migration-image-gate` | tools profileのmigrateイメージをスキャンし、単回使用receiptを検証 | PR |
 | `docker-production` | 本番イメージbuild（`--pull`）、イメージ脆弱性スキャン、PostgreSQL起動、Migration、`app`/`caddy`起動、Caddy経由のhealth check | `main`へのpush、schedule、手動実行。PRでは実行しない |
 | `external-caddy` | 外部Caddyネットワークのpreflight、`wwt-app` alias経由の到達性、PostgreSQLのネットワーク分離とホスト非公開を検証 | すべてのトリガー |
 
@@ -192,8 +193,10 @@ NuGetはHigh/Criticalが1件でもあれば失敗する。
 `migrate` は `tools` profile にいるためこの一覧へ入らないが、本番DBへ書き込む唯一のコンポーネントである。イメージは `docker-compose.yml` 内で digest 固定し、デプロイのたびに専用のスキャンでゲートを通す。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json
 ```
+
+この専用スキャンは、image ID、scanner digest/version、脆弱性DBの更新時刻を含むreceiptを、ゲート通過時だけ原子的に書く。`production-compose.ps1`はreceiptが24時間以内、DBが48時間以内、Composeのmigrate digestとローカルimage IDが一致することを確認し、Migration開始前に単回使用として消費する。失敗時も再利用せず、再スキャンが必要になる。
 
 `-ProvenanceOutputPath` を付けると、実際に検査した image ID を機械可読な manifest に記録する。書き出すのは全イメージがゲートを通過したときだけで、スキャン開始前に既存ファイルを削除する。前回成功した manifest が失敗した実行を生き延びると、ゲートが拒否したイメージがそのままデプロイされるためである。
 
@@ -248,6 +251,7 @@ VPS上の共通Caddyを使う場合は、その動かし方に合わせてoverri
 
 ```bash
 pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+pwsh -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json
 pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand 'up -d postgres'
 pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand '--profile tools run --rm migrate'
 pwsh -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml -ComposeCommand 'up -d --no-build app'

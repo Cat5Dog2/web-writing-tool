@@ -5,6 +5,9 @@
       "purls": [
         "pkg:nuget/System.Security.Cryptography.Xml@10.0.6"
       ],
+      "paths": [
+        "usr/share/powershell/.store/powershell.linux.x64/7.6.4/powershell.linux.x64/7.6.4/tools/net10.0/any/pwsh.deps.json"
+      ],
       "statement": "Shipped inside the PowerShell 7.6.4 bundle that mcr.microsoft.com/dotnet/sdk carries, at usr/share/powershell/.store/powershell.linux.x64/7.6.4, not in the SDK toolchain and not in this application. System.Security.Cryptography.Xml handles XML digital signatures and XML encryption; every finding here is reached by feeding attacker-controlled signed or encrypted XML to that API. The only service using this image is migrate, which runs 'bash -lc' with dotnet restore, dotnet tool restore and dotnet-ef database update. It never starts pwsh, never parses XML from an untrusted source, listens on no socket, runs only during a deploy and is removed with --rm. The running application cannot reach this at all: the app image is built from mcr.microsoft.com/dotnet/aspnet, which carries no PowerShell, and its scan reports none of these. Fixed in 10.0.10, so this clears once Microsoft rebuilds the SDK image on an updated PowerShell. The purl is pinned to 10.0.6 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-05T00:00:00Z"
     },
@@ -12,6 +15,9 @@
       "id": "CVE-2026-47304",
       "purls": [
         "pkg:nuget/System.Security.Cryptography.Xml@10.0.6"
+      ],
+      "paths": [
+        "usr/share/powershell/.store/powershell.linux.x64/7.6.4/powershell.linux.x64/7.6.4/tools/net10.0/any/pwsh.deps.json"
       ],
       "statement": "Shipped inside the PowerShell 7.6.4 bundle that mcr.microsoft.com/dotnet/sdk carries, at usr/share/powershell/.store/powershell.linux.x64/7.6.4, not in the SDK toolchain and not in this application. System.Security.Cryptography.Xml handles XML digital signatures and XML encryption; every finding here is reached by feeding attacker-controlled signed or encrypted XML to that API. The only service using this image is migrate, which runs 'bash -lc' with dotnet restore, dotnet tool restore and dotnet-ef database update. It never starts pwsh, never parses XML from an untrusted source, listens on no socket, runs only during a deploy and is removed with --rm. The running application cannot reach this at all: the app image is built from mcr.microsoft.com/dotnet/aspnet, which carries no PowerShell, and its scan reports none of these. Fixed in 10.0.10, so this clears once Microsoft rebuilds the SDK image on an updated PowerShell. The purl is pinned to 10.0.6 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-05T00:00:00Z"
@@ -21,6 +27,9 @@
       "purls": [
         "pkg:nuget/System.Security.Cryptography.Xml@10.0.6"
       ],
+      "paths": [
+        "usr/share/powershell/.store/powershell.linux.x64/7.6.4/powershell.linux.x64/7.6.4/tools/net10.0/any/pwsh.deps.json"
+      ],
       "statement": "Shipped inside the PowerShell 7.6.4 bundle that mcr.microsoft.com/dotnet/sdk carries, at usr/share/powershell/.store/powershell.linux.x64/7.6.4, not in the SDK toolchain and not in this application. System.Security.Cryptography.Xml handles XML digital signatures and XML encryption; every finding here is reached by feeding attacker-controlled signed or encrypted XML to that API. The only service using this image is migrate, which runs 'bash -lc' with dotnet restore, dotnet tool restore and dotnet-ef database update. It never starts pwsh, never parses XML from an untrusted source, listens on no socket, runs only during a deploy and is removed with --rm. The running application cannot reach this at all: the app image is built from mcr.microsoft.com/dotnet/aspnet, which carries no PowerShell, and its scan reports none of these. Fixed in 10.0.10, so this clears once Microsoft rebuilds the SDK image on an updated PowerShell. The purl is pinned to 10.0.6 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-05T00:00:00Z"
     },
@@ -29,6 +38,9 @@
       "purls": [
         "pkg:nuget/System.Security.Cryptography.Xml@10.0.6"
       ],
+      "paths": [
+        "usr/share/powershell/.store/powershell.linux.x64/7.6.4/powershell.linux.x64/7.6.4/tools/net10.0/any/pwsh.deps.json"
+      ],
       "statement": "Shipped inside the PowerShell 7.6.4 bundle that mcr.microsoft.com/dotnet/sdk carries, at usr/share/powershell/.store/powershell.linux.x64/7.6.4, not in the SDK toolchain and not in this application. System.Security.Cryptography.Xml handles XML digital signatures and XML encryption; every finding here is reached by feeding attacker-controlled signed or encrypted XML to that API. The only service using this image is migrate, which runs 'bash -lc' with dotnet restore, dotnet tool restore and dotnet-ef database update. It never starts pwsh, never parses XML from an untrusted source, listens on no socket, runs only during a deploy and is removed with --rm. The running application cannot reach this at all: the app image is built from mcr.microsoft.com/dotnet/aspnet, which carries no PowerShell, and its scan reports none of these. Fixed in 10.0.10, so this clears once Microsoft rebuilds the SDK image on an updated PowerShell. The purl is pinned to 10.0.6 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-05T00:00:00Z"
     },
@@ -36,6 +48,9 @@
       "id": "CVE-2026-50648",
       "purls": [
         "pkg:nuget/System.Security.Cryptography.Xml@10.0.6"
+      ],
+      "paths": [
+        "usr/share/powershell/.store/powershell.linux.x64/7.6.4/powershell.linux.x64/7.6.4/tools/net10.0/any/pwsh.deps.json"
       ],
       "statement": "Shipped inside the PowerShell 7.6.4 bundle that mcr.microsoft.com/dotnet/sdk carries, at usr/share/powershell/.store/powershell.linux.x64/7.6.4, not in the SDK toolchain and not in this application. System.Security.Cryptography.Xml handles XML digital signatures and XML encryption; every finding here is reached by feeding attacker-controlled signed or encrypted XML to that API. The only service using this image is migrate, which runs 'bash -lc' with dotnet restore, dotnet tool restore and dotnet-ef database update. It never starts pwsh, never parses XML from an untrusted source, listens on no socket, runs only during a deploy and is removed with --rm. The running application cannot reach this at all: the app image is built from mcr.microsoft.com/dotnet/aspnet, which carries no PowerShell, and its scan reports none of these. Fixed in 10.0.10, so this clears once Microsoft rebuilds the SDK image on an updated PowerShell. The purl is pinned to 10.0.6 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-05T00:00:00Z"

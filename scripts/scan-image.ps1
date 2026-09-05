@@ -5,8 +5,9 @@
 # match the deployment being scanned; with docker-compose.shared-caddy.yml the bundled caddy moves
 # behind a profile and correctly drops out of scope.
 #
-# The tools profile is excluded on purpose: the migrate service is ephemeral, runs only during a
-# deploy, and never listens on a socket. docs/ci-cd-design.md records that decision.
+# The normal manifest excludes the tools profile because it is not part of the long-running
+# deployment. The migrate service is still gated separately and receives a short-lived,
+# single-service scan receipt that production-compose.ps1 requires before it may touch the DB.
 #
 # Uses Trivy, which downloads its vulnerability database but never uploads the image or its
 # metadata to a third party. Docker Scout is deliberately not used for that reason.
@@ -96,7 +97,11 @@ param(
     # is exactly how an image the gate rejected gets deployed.
     #
     # Relative paths resolve against the repository root. artifacts/ is already ignored by Git.
-    [string] $ProvenanceOutputPath
+    [string] $ProvenanceOutputPath,
+    # A short-lived approval for one filtered migration scan. Unlike the normal manifest this is
+    # deliberately single-service and single-use: production-compose.ps1 validates its image,
+    # scanner and database metadata, atomically claims it, and consumes it before running migrate.
+    [string] $ScanReceiptOutputPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -119,7 +124,7 @@ function Clear-ProvenanceOutput {
 
     $directory = Get-ProvenanceDirectory -Path $Path
     if (Test-Path -LiteralPath $directory -PathType Leaf) {
-        throw "The directory for -ProvenanceOutputPath is a file: $directory"
+        throw "The directory for the approval output is a file: $directory"
     }
 
     # Created rather than demanded. The documented location is artifacts/, which Git ignores and a
@@ -133,7 +138,7 @@ function Clear-ProvenanceOutput {
     }
 
     if (Test-Path -LiteralPath $Path -PathType Container) {
-        throw "-ProvenanceOutputPath points at a directory: $Path"
+        throw "The approval output points at a directory: $Path"
     }
 
     # This is the first fallible operation after parameter binding. A validation, self-test or
@@ -142,6 +147,22 @@ function Clear-ProvenanceOutput {
 }
 
 $ServiceName = @($ServiceName | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+# Clear every requested approval output before any validation can fail. A stale successful file is
+# more dangerous than no file because a later deployment could mistake it for this run's result.
+foreach ($outputVariableName in @('ProvenanceOutputPath', 'ScanReceiptOutputPath')) {
+    $outputPath = Get-Variable -Name $outputVariableName -ValueOnly
+    if ([string]::IsNullOrWhiteSpace($outputPath)) {
+        continue
+    }
+
+    if (-not [System.IO.Path]::IsPathRooted($outputPath)) {
+        $outputPath = Join-Path $repoRoot $outputPath
+        Set-Variable -Name $outputVariableName -Value $outputPath
+    }
+
+    Clear-ProvenanceOutput -Path $outputPath
+}
 
 if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
     # Refused rather than silently producing a partial manifest. production-compose.ps1 requires
@@ -152,11 +173,16 @@ if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
         throw '-ServiceName cannot be combined with -ProvenanceOutputPath. A manifest has to cover every service the deployment starts.'
     }
 
-    if (-not [System.IO.Path]::IsPathRooted($ProvenanceOutputPath)) {
-        $ProvenanceOutputPath = Join-Path $repoRoot $ProvenanceOutputPath
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ScanReceiptOutputPath)) {
+    if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
+        throw '-ScanReceiptOutputPath cannot be combined with -ProvenanceOutputPath.'
     }
 
-    Clear-ProvenanceOutput -Path $ProvenanceOutputPath
+    if ($ServiceName.Count -ne 1 -or $ServiceName[0] -cne 'migrate') {
+        throw '-ScanReceiptOutputPath requires exactly -ServiceName migrate. A receipt must not approve a broader or different scope.'
+    }
 }
 
 # -TrivyImage is a parameter, so a caller can unpin the scanner from the command line. Checking the
@@ -390,7 +416,69 @@ $script:ProvenanceSchemaVersion = 1
 function Get-ImageRepository {
     param([Parameter(Mandatory)] [string] $Image)
 
-    return $Image.Split('@')[0].Split(':')[0]
+    $withoutDigest = $Image.Split('@')[0]
+    $lastSlash = $withoutDigest.LastIndexOf('/')
+    $lastColon = $withoutDigest.LastIndexOf(':')
+
+    # A colon after the last slash introduces a tag. A colon before it belongs to a registry port
+    # (including the colons inside an IPv6 literal) and must stay part of the repository name.
+    if ($lastColon -gt $lastSlash) {
+        return $withoutDigest.Substring(0, $lastColon)
+    }
+
+    return $withoutDigest
+}
+
+function Get-ScanSelection {
+    param(
+        [Parameter(Mandatory)] $Config,
+        [string[]] $ServiceNames = @()
+    )
+
+    $available = [ordered]@{}
+    foreach ($service in $Config.services.PSObject.Properties) {
+        $image = $service.Value.image
+        if ([string]::IsNullOrWhiteSpace($image)) {
+            continue
+        }
+
+        $available[$service.Name] = [pscustomobject]@{
+            Image   = $image
+            IsLocal = $null -ne $service.Value.build
+        }
+    }
+
+    $names = @($available.Keys)
+    if ($ServiceNames.Count -gt 0) {
+        $missing = @()
+        foreach ($requested in $ServiceNames) {
+            if (@($names | Where-Object { $_ -ceq $requested }).Count -eq 0) {
+                $missing += $requested
+            }
+        }
+        if ($missing.Count -gt 0) {
+            throw "These services are not in scope: $($missing -join ', '). In scope: $($names -join ', '). Add the profile that defines them with -ComposeProfile."
+        }
+        $names = @($ServiceNames)
+    }
+
+    $serviceImages = [ordered]@{}
+    $targets = New-Object System.Collections.Generic.List[object]
+    foreach ($name in $names) {
+        # Use the property selected with an ordinal comparison. OrderedDictionary.Contains is
+        # case-insensitive, which would accept a typo that does not name the Compose service exactly.
+        $property = @($Config.services.PSObject.Properties | Where-Object { $_.Name -ceq $name })[0]
+        $serviceImages[$name] = $property.Value.image
+        $targets.Add([pscustomobject]@{
+                Image   = $property.Value.image
+                IsLocal = $null -ne $property.Value.build
+            })
+    }
+
+    return [pscustomobject]@{
+        ServiceImages = $serviceImages
+        Targets       = @($targets | Sort-Object -Property Image -Unique)
+    }
 }
 
 # Rejects anything that is not a full sha256 image ID. A reader that accepts a tag here would
@@ -407,7 +495,9 @@ function New-ProvenanceDocument {
     param(
         [Parameter(Mandatory)] $ServiceImages,
         [Parameter(Mandatory)] $Scanned,
-        [Parameter(Mandatory)] [string] $ScannerImage
+        [Parameter(Mandatory)] [string] $ScannerImage,
+        [Parameter(Mandatory)] [string] $ScannerVersion,
+        [Parameter(Mandatory)] [string] $VulnerabilityDatabaseUpdatedAt
     )
 
     $idByImage = @{}
@@ -446,7 +536,60 @@ function New-ProvenanceDocument {
         gateResult    = 'passed'
         generatedAt   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         scannerImage  = $ScannerImage
+        scannerVersion = $ScannerVersion
+        vulnerabilityDatabaseUpdatedAt = $VulnerabilityDatabaseUpdatedAt
         services      = $services
+    }
+}
+
+function Get-TrivyVersionMetadata {
+    param([Parameter(Mandatory)] [string[]] $Lines)
+
+    $version = $null
+    $databaseUpdatedAt = $null
+    foreach ($line in $Lines) {
+        if ([string]::IsNullOrWhiteSpace($version) -and $line -cmatch '^Version:\s*(\S+)\s*$') {
+            $version = $Matches[1]
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace($databaseUpdatedAt) -and $line -cmatch '^\s*UpdatedAt:\s*(.+?)\s*$') {
+            try {
+                $reportedTimestamp = $Matches[1]
+                # Trivy 0.74.0 prints Go's time.String form here, including nanoseconds and the
+                # redundant "+0000 UTC" suffix. .NET accepts at most seven fractional digits, so
+                # normalize that real output before parsing. The ISO form remains accepted for
+                # forwards compatibility and for the pure self test.
+                if ($reportedTimestamp -cmatch '^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.(\d+))? \+0000 UTC$') {
+                    $fraction = $Matches[3]
+                    if ($fraction.Length -gt 7) {
+                        $fraction = $fraction.Substring(0, 7)
+                    }
+                    $fractionPart = ''
+                    if (-not [string]::IsNullOrWhiteSpace($fraction)) {
+                        $fractionPart = ".$fraction"
+                    }
+                    $reportedTimestamp = "$($Matches[1])T$($Matches[2])${fractionPart}Z"
+                }
+
+                $databaseUpdatedAt = ([datetimeoffset]::Parse($reportedTimestamp, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
+            catch {
+                throw "Trivy reported an invalid vulnerability database UpdatedAt value '$reportedTimestamp'."
+            }
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw 'Trivy --version did not report its scanner version.'
+    }
+    if ([string]::IsNullOrWhiteSpace($databaseUpdatedAt)) {
+        throw 'Trivy --version did not report the vulnerability database UpdatedAt timestamp.'
+    }
+
+    return [pscustomobject]@{
+        ScannerVersion                = $version
+        VulnerabilityDatabaseUpdatedAt = $databaseUpdatedAt
     }
 }
 
@@ -1056,6 +1199,28 @@ function Invoke-ScannerSelfTest {
         Assert-ScannerSelfTest ((Get-ImageRepository -Image 'postgres:16-alpine') -ceq 'postgres') 'a tagged reference did not reduce to its repository.'
         Assert-ScannerSelfTest ((Get-ImageRepository -Image ('mcr.microsoft.com/dotnet/sdk@sha256:' + ('e' * 64))) -ceq 'mcr.microsoft.com/dotnet/sdk') 'a digest reference kept the digest in its repository, so its acceptances would be orphaned whenever the pin moves.'
         Assert-ScannerSelfTest ((Get-ImageRepository -Image 'web-writing-tool-app:local') -ceq 'web-writing-tool-app') 'a local tagged reference did not reduce to its repository.'
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image 'registry.example:5000/team/sdk:10.0') -ceq 'registry.example:5000/team/sdk') 'a registry port was mistaken for an image tag.'
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image ('registry.example:5000/team/sdk@sha256:' + ('e' * 64))) -ceq 'registry.example:5000/team/sdk') 'a registry port was lost from a digest reference.'
+        Assert-ScannerSelfTest ((Get-ImageRepository -Image ('[fd00::1]:5000/team/sdk:10.0@sha256:' + ('e' * 64))) -ceq '[fd00::1]:5000/team/sdk') 'an IPv6 registry reference did not preserve its repository.'
+
+        $selectionConfig = [pscustomobject]@{
+            services = [pscustomobject]@{
+                app = [pscustomobject]@{ image = 'app:local'; build = [pscustomobject]@{ context = '.' } }
+                migrate = [pscustomobject]@{ image = 'sdk@sha256:abc'; build = $null }
+            }
+        }
+        $migrateSelection = Get-ScanSelection -Config $selectionConfig -ServiceNames @('migrate')
+        Assert-ScannerSelfTest ($migrateSelection.ServiceImages.Count -eq 1 -and $migrateSelection.ServiceImages['migrate'] -ceq 'sdk@sha256:abc') 'ServiceName did not select exactly the profiled migration service.'
+        Assert-ScannerSelfTest ($migrateSelection.Targets.Count -eq 1 -and -not $migrateSelection.Targets[0].IsLocal) 'the selected migration image was given the wrong local-image policy.'
+
+        $missingSelectionRejected = $false
+        try {
+            Get-ScanSelection -Config $selectionConfig -ServiceNames @('Migrate') | Out-Null
+        }
+        catch {
+            $missingSelectionRejected = $true
+        }
+        Assert-ScannerSelfTest $missingSelectionRejected 'ServiceName matched case-insensitively, so a typo could select a different Compose service than intended.'
 
         Assert-ScannerSelfTest (Test-ImageIdFormat -ImageId ('sha256:' + ('a' * 64))) 'a valid image ID was rejected.'
         Assert-ScannerSelfTest (-not (Test-ImageIdFormat -ImageId 'postgres:16-alpine')) 'a tag was accepted as an image ID, which is the substitution the manifest exists to prevent.'
@@ -1072,9 +1237,20 @@ function Invoke-ScannerSelfTest {
             [pscustomobject]@{ Image = 'postgres:16-alpine'; ImageId = 'sha256:' + ('c' * 64) }
         )
 
-        $selfTestDocument = New-ProvenanceDocument -ServiceImages $selfTestServiceImages -Scanned $selfTestScanned -ScannerImage 'aquasec/trivy@sha256:'
+        $selfTestVersionLines = @(
+            'Version: 0.74.0',
+            'Vulnerability DB:',
+            '  UpdatedAt: 2026-09-05 10:00:00.123456789 +0000 UTC'
+        )
+        $selfTestMetadata = Get-TrivyVersionMetadata -Lines $selfTestVersionLines
+        Assert-ScannerSelfTest ($selfTestMetadata.ScannerVersion -ceq '0.74.0') 'the scanner version was not parsed from Trivy output.'
+        Assert-ScannerSelfTest ($selfTestMetadata.VulnerabilityDatabaseUpdatedAt -ceq '2026-09-05T10:00:00Z') 'the vulnerability database timestamp was not parsed from Trivy output.'
+
+        $selfTestDocument = New-ProvenanceDocument -ServiceImages $selfTestServiceImages -Scanned $selfTestScanned -ScannerImage ('aquasec/trivy@sha256:' + ('d' * 64)) -ScannerVersion $selfTestMetadata.ScannerVersion -VulnerabilityDatabaseUpdatedAt $selfTestMetadata.VulnerabilityDatabaseUpdatedAt
         Assert-ScannerSelfTest ($selfTestDocument.gateResult -eq 'passed') 'the manifest does not record gateResult passed.'
         Assert-ScannerSelfTest ($selfTestDocument.schemaVersion -eq $script:ProvenanceSchemaVersion) 'the manifest does not record the schema version.'
+        Assert-ScannerSelfTest ($selfTestDocument.scannerVersion -ceq '0.74.0') 'the manifest does not record the scanner version.'
+        Assert-ScannerSelfTest ($selfTestDocument.vulnerabilityDatabaseUpdatedAt -ceq '2026-09-05T10:00:00Z') 'the manifest does not record the vulnerability database timestamp.'
         Assert-ScannerSelfTest ($selfTestDocument.services.Count -eq 3) 'the manifest dropped a service; scanning deduplicates by image but a deployment needs one entry per service.'
         Assert-ScannerSelfTest ($selfTestDocument.services['postgres'].imageId -eq $selfTestDocument.services['migrate'].imageId) 'two services sharing an image did not resolve to the same ID.'
         Assert-ScannerSelfTest ($selfTestDocument.services['app'].imageId -eq ('sha256:' + ('b' * 64))) 'a service resolved to the wrong image ID.'
@@ -1082,7 +1258,7 @@ function Invoke-ScannerSelfTest {
         $unscannedServices = [ordered]@{ app = 'never-scanned:local' }
         $unscannedRejected = $false
         try {
-            New-ProvenanceDocument -ServiceImages $unscannedServices -Scanned $selfTestScanned -ScannerImage 'x' | Out-Null
+            New-ProvenanceDocument -ServiceImages $unscannedServices -Scanned $selfTestScanned -ScannerImage 'x' -ScannerVersion 'x' -VulnerabilityDatabaseUpdatedAt '2026-09-05T10:00:00Z' | Out-Null
         }
         catch {
             $unscannedRejected = $true
@@ -1483,50 +1659,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $config = ($configJson | Out-String) | ConvertFrom-Json
-$targets = New-Object System.Collections.Generic.List[object]
-# Kept alongside $targets rather than derived from it: $targets is deduplicated by image, which is
-# right for scanning and wrong for the manifest, where each service needs its own entry even when
-# two of them share an image.
-$serviceImages = [ordered]@{}
-foreach ($service in $config.services.PSObject.Properties) {
-    $image = $service.Value.image
-    if ([string]::IsNullOrWhiteSpace($image)) {
-        continue
-    }
-
-    $serviceImages[$service.Name] = $image
-
-    $targets.Add([pscustomobject]@{
-            Image   = $image
-            # Images Compose knows how to build are ours. Pulling them would fail or fetch a
-            # different artifact, so they are built locally instead.
-            IsLocal = $null -ne $service.Value.build
-        })
-}
-
-if ($ServiceName.Count -gt 0) {
-    $missingServices = @($ServiceName | Where-Object { -not $serviceImages.Contains($_) })
-    if ($missingServices.Count -gt 0) {
-        throw "These services are not in scope: $($missingServices -join ', '). In scope: $(($serviceImages.Keys) -join ', '). Add the profile that defines them with -ComposeProfile."
-    }
-
-    $selected = [ordered]@{}
-    foreach ($name in $ServiceName) {
-        $selected[$name] = $serviceImages[$name]
-    }
-
-    $serviceImages = $selected
-    $targets = New-Object System.Collections.Generic.List[object]
-    foreach ($name in $serviceImages.Keys) {
-        $selectedService = $config.services.PSObject.Properties | Where-Object { $_.Name -ceq $name }
-        $targets.Add([pscustomobject]@{
-                Image   = $serviceImages[$name]
-                IsLocal = $null -ne $selectedService.Value.build
-            })
-    }
-}
-
-$targets = @($targets | Sort-Object -Property Image -Unique)
+$selection = Get-ScanSelection -Config $config -ServiceNames $ServiceName
+$serviceImages = $selection.ServiceImages
+$targets = @($selection.Targets)
 if ($targets.Count -eq 0) {
     throw "docker compose config returned no images."
 }
@@ -1576,6 +1711,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $scannerVersion | ForEach-Object { Write-Output "  $_" }
+$scannerMetadata = Get-TrivyVersionMetadata -Lines $scannerVersion
 
 $scanDirectory = New-ScanWorkspace
 $scanned = New-Object System.Collections.Generic.List[object]
@@ -1661,9 +1797,15 @@ Write-Output 'Image vulnerability gate passed for all images in scope.'
 # Only here. Every earlier exit path leaves no manifest, so a reader cannot mistake a rejected or
 # abandoned run for an approved one.
 if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
-    $document = New-ProvenanceDocument -ServiceImages $serviceImages -Scanned $scanned -ScannerImage $TrivyImage
+    $document = New-ProvenanceDocument -ServiceImages $serviceImages -Scanned $scanned -ScannerImage $TrivyImage -ScannerVersion $scannerMetadata.ScannerVersion -VulnerabilityDatabaseUpdatedAt $scannerMetadata.VulnerabilityDatabaseUpdatedAt
     Write-ProvenanceDocument -Path $ProvenanceOutputPath -Document $document
     Write-Output "Recorded the scanned image IDs at $ProvenanceOutputPath."
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ScanReceiptOutputPath)) {
+    $document = New-ProvenanceDocument -ServiceImages $serviceImages -Scanned $scanned -ScannerImage $TrivyImage -ScannerVersion $scannerMetadata.ScannerVersion -VulnerabilityDatabaseUpdatedAt $scannerMetadata.VulnerabilityDatabaseUpdatedAt
+    Write-ProvenanceDocument -Path $ScanReceiptOutputPath -Document $document
+    Write-Output "Recorded the short-lived migration scan receipt at $ScanReceiptOutputPath."
 }
 
 exit 0

@@ -458,7 +458,7 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 2. 対象リリースのソースを配置する。
 3. Caddyコンテナ構成の場合、`scripts/preflight-external-caddy.ps1`を実行する。何も変更しないので、必ずここで行う。
 4. `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。manifestも書かれない。
-5. マイグレーションを行う場合は、`scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate`でmigrateイメージをスキャンする。これもDBへ触れる前に行う。
+5. マイグレーションを行う場合は、`scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json`でmigrateイメージをスキャンする。これもDBへ触れる前に行う。
 6. `docker compose stop app`でappを停止する。
 7. 本番DBバックアップと`app_keys`のバックアップを取得する。
 8. 必要に応じて`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
@@ -472,8 +472,9 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 migrateのスキャンを別実行にしているのは、migrateが`tools` profileにいて手順4のスコープへ入らないためである。
 このサービスは本番DBへ書き込む唯一のコンポーネントなので、イメージはComposeファイル内でdigest固定し、
 デプロイのたびにゲートを通す。`-ServiceName`があるので、手順4で見た3イメージを再スキャンしない。
-manifestへは入れない。digest固定なのでピン留めする対象がなく、入れると`production-compose.ps1`の
-スコープ検査と食い違う。詳細は[CI/CD設計](ci-cd-design.md)「migrateイメージ」を参照。
+長期稼働サービスのmanifestへは入れず、migrateだけを記録する単回使用receiptを別に作る。
+`production-compose.ps1`はreceiptの鮮度、scannerとDB metadata、Composeのdigest、ローカルimage IDを検証し、
+Migration開始前に原子的に消費する。失敗時も再利用しない。詳細は[CI/CD設計](ci-cd-design.md)「migrateイメージ」を参照。
 
 preflightを最初に置くのも、スキャンをMigrationより前に置くのと同じ理由である。外部ネットワークの
 不在は`docker compose config`では検出できず、`docker compose up`で初めて失敗する。手順の末尾で

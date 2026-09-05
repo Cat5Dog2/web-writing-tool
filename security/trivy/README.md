@@ -35,6 +35,7 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来22件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
 | `postgres:16-alpine` | `libcrypto3` / `libssl3` | CVE-2026-14456の1件。OpenSSL 3.5のQUICサーバーlistener限定で、PostgreSQLはQUICを実装しない。Alpineは3.5.8-r0で修正済みだが上流イメージの再ビルド待ち |
+| `mcr.microsoft.com/dotnet/sdk` | PowerShell 7.6.4内の`pwsh.deps.json` | `System.Security.Cryptography.Xml` 10.0.6由来5件。migrateはbashからdotnet/EFだけを実行し、PowerShellと非信頼XMLを使わない。PURLと同梱ファイルの両方へ限定 |
 
 `caddy`は受容記録を持たない。公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
 TLSのKeyUpdate DoS（CVE-2026-56862）を含んでいたため、修正版Goでビルドし直す

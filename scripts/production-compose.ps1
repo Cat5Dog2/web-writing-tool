@@ -17,6 +17,10 @@
 # the caller's environment; and after an "up" the running containers are read back and compared
 # against the same manifest.
 #
+# migrate is not a long-running service and therefore is not in that manifest. Its exact digest and
+# image ID come from a separate scan receipt. The wrapper atomically claims that receipt, checks its
+# scanner/database freshness, and consumes it before the one allowed migration command can run.
+#
 # The compose command is one string rather than trailing arguments:
 #
 #   scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'
@@ -31,6 +35,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $ComposeCommand,
     [string] $ManifestPath = 'artifacts/scanned-images.json',
+    [string] $MigrationReceiptPath = 'artifacts/scanned-migrate.json',
     [string[]] $ComposeFile = @('docker-compose.yml'),
     [string] $EnvFile
 )
@@ -80,16 +85,6 @@ function Invoke-DockerCapturing {
         Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
         $ErrorActionPreference = $previous
     }
-}
-
-function Test-ImageIdFormat {
-    param([string] $ImageId)
-
-    # A tag in this position would undo the point of the manifest, and Docker accepts both here.
-    #
-    # -cmatch, not -match. PowerShell compares case-insensitively by default, which would accept an
-    # uppercase digest here and then hand Docker something it does not resolve.
-    return ($ImageId -cmatch '^sha256:[0-9a-f]{64}$')
 }
 
 function Read-ScanManifest {
@@ -146,6 +141,18 @@ function Read-ScanManifest {
     return , $pinned
 }
 
+function Read-MigrationScanReceipt {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $raw = Get-Content -LiteralPath $Path -Raw
+    try {
+        return ($raw | ConvertFrom-Json)
+    }
+    catch {
+        throw "The migration scan receipt at $Path is not valid JSON: $($_.Exception.Message)"
+    }
+}
+
 $ComposeArguments = @($ComposeCommand -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $commandInfo = Get-ProductionComposeCommandInfo -Arguments $ComposeArguments
 
@@ -155,6 +162,10 @@ $ComposeFile = @($ComposeFile | ForEach-Object { $_ -split ',' } | Where-Object 
 
 if (-not [System.IO.Path]::IsPathRooted($ManifestPath)) {
     $ManifestPath = Join-Path $repoRoot $ManifestPath
+}
+
+if (-not [System.IO.Path]::IsPathRooted($MigrationReceiptPath)) {
+    $MigrationReceiptPath = Join-Path $repoRoot $MigrationReceiptPath
 }
 
 $composeOptions = @()
@@ -237,6 +248,67 @@ foreach ($service in $composeServices) {
     Write-Output "Pinned $service to $imageId via $variable"
 }
 
+$migrationReceiptClaim = $null
+if ($commandInfo.IsToolsMigration) {
+    if (-not (Test-Path -LiteralPath $MigrationReceiptPath -PathType Leaf)) {
+        throw "No migration scan receipt at $MigrationReceiptPath. Run scripts/scan-image.ps1 with -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath first."
+    }
+
+    $receiptDirectory = Split-Path -Parent $MigrationReceiptPath
+    $receiptName = Split-Path -Leaf $MigrationReceiptPath
+    $migrationReceiptClaim = Join-Path $receiptDirectory (".$receiptName.$PID.$([guid]::NewGuid().ToString('N')).claimed")
+
+    # Same-directory rename is atomic. Only one concurrent migration can claim this receipt, and
+    # the original path disappears before any DB-writing process starts. A failed migration needs a
+    # fresh scan instead of silently reusing the same approval.
+    try {
+        [System.IO.File]::Move($MigrationReceiptPath, $migrationReceiptClaim)
+    }
+    catch {
+        throw "Could not atomically claim the migration scan receipt at $MigrationReceiptPath. Another migration may already be using it: $($_.Exception.Message)"
+    }
+
+    try {
+        $toolsConfigResult = Invoke-DockerCapturing -Arguments (@('compose') + $composeOptions + @('--profile', 'tools', 'config', '--format', 'json'))
+        if ($toolsConfigResult.ExitCode -ne 0) {
+            throw "docker compose --profile tools config failed with exit code $($toolsConfigResult.ExitCode).$([Environment]::NewLine)$(Get-CapturedDockerDetails -Result $toolsConfigResult)"
+        }
+
+        try {
+            $toolsConfig = $toolsConfigResult.Output | ConvertFrom-Json
+        }
+        catch {
+            throw "docker compose --profile tools config returned invalid JSON: $($_.Exception.Message)"
+        }
+
+        $migrationReference = $toolsConfig.services.migrate.image
+        if ([string]::IsNullOrWhiteSpace($migrationReference)) {
+            throw 'The active Compose scope does not define an image for the migrate service.'
+        }
+
+        $receipt = Read-MigrationScanReceipt -Path $migrationReceiptClaim
+        $validatedReceipt = Get-ValidatedMigrationReceipt -Receipt $receipt -ExpectedReference $migrationReference
+
+        $migrationImageResult = Invoke-DockerCapturing -Arguments @('image', 'inspect', '--format', '{{.Id}}', $migrationReference)
+        if ($migrationImageResult.ExitCode -ne 0) {
+            throw "docker image inspect failed for the approved migration image with exit code $($migrationImageResult.ExitCode).$([Environment]::NewLine)$(Get-CapturedDockerDetails -Result $migrationImageResult)"
+        }
+        if ($migrationImageResult.Output.Trim() -cne $validatedReceipt.ImageId) {
+            throw "The migration receipt approved $($validatedReceipt.ImageId), but $migrationReference resolves locally to $($migrationImageResult.Output.Trim()). Re-scan before migration."
+        }
+
+        Write-Output "Claimed a fresh migration scan receipt for $migrationReference ($($validatedReceipt.ImageId))."
+    }
+    catch {
+        # Validation failures consume the bad or stale receipt too. Leaving it behind would make a
+        # retry appear authorized even though this invocation explicitly rejected it.
+        if (Test-Path -LiteralPath $migrationReceiptClaim) {
+            Remove-Item -LiteralPath $migrationReceiptClaim -Force
+        }
+        throw
+    }
+}
+
 $previousPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 try {
@@ -245,6 +317,10 @@ try {
 }
 finally {
     $ErrorActionPreference = $previousPreference
+    if (-not [string]::IsNullOrWhiteSpace($migrationReceiptClaim) -and (Test-Path -LiteralPath $migrationReceiptClaim)) {
+        # Consumed on both success and failure. Retrying a DB write requires another current scan.
+        Remove-Item -LiteralPath $migrationReceiptClaim -Force
+    }
 }
 
 if ($composeExitCode -ne 0) {
