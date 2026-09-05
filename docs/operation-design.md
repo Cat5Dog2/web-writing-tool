@@ -233,7 +233,7 @@ ASP.NET CoreのCookie認証や一部トークン保護に必要なData Protectio
 | ロールバック | DBバックアップ取得後に実施 |
 
 本番マイグレーション前には必ずDBバックアップを取得する。
-本番Composeでは`docker compose --profile tools run --rm migrate`を使用し、リポジトリのローカルツールマニフェストで`dotnet-ef 10.0.8`へ固定する。appコンテナへSDKやEF CLIは含めない。
+本番Composeでは`production-compose.ps1 -ComposeCommand '--profile tools run --rm migrate'`を使用し、リポジトリのローカルツールマニフェストで`dotnet-ef 10.0.8`へ固定する。appコンテナへSDKやEF CLIは含めない。
 
 ## 9. BackgroundService運用
 
@@ -457,11 +457,11 @@ MVPでは画像ファイルや添付ファイルを保存しないため、フ�
 1. 本番VPSへログインする。
 2. 対象リリースのソースを配置する。
 3. Caddyコンテナ構成の場合、`scripts/preflight-external-caddy.ps1`を実行する。何も変更しないので、必ずここで行う。
-4. `scripts/scan-image.ps1 -Build -ProvenanceOutputPath artifacts/scanned-images.json`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。manifestも書かれない。
+4. `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`でイメージをビルドし、同じ成果物をスキャンする。DBへ触れる前に行う。ここで失敗したら中断し、DBは変更しないまま残す。manifestも書かれない。
 5. `docker compose stop app`でappを停止する。
 6. 本番DBバックアップと`app_keys`のバックアップを取得する。
-7. 必要に応じて`scripts/production-compose.ps1 -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
-8. `scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
+7. 必要に応じて`scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'`でDBマイグレーションを実行する。
+8. `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app'`でサービスを更新する。`--build`を付けない。付けるとスキャンを通した成果物ではなく、その場で作り直した別の成果物が動く。
 9. `docker compose ps`で起動状態を確認する。
 10. 公開URLから`curl -fsS`で`/health/live`を確認する。`/health/ready`はVPS上からループバック経由で確認する。7.2参照。
 11. 管理者でログインし、`/health/deps`が`Healthy`であることを確認する。外部APIキーの設定漏れはここでしか検知できない。
@@ -485,12 +485,22 @@ CIの`docker-production`ジョブも同じ順序で動く。
 image IDをmanifestから読んで渡し、`up`の後に起動中コンテナの`.Image`を突き合わせる。詳細は
 [CI/CD設計](ci-cd-design.md)「スキャンした成果物を起動する」を参照。
 
-**スキャン以降のcompose呼び出しは、最後の`up`だけでなくすべてラッパー経由にする。** 一部だけタグ解決に
-すると、同じ実行の中でpostgresの解決結果が変わり、Composeが稼働中のコンテナを作り直す。構成に応じて
-`-ComposeFile`を渡す（Caddyコンテナ構成は既定、ホストCaddy構成は`docker-compose.yml,docker-compose.shared-caddy.yml`）。
+**スキャン以降にイメージを解決・起動する`up`と`run`は、すべてラッパー経由にする。** 一部だけタグ解決に
+すると、同じ実行の中でpostgresの解決結果が変わり、Composeが稼働中のコンテナを作り直す。両スクリプトの
+既定は付属Caddy構成の`docker-compose.yml`である。ホストCaddyまたは外部Caddy構成では、対応するoverrideを
+加えた同じ`-ComposeFile`を両方へ明示する。
+
+`-ComposeCommand`へ`-f`、`--profile`等のComposeグローバルオプションを追加してはいけない。
+manifest検証後にサービス範囲が変わるのを防ぐため、ラッパーが拒否する。唯一の例外は、別途リスクを管理する
+`--profile tools run --rm migrate`の完全一致コマンドである。`up`後は、他サービスが稼働しているだけでは
+成功とせず、コマンドが選択した各サービスに稼働中コンテナがあり、そのimage IDが一致することを確認する。
 
 appを停止してからバックアップとMigrationを行うのは、Migration中に旧appが新しいスキーマへ
 書き込むのを防ぐためである。停止から`up -d --no-build`までがダウンタイムになる。
+
+上記コマンドは付属Caddy構成の例である。ホストCaddyまたは外部Caddyコンテナを使う場合は
+[環境構築](environment-setup.md#712-vps上の共通caddyを使う場合)の構成別コマンドを使い、
+スキャンと全ラッパー呼び出しへ同じ`-ComposeFile`を明示する。
 
 CIでスキャンしたイメージはレジストリへ push していないため、VPSへは配布されない。
 本番へ出る成果物はVPS上でビルドしたものになるので、ゲートもVPS上で通す必要がある。

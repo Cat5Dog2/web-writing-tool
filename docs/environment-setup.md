@@ -329,8 +329,8 @@ HTTPS、Cookie Secure、認証リダイレクト、CSRFを本番寄りに確認�
 起動する成果物が別物になる。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
-docker compose up -d --no-build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build'
 docker compose ps
 ```
 
@@ -496,9 +496,16 @@ CIの`docker-production`ジョブも同じ順序で動く。詳細は[CI/CD設�
 本番appイメージにSDKやEF CLIは含めない。`migrate`サービスは`tools` profileでのみ起動し、プロジェクトと同じ`dotnet-ef 10.0.8`を使用する。
 
 ```bash
-docker compose up -d postgres
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
-docker compose --profile tools run --rm migrate
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml \
+  -Build \
+  -ProvenanceOutputPath artifacts/scanned-images.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml \
+  -ComposeCommand 'up -d postgres'
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml \
+  -ComposeCommand '--profile tools run --rm migrate'
 ```
 
 更新時は[運用設計 19.3 PostgreSQLバックアップ](operation-design.md#193-postgresqlバックアップ)を実行してから適用する。Migrationサービスは起動時にソースをコンテナ内へコピーするため、ホスト側の`bin`/`obj`を書き換えない。
@@ -508,12 +515,14 @@ docker compose --profile tools run --rm migrate
 
 スキャンとMigrationが成功してから、appと付属Caddyを起動する。
 
-7.10の`scripts/scan-image.ps1 -Build`が`docker compose build --pull`でイメージを作り、そのまま同じ
-タグをスキャンしている。起動は`--no-build`にする。`up -d --build`にすると、スキャンを通した成果物
-ではなくその場で作り直した別の成果物が動く。
+7.10の`scripts/scan-image.ps1 -Build`が`docker compose build --pull`でイメージを作り、解決した
+image IDをスキャンしてmanifestへ記録する。起動は同じComposeファイルを指定した
+`production-compose.ps1`経由にする。`up -d --build`はスキャン後に成果物を変えるため、ラッパーが拒否する。
 
 ```bash
-docker compose up -d --no-build app caddy
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml \
+  -ComposeCommand 'up -d --no-build app caddy'
 ```
 
 ```bash
@@ -567,22 +576,20 @@ curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```bash
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
-  -Build
+  -Build \
+  -ProvenanceOutputPath artifacts/scanned-images.json
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.shared-caddy.yml \
-  up -d postgres
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -ComposeCommand 'up -d postgres'
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.shared-caddy.yml \
-  --profile tools run --rm migrate
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -ComposeCommand '--profile tools run --rm migrate'
 
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.shared-caddy.yml \
-  up -d --no-build app
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -ComposeCommand 'up -d --no-build app'
 ```
 
 ここでもスキャンがMigrationより前に来る。理由は7.10と同じで、スキャンが失敗したときに
@@ -652,19 +659,22 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ProvenanceOutputPath artifacts/scanned-images.json
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
   -ComposeCommand 'up -d postgres'
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
   -ComposeCommand '--profile tools run --rm migrate'
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
   -ComposeCommand 'up -d --no-build app'
 ```
 
-`production-compose.ps1`の`-ComposeFile`の既定は`docker-compose.yml,docker-compose.external-caddy.yml`
-なので、この構成では省略できる。スキャン以降のcompose呼び出しは、最後の`up`だけでなくすべてラッパー経由に
-する。一部だけタグ解決にすると、同じ実行の中でpostgresの解決結果が変わり、Composeが稼働中のコンテナを
-作り直す。
+`scan-image.ps1`と`production-compose.ps1`の`-ComposeFile`は必ず同じ値にする。両方の既定は
+`docker-compose.yml`だけなので、external Caddy構成では省略できない。スキャン以降にイメージを解決・起動する
+`up`と`run`は、すべてラッパー経由にする。一部だけタグ解決にすると、同じ実行の中でpostgresの
+解決結果が変わり、Composeが稼働中のコンテナを作り直す。
 
 起動に`docker compose up`を直接使わないのは、`--no-build`だけではスキャンを通った成果物が起動する保証に
 ならないためである。Composeでは`--env-file`よりシェルの環境変数が優先されるので、`APP_IMAGE`や
@@ -982,10 +992,10 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 ### 13.9 本番/配置用Docker Compose
 
 ```powershell
-docker compose up -d postgres
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -Build
-docker compose --profile tools run --rm migrate
-docker compose up -d --no-build app caddy
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d postgres'
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app caddy'
 docker compose ps
 docker compose logs -f app
 docker compose down
@@ -1098,8 +1108,8 @@ local:
 
 docker-local:
 
-- [ ] `scripts/scan-image.ps1 -Build`が成功する。
-- [ ] `docker compose up -d --no-build`で`app`, `postgres`, `caddy`が起動する。
+- [ ] `scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json`が成功する。
+- [ ] `scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build'`で`app`, `postgres`, `caddy`が起動し、image IDの照合が成功する。
 - [ ] Caddy経由でアプリへアクセスできる。
 - [ ] PostgreSQLデータが再起動後も保持される。
 - [ ] Data Protectionキーが再起動後も保持される。

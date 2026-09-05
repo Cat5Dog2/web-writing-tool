@@ -81,6 +81,54 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Get-ProvenanceDirectory {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $directory = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($directory)) {
+        return '.'
+    }
+
+    return $directory
+}
+
+function Clear-ProvenanceOutput {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $directory = Get-ProvenanceDirectory -Path $Path
+    if (Test-Path -LiteralPath $directory -PathType Leaf) {
+        throw "The directory for -ProvenanceOutputPath is a file: $directory"
+    }
+
+    # Created rather than demanded. The documented location is artifacts/, which Git ignores and a
+    # fresh checkout therefore does not have.
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    if (Test-Path -LiteralPath $Path -PathType Container) {
+        throw "-ProvenanceOutputPath points at a directory: $Path"
+    }
+
+    # This is the first fallible operation after parameter binding. A validation, self-test or
+    # Docker failure must not leave an approval file from an earlier run behind.
+    Remove-Item -LiteralPath $Path -Force
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
+    if (-not [System.IO.Path]::IsPathRooted($ProvenanceOutputPath)) {
+        $ProvenanceOutputPath = Join-Path $repoRoot $ProvenanceOutputPath
+    }
+
+    Clear-ProvenanceOutput -Path $ProvenanceOutputPath
+}
+
 # -TrivyImage is a parameter, so a caller can unpin the scanner from the command line. Checking the
 # shape here rather than only in the self test is what makes the pin a property of every run: a
 # production scan on the deployment host must not be able to fetch whatever a mutable tag points at
@@ -144,7 +192,6 @@ $resourceLimits = @{
     PidsLimit   = $ScanPidsLimit
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 $ignoreDirectory = Join-Path $repoRoot 'security/trivy'
 
 # Trivy needs RFC3339. A bare date is accepted by DateTime parsing but rejected by Trivy, so the
@@ -359,46 +406,6 @@ function New-ProvenanceDocument {
         scannerImage  = $ScannerImage
         services      = $services
     }
-}
-
-function Get-ProvenanceDirectory {
-    param([Parameter(Mandatory)] [string] $Path)
-
-    $directory = Split-Path -Parent $Path
-    if ([string]::IsNullOrWhiteSpace($directory)) {
-        return '.'
-    }
-
-    return $directory
-}
-
-function Clear-ProvenanceOutput {
-    param([Parameter(Mandatory)] [string] $Path)
-
-    $directory = Get-ProvenanceDirectory -Path $Path
-    if (Test-Path -LiteralPath $directory -PathType Leaf) {
-        throw "The directory for -ProvenanceOutputPath is a file: $directory"
-    }
-
-    # Created rather than demanded. The documented location is artifacts/, which Git ignores and a
-    # fresh checkout therefore does not have, so requiring it would fail every first deployment and
-    # every CI run for no protection.
-    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-        New-Item -ItemType Directory -Path $directory -Force | Out-Null
-    }
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return
-    }
-
-    if (Test-Path -LiteralPath $Path -PathType Container) {
-        throw "-ProvenanceOutputPath points at a directory: $Path"
-    }
-
-    # Removed before scanning rather than overwritten after it. A run that fails the gate, or that
-    # never reaches the write at all, must leave no manifest behind: a deployment reading the
-    # previous run's file would start images this run rejected.
-    Remove-Item -LiteralPath $Path -Force
 }
 
 function Write-ProvenanceDocument {
@@ -1389,17 +1396,6 @@ if ($DockerSelfTest) {
 # rather than an array. Split here so the documented -File invocation and a direct pwsh call with a
 # real array both work.
 $ComposeFile = @($ComposeFile | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-
-# Resolved and cleared before the build and the scans, not after them. A bad path should fail here,
-# in seconds, rather than after a twenty minute build; and clearing first is what makes the
-# manifest's presence mean "this run passed" instead of "some run passed at some point".
-if (-not [string]::IsNullOrWhiteSpace($ProvenanceOutputPath)) {
-    if (-not [System.IO.Path]::IsPathRooted($ProvenanceOutputPath)) {
-        $ProvenanceOutputPath = Join-Path $repoRoot $ProvenanceOutputPath
-    }
-
-    Clear-ProvenanceOutput -Path $ProvenanceOutputPath
-}
 
 $composeOptions = @()
 $envFile = Join-Path $repoRoot '.env'

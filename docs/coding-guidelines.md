@@ -501,8 +501,8 @@ docker run --rm -v "${PWD}:/repo" -w /repo mcr.microsoft.com/powershell:7.4-ubun
 ```
 
 CIも両方を実行する。`build-test`が`pwsh`、`script-compat`が`windows-latest`上の
-Windows PowerShell 5.1で、`scripts/check-script-encoding.ps1`と
-`scripts/scan-image.ps1 -ValidateOnly -SelfTest`を回す。
+Windows PowerShell 5.1で、`scripts/check-script-encoding.ps1`、
+`scripts/scan-image.ps1 -ValidateOnly -SelfTest`、`scripts/test-production-compose.ps1`を回す。
 
 ## 20. `todo.md`運用
 

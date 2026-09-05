@@ -50,6 +50,9 @@ jobs:
       - name: Validate vulnerability acceptances
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
 
+      - name: Test production Compose safeguards
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
@@ -78,6 +81,9 @@ jobs:
 
       - name: Validate vulnerability acceptances
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest
+
+      - name: Test production Compose safeguards
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
   e2e-smoke:
     name: E2E smoke
@@ -206,9 +212,9 @@ jobs:
       - name: Scanner Docker self test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -DockerSelfTest
 
-      # Every compose call after the scan goes through the wrapper, not only the final up. Mixing
-      # the two would leave some calls resolving postgres through its tag and others through the
-      # pinned ID, and Compose recreates a running container when its resolved image changes.
+      # Every compose call that resolves or starts an image after the scan goes through the wrapper.
+      # Mixing the two would leave some calls resolving postgres through its tag and others through
+      # the pinned ID, and Compose recreates a running container when its resolved image changes.
       - name: Start PostgreSQL
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \

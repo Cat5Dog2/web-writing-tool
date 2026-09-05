@@ -31,13 +31,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $ComposeCommand,
     [string] $ManifestPath = 'artifacts/scanned-images.json',
-    [string[]] $ComposeFile = @('docker-compose.yml', 'docker-compose.external-caddy.yml'),
+    [string[]] $ComposeFile = @('docker-compose.yml'),
     [string] $EnvFile
 )
 
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'production-compose-lib.ps1')
 
 # Service name to the Compose variable that selects its image. A service in scope with no entry
 # here cannot be pinned, so the run is refused rather than quietly started from a tag. Adding a
@@ -59,18 +60,24 @@ function Invoke-DockerCapturing {
     param([string[]] $Arguments)
 
     # Windows PowerShell turns native stderr into an ErrorRecord, which 'Stop' then treats as
-    # terminating. Docker writes ordinary notices there, so the preference is relaxed and the exit
-    # code is checked instead.
+    # terminating. Keep stderr separate from machine-readable stdout: Docker can write a warning
+    # there and config --services must not mistake it for a service name.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    $stderrPath = [System.IO.Path]::GetTempFileName()
     try {
-        $output = & docker @Arguments 2>&1 | ForEach-Object { $_.ToString() }
+        $output = & docker @Arguments 2> $stderrPath | ForEach-Object { $_.ToString() }
+        $exitCode = $LASTEXITCODE
+        $stderr = @(Get-Content -LiteralPath $stderrPath -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.ToString() })
         return [pscustomobject]@{
-            ExitCode = $LASTEXITCODE
-            Output   = ($output -join [Environment]::NewLine)
+            ExitCode    = $exitCode
+            Output      = ($output -join [Environment]::NewLine)
+            ErrorOutput = ($stderr -join [Environment]::NewLine)
         }
     }
     finally {
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
         $ErrorActionPreference = $previous
     }
 }
@@ -140,9 +147,7 @@ function Read-ScanManifest {
 }
 
 $ComposeArguments = @($ComposeCommand -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-if ($ComposeArguments.Count -eq 0) {
-    throw "No compose command was given. For example: -ComposeCommand 'up -d --no-build app'"
-}
+$commandInfo = Get-ProductionComposeCommandInfo -Arguments $ComposeArguments
 
 # "powershell -File" passes every argument as a string, so -ComposeFile a,b arrives as one string
 # rather than an array.
@@ -192,7 +197,7 @@ $pinned = Read-ScanManifest -Path $ManifestPath
 
 $servicesResult = Invoke-DockerCapturing -Arguments (@('compose') + $composeOptions + @('config', '--services'))
 if ($servicesResult.ExitCode -ne 0) {
-    throw "docker compose config --services failed with exit code $($servicesResult.ExitCode).$([Environment]::NewLine)$($servicesResult.Output)"
+    throw "docker compose config --services failed with exit code $($servicesResult.ExitCode).$([Environment]::NewLine)$(Get-CapturedDockerDetails -Result $servicesResult)"
 }
 
 $composeServices = @($servicesResult.Output -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -215,6 +220,13 @@ if ($unpinnable.Count -gt 0) {
     throw "No image variable is known for these services: $($unpinnable -join ', '). Add one to the production Compose files and to this script, or they would start from a mutable tag."
 }
 
+$expectedServices = @()
+if ($commandInfo.Command -ceq 'up') {
+    # Parsed before the state-changing command. Unsupported options must not get one chance to
+    # run before the wrapper discovers that it cannot prove which services they selected.
+    $expectedServices = @(Get-ExpectedUpServices -Arguments $ComposeArguments -ComposeServices $composeServices)
+}
+
 foreach ($service in $composeServices) {
     $variable = $script:ImageVariables[$service]
     $imageId = $pinned[$service]
@@ -225,8 +237,15 @@ foreach ($service in $composeServices) {
     Write-Output "Pinned $service to $imageId via $variable"
 }
 
-& docker compose @composeOptions @ComposeArguments
-$composeExitCode = $LASTEXITCODE
+$previousPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    & docker compose @composeOptions @ComposeArguments
+    $composeExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousPreference
+}
 
 if ($composeExitCode -ne 0) {
     exit $composeExitCode
@@ -235,38 +254,11 @@ if ($composeExitCode -ne 0) {
 # A container started from a pinned ID cannot be the wrong image, but this reads the result back
 # rather than trusting the argument: it also catches a container that some other command left
 # running from an earlier, unpinned deployment.
-if ($ComposeArguments -notcontains 'up') {
+if ($commandInfo.Command -cne 'up') {
     exit 0
 }
 
-$verified = 0
-foreach ($service in $composeServices) {
-    $idResult = Invoke-DockerCapturing -Arguments (@('compose') + $composeOptions + @('ps', '-q', $service))
-    if ($idResult.ExitCode -ne 0) {
-        throw "docker compose ps -q $service failed with exit code $($idResult.ExitCode).$([Environment]::NewLine)$($idResult.Output)"
-    }
-
-    $containerIds = @($idResult.Output -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    foreach ($containerId in $containerIds) {
-        $imageResult = Invoke-DockerCapturing -Arguments @('inspect', '--format', '{{.Image}}', $containerId)
-        if ($imageResult.ExitCode -ne 0) {
-            throw "docker inspect failed for $service container $containerId with exit code $($imageResult.ExitCode).$([Environment]::NewLine)$($imageResult.Output)"
-        }
-
-        # -cne for the same reason Test-ImageIdFormat uses -cmatch: a case-insensitive comparison
-        # would call two different digests equal.
-        $runningImageId = $imageResult.Output.Trim()
-        if ($runningImageId -cne $pinned[$service]) {
-            throw "Service '$service' is running $runningImageId but the manifest approved $($pinned[$service]). Stop it and redeploy from the scanned artifact."
-        }
-
-        $verified++
-        Write-Output "Verified $service is running $runningImageId"
-    }
-}
-
-if ($verified -eq 0) {
-    throw "The compose command was an 'up' but no container was found to verify. Nothing has been confirmed to run the scanned images."
-}
+$captureDocker = { param([string[]] $Arguments) Invoke-DockerCapturing -Arguments $Arguments }
+Assert-ExpectedContainerImages -Services $expectedServices -Pinned $pinned -ComposeOptions $composeOptions -DockerCapturer $captureDocker
 
 exit 0
