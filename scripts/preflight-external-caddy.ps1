@@ -21,6 +21,10 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+# For Get-PinnedComposeOptions. The preflight has to resolve the same project as the deployment it
+# clears, or it would verify a topology that is not the one about to start.
+. (Join-Path $PSScriptRoot 'production-compose-lib.ps1')
+
 function Invoke-DockerCapturing {
     param([string[]] $Arguments)
 
@@ -72,7 +76,7 @@ function ConvertTo-EmptyableArray {
 # does it.
 $ComposeFile = @($ComposeFile | ForEach-Object { $_ -split ',' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-$composeOptions = @()
+$composeOptions = @(Get-PinnedComposeOptions)
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
     # Use the real repository-local environment when it exists, but never substitute the
     # committed example silently: a production preflight must not validate placeholder values.

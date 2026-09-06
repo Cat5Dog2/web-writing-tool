@@ -7,6 +7,20 @@ function Test-ExactArguments {
     return ($difference.Count -eq 0)
 }
 
+# Compose global options that every production entrypoint pins, written here rather than taken
+# from a parameter or the environment. Get-ProductionComposeCommandInfo already rejects a caller
+# that passes -p, but COMPOSE_PROJECT_NAME overrides the name: key in docker-compose.yml just the
+# same, and the project decides which volumes the command touches: postgres_data, app_keys and
+# app_storage are all namespaced by it. A deployment moved to another project would migrate an
+# empty database and start the app on new data-protection keys, with every check still passing.
+#
+# Returned as two separate values, which every caller re-collects with @(). The comma operator is
+# deliberately not used here: it is what keeps a zero- or one-element result an array, but around
+# a two-element array it produces a one-element array holding an array instead.
+function Get-PinnedComposeOptions {
+    return @('--project-name', 'web-writing-tool')
+}
+
 function Get-ProductionComposeCommandInfo {
     param([Parameter(Mandatory)] [string[]] $Arguments)
 

@@ -168,7 +168,7 @@ if (-not [System.IO.Path]::IsPathRooted($MigrationReceiptPath)) {
     $MigrationReceiptPath = Join-Path $repoRoot $MigrationReceiptPath
 }
 
-$composeOptions = @()
+$composeOptions = @(Get-PinnedComposeOptions)
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
     # Never substitute the committed example: a production deployment must not run on placeholder
     # values, the same rule scripts/preflight-external-caddy.ps1 follows.

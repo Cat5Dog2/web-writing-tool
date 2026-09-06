@@ -75,6 +75,15 @@ Assert-Test (-not $up.IsToolsMigration) 'a normal up command was classified as t
 $migration = Get-ProductionComposeCommandInfo -Arguments @('--profile', 'tools', 'run', '--rm', 'migrate')
 Assert-Test ($migration.Command -ceq 'run' -and $migration.IsToolsMigration) 'the one documented migration command was rejected.'
 
+# The project name is pinned, not inherited. COMPOSE_PROJECT_NAME overrides the name: key in
+# docker-compose.yml, and the project decides which postgres_data, app_keys and app_storage volumes
+# the deployment touches. The count is asserted as well as the contents: PowerShell 5.1 unrolls
+# "return @($x)" to a scalar, and a splatted scalar would pass one argument instead of two.
+$pinnedOptions = @(Get-PinnedComposeOptions)
+Assert-Test ($pinnedOptions.Count -eq 2) 'the pinned Compose options did not survive as an array.'
+Assert-Test ($pinnedOptions[0] -ceq '--project-name') 'the pinned Compose options do not begin with --project-name.'
+Assert-Test ($pinnedOptions[1] -ceq 'web-writing-tool') 'the pinned project name is not web-writing-tool.'
+
 $receiptNow = [datetime]::SpecifyKind([datetime]::Parse('2026-09-05T12:00:00Z'), [DateTimeKind]::Utc)
 $migrationReference = 'registry.example:5000/team/sdk@sha256:' + ('d' * 64)
 $migrationImageId = 'sha256:' + ('e' * 64)
