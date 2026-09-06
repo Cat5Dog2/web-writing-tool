@@ -328,6 +328,23 @@ jobs:
             -ComposeFile docker-compose.yml \
             -ComposeCommand 'up -d --no-build app caddy'
 
+      # production-compose.ps1 rejects a caller that passes -p, but COMPOSE_PROJECT_NAME overrides
+      # the name: key in docker-compose.yml just the same. Unpinned, this would build a second
+      # stack with its own postgres_data, app_keys and app_storage: a migration against an empty
+      # database and an app on new data-protection keys, with every check in this job still green.
+      - name: A stray COMPOSE_PROJECT_NAME does not move the deployment
+        env:
+          COMPOSE_PROJECT_NAME: wrong-project
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app caddy'
+          strays=$(docker ps -a --filter "label=com.docker.compose.project=wrong-project" --format '{{.Names}}')
+          echo "stray containers: [$strays]"
+          test -z "$strays"
+          stray_volumes=$(docker volume ls --format '{{.Name}}' | grep '^wrong-project' || true)
+          echo "stray volumes: [$stray_volumes]"
+          test -z "$stray_volumes"
+          test -n "$(docker ps --filter 'label=com.docker.compose.project=web-writing-tool' --filter 'name=app' --format '{{.Names}}')"
+
       - name: Check health through Caddy
         run: |
           curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:8080/health/live
