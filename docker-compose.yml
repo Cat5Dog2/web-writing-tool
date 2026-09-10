@@ -94,10 +94,15 @@ services:
     # いるためデプロイ時のイメージゲート対象に入らない。タグのままだと、レビューしていない内容が
     # 次のデプロイで本番DBを書き換えうる。
     #
-    # 対応するタグは 10.0。更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALを
-    # security/trivy/sdk.trivyignore.yaml へトリアージしてからこの行を変える。手順は
-    # docs/ci-cd-design.md「migrateイメージ」を参照。
-    image: mcr.microsoft.com/dotnet/sdk@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c
+    # 対応するタグは 10.0 (SDK 10.0.401 / ASP.NET Core 10.0.12)。下のrestoreは`--locked-mode`のため、
+    # このdigestは`global.json`、`Dockerfile`、`Dockerfile.dev`と同じSDKでなければならない。SDKが変わると
+    # Web SDKが暗黙で足す`Microsoft.AspNetCore.App.Internal.Assets`のバージョンも変わり、
+    # `packages.lock.json`と食い違ってMigrationが起動前にNU1004で落ちる。
+    #
+    # 更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALを
+    # security/trivy/sdk.trivyignore.yaml へトリアージしてからこの行を変える。現在は受容0件のため
+    # そのファイルは無い。手順は docs/ci-cd-design.md「SDKイメージのdigest更新」を参照。
+    image: mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5
     profiles:
       - tools
     depends_on:

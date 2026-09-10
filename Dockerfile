@@ -1,4 +1,11 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Pinned by digest, not by the 10.0 tag. The Web SDK adds Microsoft.AspNetCore.App.Internal.Assets
+# implicitly, at the ASP.NET Core version the SDK carries, so a moved tag changes a direct package
+# reference and the locked restore below rejects the tracked lock files with NU1004. The SDK and the
+# lock files have to move in the same commit.
+#
+# The matching tag is 10.0 (SDK 10.0.401, ASP.NET Core 10.0.12); global.json pins the same SDK for
+# host runs. To move it, follow docs/ci-cd-design.md "SDKイメージのdigest更新".
+FROM mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5 AS build
 
 WORKDIR /src
 
@@ -34,7 +41,13 @@ RUN dotnet publish src/WebWritingTool.Web/WebWritingTool.Web.csproj \
     --output /app/publish \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Pinned by digest for the same reason as the build stage: what the application runs on is decided in
+# review, not by whichever image the tag points at during a build. The trade-off is that upstream
+# runtime patches now arrive only when this line is bumped, so the image scan failing on the pinned
+# base is the signal to bump it rather than something to work around.
+#
+# The matching tag is 10.0 (ASP.NET Core 10.0.12).
+FROM mcr.microsoft.com/dotnet/aspnet@sha256:1fe86375600b62e6566b465da9553eef0621f13c67f40fe764cd8dbb1dee1497 AS runtime
 
 WORKDIR /app
 

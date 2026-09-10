@@ -36,9 +36,9 @@ param(
     #
     # 'tools' pulls in migrate, which is the only service that writes to the production database.
     # It used to be left out because its SDK image was neither pinned nor triaged, which made
-    # gating on it meaningless churn. Now that it is pinned by digest and its findings are recorded
-    # in security/trivy/sdk.trivyignore.yaml, scanning it is what makes those two facts enforced
-    # rather than decorative: a new HIGH in that image stops the next deployment.
+    # gating on it meaningless churn. Now that it is pinned by digest and any finding it carries is
+    # triaged into security/trivy/<image>.trivyignore.yaml, scanning it is what makes those two facts
+    # enforced rather than decorative: a new HIGH in that image stops the next deployment.
     [string[]] $ComposeProfile = @(),
     # Restrict the scan to these services. Without it every service in scope is scanned.
     #

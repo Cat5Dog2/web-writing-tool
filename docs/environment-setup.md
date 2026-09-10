@@ -30,7 +30,10 @@
 ### 2.2 .NETバージョン
 
 新規実装では.NET 10 / ASP.NET Core 10を基本とする。
-実装時に別バージョンへ固定する場合は、`global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CI、READMEを同時に更新する。
+SDKは`global.json`で完全なバージョンを`rollForward: disable`つきで固定し、コンテナ側はタグではなくdigestで固定する。
+`packages.lock.json`はSDKが暗黙で足すパッケージ参照を含むため、ホストとコンテナのSDKがずれるとlocked restoreが失敗する。
+別バージョンへ移すときは、`global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、`docker-compose.yml`の`migrate`、
+lockファイル、READMEを同じコミットで更新する。手順は[ci-cd-design.md](ci-cd-design.md)9章「SDKイメージのdigest更新」を参照する。
 
 ### 2.3 リポジトリ前提
 
@@ -932,6 +935,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -IncludeE2E
 ```
 
 `scripts/test-e2e.ps1`はコンテナではなくホストで実行する。ホストに.NET SDKとDockerが必要である。
+
+必要なSDKは`global.json`の`version`と完全に一致するものだけである。`rollForward: disable`のため、
+別のパッチが入っていても`dotnet`は動かず、`A compatible .NET SDK was not found.`で止まる。E2Eを
+ローカルで実行する場合はそのバージョンを入れる。それ以外の`dotnet`操作は開発用.NET SDKコンテナ経由の
+ため、ホストにSDKが無くても影響しない。CIは`actions/setup-dotnet`へ`global-json-file`を渡すので自動で揃う。
 
 ホスト実行にする理由は次の2点である。
 

@@ -17,6 +17,22 @@
 `AiModelSettings` の `SortOrder` を再整列し、既定モデルが自動的に `gemini-3.8-flash` へ切り替わる。
 既存行の `Enabled` は上書きしない。旧モデルへ戻す手順は[運用設計](docs/operation-design.md)を参照。
 
+### .NET SDKの固定
+
+`mcr.microsoft.com/dotnet/sdk:10.0`と`aspnet:10.0`をタグからdigest固定へ変え、`global.json`を
+`10.0.401` + `rollForward: disable`にした。Web SDKが暗黙で足す`Microsoft.AspNetCore.App.Internal.Assets`は
+同梱ASP.NET Coreのバージョンに追随し、`packages.lock.json`へ直接参照として残る。タグのままだと上流の
+パッチ公開だけでlockファイルと食い違い、`--locked-mode`のrestoreが`NU1004`で落ちていた（2026-09-09の夜間CI）。
+`packages.lock.json`は 10.0.12 で再生成した。
+
+E2Eはホストの`dotnet`を使うため、ローカルで実行する場合はホストへ .NET SDK 10.0.401 が必要になった。
+それ以外の`dotnet`操作は開発用SDKコンテナ経由のため影響しない。SDKを動かす手順は
+[CI/CD設計](docs/ci-cd-design.md)9章「SDKイメージのdigest更新」を正とする。
+
+CIの`build-test`は、restoreしうる最初のコマンドをlocked restoreにし、ジョブ全体へ`RestoreLockedMode`を
+効かせた。これまでは`Format check`の暗黙restoreがlockファイルを先に書き換えてしまい、locked restoreが
+素通りしていた。
+
 ### 脆弱性
 
 | 対象 | 内容 |
@@ -24,6 +40,7 @@
 | Caddyイメージ | `Dockerfile.caddy`の`--replace`へx/cryptoを追加し`v0.55.0`へ更新。CVE-2026-56854（GO-2026-6303）はv0.55.0未満のx/cryptoすべてが対象で、既存の`x/net v0.56.0`固定が連れてきた`v0.53.0`が検出された |
 | Caddyイメージ | `grpc`を`v1.82.1`から`v1.83.2`へ更新。CVE-2026-84304（HIGH、GHSA-vp52-pcj8-j9qc）は`v1.83.1`で修正済みだが、`--replace`が`v1.82.1`へ固定していたため取り込めていなかった |
 | Caddyイメージ | 併せて`x/net`を`v0.58.0`、`x/text`を`v0.41.0`へ更新。`--replace`は強制置換で上下両方向に固定するため、1つ動かすときは全行を見直す方針を[CI/CD設計](docs/ci-cd-design.md)9.1へ追記した |
+| SDKイメージ | `security/trivy/sdk.trivyignore.yaml`を削除。SDK 10.0.400同梱のPowerShell 7.6.4にあった`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで解消した。新digestのスキャンはHIGH/CRITICAL 0件 |
 
 ## v0.1.0 — MVP初回リリース
 

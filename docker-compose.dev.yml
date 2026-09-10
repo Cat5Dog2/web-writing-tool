@@ -37,6 +37,10 @@ services:
       DOTNET_NUGET_SIGNATURE_VERIFICATION: "false"
       NUGET_CERT_REVOCATION_MODE: "offline"
       ArtifactsPath: /tmp/web-writing-tool-dotnet-artifacts
+      # MSBuildは環境変数をプロパティとして読む。CIはこれを"true"にして、暗黙のrestoreがlockファイルを
+      # 黙って書き換えるのを止める。ローカルは空のままで従来どおり動き、パッケージを足したときは
+      # lockファイルが更新される。
+      RestoreLockedMode: ${RestoreLockedMode:-}
       TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
       HOME: /home/dotnet
       NUGET_PACKAGES: /home/dotnet/.nuget/packages
