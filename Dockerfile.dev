@@ -1,4 +1,10 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0
+# Pinned by digest so local runs, the CI build-test job and the production build all restore with the
+# same SDK. A moved tag changes the implicit Microsoft.AspNetCore.App.Internal.Assets reference and the
+# tracked lock files stop matching. Keep this digest, global.json, Dockerfile and the migrate service in
+# docker-compose.yml on the same SDK; docs/ci-cd-design.md "SDKイメージのdigest更新" has the procedure.
+#
+# The matching tag is 10.0 (SDK 10.0.401, ASP.NET Core 10.0.12).
+FROM mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5
 
 WORKDIR /workspace
 

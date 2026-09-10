@@ -16,6 +16,14 @@ jobs:
   build-test:
     name: Build and non-browser tests
     runs-on: ubuntu-latest
+    env:
+      # MSBuild reads environment variables as properties, so this puts every restore in this job
+      # into locked mode, not only the explicit one below. Without it, format, package listing,
+      # build and test each run an implicit restore that silently rewrites packages.lock.json when
+      # the SDK moves; the locked restore then finds a lock that already matches and passes, and the
+      # drift only surfaces as a working tree diff. docker-compose.dev.yml forwards this variable and
+      # defaults it to empty, so local runs still update lock files when a package is added.
+      RestoreLockedMode: "true"
 
     steps:
       - name: Checkout
@@ -37,6 +45,16 @@ jobs:
 
       - name: Check .NET SDK container
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 --info
+
+      # First command in the job that restores, deliberately. Everything below restores implicitly,
+      # and an implicit restore that is not locked repairs the very drift this is meant to report.
+      # The pre-restore check above proves every tracked project starts with a tracked lock. Locked
+      # mode then rejects a changed dependency graph, and the policy check catches both tracked
+      # rewrites and untracked lock files generated during restore.
+      - name: Restore with package locks
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
 
       - name: Format check
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
@@ -62,19 +80,16 @@ jobs:
       - name: Test production Compose safeguards
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
-      # The pre-restore check above proves every tracked project starts with a tracked lock. Locked
-      # mode rejects a changed dependency graph, and the final policy check catches both tracked
-      # rewrites and untracked lock files generated during restore.
-      - name: Restore with package locks
-        run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
-
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
       - name: Test
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+
+      # RestoreLockedMode should have stopped any of the steps above from rewriting a lock file.
+      # This proves it, and costs one git status.
+      - name: Verify package locks after the full run
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
 
   # CI and the VPS run pwsh, local procedures in docs run "powershell" (Windows PowerShell 5.1).
   # The two hosts parse scripts differently, so the checks that guard the release gate are run on
@@ -113,6 +128,10 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+      # This job restores on the host, with the SDK global.json pins. Locked mode makes that restore
+      # prove the host SDK resolves the same graph the containers recorded, which is the drift
+      # rollForward "disable" is there to prevent.
+      RestoreLockedMode: "true"
 
     steps:
       - name: Checkout
@@ -149,6 +168,9 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     continue-on-error: true
     timeout-minutes: 30
+    env:
+      # Same reason as build-test: an implicit restore that is not locked hides lock file drift.
+      RestoreLockedMode: "true"
 
     steps:
       - name: Checkout
@@ -232,9 +254,10 @@ jobs:
           docker --version
           docker compose version
 
-      # --pull is required. A cached base image keeps shipping runtime patches that upstream
-      # already fixed, and the image scan below would then fail on avoidable vulnerabilities.
-      # caddy is built from Dockerfile.caddy, see docs/ci-cd-design.md 9.1.
+      # --pull still matters for caddy, whose Dockerfile.caddy bases are version tags: a cached base
+      # keeps shipping patches upstream already fixed and the scan below would fail on them. For app
+      # it only re-verifies, because Dockerfile pins both of its bases by digest - there, the scan
+      # failing is the signal to bump the pin, see docs/ci-cd-design.md 9.1.
       - name: Build production images
         run: docker compose build --pull app caddy
 

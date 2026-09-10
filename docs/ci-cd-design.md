@@ -207,7 +207,9 @@ E2Eをコンテナで実行しない理由は次の2点である。
 - `docker-compose.dev.yml`が`ArtifactsPath`を`/tmp`へ向けるため、ビルド出力がバインドマウント外へ出て`E2ETestFixture`がリポジトリルートを解決できない。
 - `Dockerfile.dev`にPlaywrightのブラウザーと依存パッケージが含まれていない。
 
-`global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、CIの.NET SDKバージョンは一致させる。
+`global.json`、`Dockerfile.dev`、本番/配置用Dockerfile、`docker-compose.yml`の`migrate`は同じSDKへ揃える。
+イメージ側はタグではなくdigestで固定し、`global.json`は`rollForward: disable`で完全一致を要求する。
+理由と更新手順は9章「SDKイメージのdigest更新」を正とする。
 
 脆弱性スキャンも共通スクリプトを使う。
 
@@ -603,7 +605,7 @@ manifestにスコープ外のサービスがある、image変数が定義され�
 | 対策 | 場所 | 欠けたときに起きること |
 | --- | --- | --- |
 | digest固定 | `docker-compose.yml`の`migrate.image` | タグが差し替われば未レビューのイメージが動く |
-| 受容記録 | `security/trivy/sdk.trivyignore.yaml` | HIGHが残りゲートが常に赤で、誰も見なくなる |
+| 受容記録 | `security/trivy/sdk.trivyignore.yaml`（現在は受容0件のため不在） | 修正できないHIGHが残るとゲートが常に赤で、誰も見なくなる |
 | デプロイ時スキャンと単回使用receipt | `-ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json` | 固定と受容記録が実際のMigrationに結び付かない |
 
 ```powershell
@@ -628,14 +630,14 @@ migrateは長期稼働サービスのmanifestへ入れない。代わりにmigra
 並行実行や後日の再利用を拒否する。再試行は新しいスキャンから行う。PRでは`migration-image-gate`、main / schedule /
 手動実行では`docker-production`がこの経路を検証する。
 
-現在の受容内容は`System.Security.Cryptography.Xml` 10.0.6 の5件で、いずれもSDKイメージへ同梱された
-PowerShell 7.6.4 に含まれる。migrateはbashから`dotnet`を実行するだけでpwshを起動せず、署名付きXMLも
-扱わない。appイメージは`mcr.microsoft.com/dotnet/aspnet`ベースでPowerShellを含まないため、稼働中の
-アプリからは到達しない。上流が更新版PowerShellでSDKイメージを作り直せば解消する。
+現在の受容内容は0件で、`security/trivy/sdk.trivyignore.yaml`は存在しない。SDK 10.0.400が同梱していた
+PowerShell 7.6.4の`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6
+（同 10.0.10）を同梱したことで解消したため、digest更新と同時に受容記録を削除した。`scripts/scan-image.ps1`は
+中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
 
 digestを更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALをトリアージしてから
 `docker-compose.yml`を変える。受容記録のファイル名はリポジトリ名から決まるため、digestが変わっても
-`sdk.trivyignore.yaml`のままである。
+`sdk.trivyignore.yaml`のままである。手順は「SDKイメージのdigest更新」を正とする。
 
 将来の選択肢として、CIでビルド・スキャンしたイメージをレジストリへpushし、VPSではdigest指定で
 pullして`up --no-build`する方式がある。VPSからビルドツールチェーンを外せ、ロールバックも
@@ -644,6 +646,82 @@ digest指定で済む。レジストリの選定と認証情報の配置が前�
 `migrate`については、EF Coreのmigration bundleをイメージビルド時に作り、実行時はSDKもネットワーク
 restoreも不要にする案もある。SDKイメージ自体を本番から外せるが、`dotnet ef migrations bundle`が設計時に
 `DbContext`を生成するため、ビルド時に接続文字列かデザインタイムファクトリが要る。導入時に別途決める。
+
+### SDKイメージのdigest更新
+
+.NETのパッチが公開されると`mcr.microsoft.com/dotnet/sdk:10.0`は別のイメージを指す。Web SDKは
+`Microsoft.AspNetCore.App.Internal.Assets`を暗黙のパッケージ参照として足し、そのバージョンはイメージへ
+同梱されたASP.NET Coreに追随する。この参照は`packages.lock.json`へ直接参照として記録されるため、タグの
+ままだとソースを1行も変えていないのにlockファイルと食い違い、`--locked-mode`のrestoreが`NU1004`で落ちる。
+2026-09-09の夜間CIがこれで、同じコミットのまま SDK 10.0.400 / ASP.NET Core 10.0.11 から
+SDK 10.0.401 / ASP.NET Core 10.0.12 へ動いたことが原因である。
+
+そのためSDKは次の5か所で同時に固定する。1か所でも取り残すと、そこだけlockファイルと食い違う。
+
+| 場所 | 指定 | 何が動くか |
+| --- | --- | --- |
+| `global.json` | `version` + `rollForward: disable` | ホストの`dotnet`（E2E） |
+| `Dockerfile`のbuildステージ | sdk digest | appイメージのビルドとlocked restore |
+| `Dockerfile`のruntimeステージ | aspnet digest | appイメージの実行基盤 |
+| `Dockerfile.dev` | sdk digest | ローカルとCIの`dotnet` |
+| `docker-compose.yml`の`migrate` | sdk digest | 本番Migrationのlocked restore |
+
+`rollForward: disable`はホストとコンテナを完全一致させるためである。`disable`は完全一致だけを許す。
+これまでの`latestFeature`のままだと、ホストに新しいSDKが入るだけでlockファイルと食い違い、E2Eだけが落ちる。
+
+#### 手順
+
+順序を守る。lockファイルを先に再生成すると、`migrate`だけが古いSDKへ取り残され、本番Migrationが
+起動前にNU1004で落ちる。
+
+1. 採用するSDKとdigestを確認する。
+
+```powershell
+docker pull mcr.microsoft.com/dotnet/sdk:10.0
+docker image inspect mcr.microsoft.com/dotnet/sdk:10.0 --format '{{index .RepoDigests 0}}'
+docker run --rm --entrypoint sh mcr.microsoft.com/dotnet/sdk:10.0 -c "dotnet --version; ls /usr/share/dotnet/shared/Microsoft.AspNetCore.App"
+docker pull mcr.microsoft.com/dotnet/aspnet:10.0
+docker image inspect mcr.microsoft.com/dotnet/aspnet:10.0 --format '{{index .RepoDigests 0}}'
+```
+
+2. 新しいsdk digestを`docker-compose.yml`の`migrate`へ書き、スキャンしてHIGH/CRITICALをトリアージする。
+   受容記録のファイル名はリポジトリ名から決まるため、digestが変わっても`sdk.trivyignore.yaml`のままである。
+   上流の更新で解消した受容はここで消す。詳細は9.2を参照する。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
+```
+
+3. 残る4か所を同じSDKへ更新する。
+
+4. lockファイルを再生成する。差分は暗黙参照の1エントリだけになるはずで、他のパッケージまで動いていれば
+   別の変更が混ざっている。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx
+```
+
+5. 検証する。
+
+```powershell
+# クリーンな作業ツリーからのlocked restoreと、restore後の差分
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
+
+# 本番イメージのビルド。Dockerfileの--locked-mode restoreを通る
+docker compose build --pull app
+
+# migrateのrestoreだけを、本番と同じイメージ・同じマウント・同じフラグで通す
+docker compose --profile tools run --rm --no-deps --entrypoint /bin/bash migrate -lc "cp /source/global.json /work/global.json && cp /source/Directory.Build.props /work/Directory.Build.props && cp -a /source/src /work/src && dotnet restore src/WebWritingTool.Web/WebWritingTool.Web.csproj --locked-mode"
+
+# 後続処理がlockファイルを書き換えないこと
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+git status --porcelain=v1
+```
+
+E2Eはホストの`dotnet`を使うため、ホストへ`global.json`と同じSDKが必要である。CIは
+`actions/setup-dotnet`へ`global-json-file`を渡すので自動で揃う。
 
 ### NuGetのlockファイル
 
