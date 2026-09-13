@@ -1,0 +1,112 @@
+name: Notify release candidate
+
+# Reacts to CI (.github/workflows/ci.yaml) finishing and reports a release candidate to the infra
+# repository named by the INFRA_REPOSITORY variable. This workflow only notifies; it never
+# deploys, builds, scans, or pushes any image itself. See docs/ci-cd-design.md and
+# docs/operation-design.md for the full design, the required Variables/Secrets and the runbook.
+#
+# workflow_run only triggers a workflow run if this file is on the default branch. A merge to main
+# that adds this file puts it on the default branch at the same commit CI just ran for, so if the
+# other conditions below (notably CD_ENABLED) already hold, that merge commit's own main push CI
+# success can be notified from the very first run; there is no guaranteed grace period.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Decide whether to notify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_notify: ${{ steps.decide.outputs.should_notify }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # Every condition, including CD_ENABLED, lives in scripts/release-candidate-notify-lib.ps1 so
+      # it is exercised by scripts/test-release-candidate-notify.ps1. The notify job below will not
+      # run unless should_notify is 'true', so on a normal run CD_APP_PRIVATE_KEY is never read and
+      # nothing is sent while CD is disabled or the source CI run does not qualify. should_notify is
+      # a job output cached at this run's outcome, so notify also re-derives this same decision live
+      # from its own first step, which is what actually protects a "Re-run failed jobs" after
+      # settings change; see that step's comment.
+      - name: Decide
+        id: decide
+        env:
+          CD_ENABLED: ${{ vars.CD_ENABLED }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          BASE_REPOSITORY: ${{ github.repository }}
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-candidate-decide.ps1
+
+  notify:
+    name: Notify infra of release candidate
+    needs: gate
+    if: needs.gate.outputs.should_notify == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # gate's should_notify output is a cached job output: "Re-run failed jobs" on a failed notify
+      # run reuses it without re-running gate, so it would not reflect a CD_ENABLED (or other
+      # condition) change made after gate last succeeded. This step re-derives the same decision
+      # live, right before the first step that would touch CD_APP_PRIVATE_KEY, and fails the job if
+      # it no longer holds.
+      - name: Re-check should notify
+        env:
+          CD_ENABLED: ${{ vars.CD_ENABLED }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          BASE_REPOSITORY: ${{ github.repository }}
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-candidate-recheck.ps1
+
+      - name: Resolve infra repository
+        id: infra_repo
+        env:
+          INFRA_REPOSITORY: ${{ vars.INFRA_REPOSITORY }}
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-candidate-resolve-infra-repo.ps1
+
+      # Mints a short-lived installation token for the CD_APP_ID GitHub App, scoped to only the one
+      # repository resolved above. actions/create-github-app-token marks its "token" output as a
+      # secret, so it is redacted from logs the same as a repository Secret would be. See
+      # docs/operation-design.md for the App's required permissions and installation target.
+      - name: Mint infra-scoped GitHub App token
+        id: mint_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CD_APP_ID }}
+          private-key: ${{ secrets.CD_APP_PRIVATE_KEY }}
+          owner: ${{ steps.infra_repo.outputs.owner }}
+          repositories: ${{ steps.infra_repo.outputs.repo }}
+
+      # head_sha, run id and run attempt all come from the source CI's workflow_run event, never
+      # from this workflow's own github.sha / github.run_id / github.run_attempt. Every value is
+      # passed through env: rather than interpolated into the run: script text, and
+      # scripts/release-candidate-notify.ps1 validates the type and format of each one before it is
+      # used.
+      - name: Notify infra of release candidate
+        env:
+          INFRA_TOKEN: ${{ steps.mint_token.outputs.token }}
+          INFRA_REPOSITORY: ${{ vars.INFRA_REPOSITORY }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-candidate-notify.ps1
+
+      # Only reached if the step above succeeded, since a GitHub Actions run: step defaults to
+      # `bash -e`: a non-zero exit from the pwsh call above stops the step before this line. Says
+      # only that infra was notified, never that anything was deployed.
+      - name: Report notification result
+        run: |
+          echo "リリース候補を通知済み" | tee -a "$GITHUB_STEP_SUMMARY"

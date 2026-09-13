@@ -39,6 +39,8 @@ CI/CD基盤はGitHub Actionsとする。
 
 補助通知Workflowとして`discord-notify`を用意し、push、pull request、Issue closeをDiscord Webhookへ通知する。Webhook URLはGitHub Actions Secretの`DISCORD_WEBHOOK_URL`から参照し、ログや成果物へ出さない。
 
+main CI成功をinfraリポジトリへ通知する`notify-release-candidate` Workflowについては23章を参照する。
+
 夜間CIは本番VPSではなくGitHub Actions上で実行する。性能やDocker Composeの本番相当確認がGitHub-hosted runnerでは不十分になった場合のみ、self-hosted runnerまたはリリース前の手動検証へ分離する。
 
 JST 03:00に夜間CIを実行する場合、GitHub ActionsのcronはUTC基準のため以下を使う。
@@ -877,6 +879,9 @@ CIに入れない値:
 - Discord Webhook URL
 - `.env`
 - Data Protection本番キー
+- `CD_APP_PRIVATE_KEY`（GitHub App秘密鍵。GitHub Actions Secretとして参照し、値をworkflowへ直書きしない。23章）
+
+`CD_ENABLED`、`CD_APP_ID`、`INFRA_REPOSITORY`はRepository Variableであり秘密情報ではないが、値はリポジトリ設定でのみ管理し、workflowへ直書きしない。23章を参照する。
 
 成果物に含めない値:
 
@@ -1005,3 +1010,158 @@ Docker 経由の build/test は追加で `--artifacts-path` を指定し、ホ�
 - [設定リファレンス](configuration-reference.md)
 - [データ保持・プライバシー設計書](data-retention-privacy.md)
 - [セキュリティ設計書](security-design.md)
+
+## 23. リリース候補通知（web-writing-tool → infra）
+
+### 23.1 目的と担当範囲
+
+web-writing-tool、seo-intelligence-platform、wwt-seo-infraの3リポジトリは同一VPSを使う。本章が扱うのは
+web-writing-tool側の通知だけである。
+
+| リポジトリ | 担当 |
+| --- | --- |
+| web-writing-tool（本リポジトリ） | 自リポジトリのCI成功をinfraへ通知する |
+| seo-intelligence-platform | 同上（別リポジトリで同等の通知を実装する） |
+| wwt-seo-infra | 通知の検証、採用SHA更新PRの作成、本番デプロイ |
+
+本リポジトリでは本番へのSSH、デプロイ、GHCRなど外部レジストリへのイメージ配布、複数リポジトリの
+一括更新を実装しない。9章・9.1〜9.4のVPS内ビルド・Trivyスキャン・Migration・イメージのdigest固定は
+変更しない。
+
+### 23.2 Workflow構成
+
+`.github/workflows/notify-release-candidate.yaml`が`workflow_run`で`ci.yaml`（`name: CI`）の完了
+（`types: [completed]`）を監視する。`workflow_run`はこのファイルがデフォルトブランチに存在して
+初めて発火するが、これを追加するマージコミット自体がその時点でファイルを含んだ状態でmainへ入るため、
+`CD_ENABLED=true`など23.3の条件を満たしていれば導入コミット自身のmain push CI成功から通知され得る。
+確実な猶予期間はない。運用手順は[運用設計](operation-design.md)22.3を参照する。
+
+2ジョブに分ける。
+
+| ジョブ | 役割 | 使うSecret |
+| --- | --- | --- |
+| `gate` | 通知条件の判定のみ。`scripts/release-candidate-decide.ps1`を実行する | なし |
+| `notify` | `needs: gate`、`if: needs.gate.outputs.should_notify == 'true'`。条件の再判定、infra owner/repoの解決、GitHub Appトークン発行、`repository_dispatch`送信を行う | `CD_APP_PRIVATE_KEY` |
+
+`gate`が`should_notify=false`を返す限り`notify`ジョブは起動しないため、通常の実行では
+`CD_APP_PRIVATE_KEY`の読み出しも`repository_dispatch`の送信も発生しない。
+
+ただしこれだけでは、GitHubの[Re-run機能](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)の仕様を経由した迂回を防げない。「Re-run failed jobs」は既に成功した
+ジョブを再実行しないため、`gate`が一度`should_notify=true`を返した後に`notify`が失敗し、その間に
+`CD_ENABLED`を`false`へ変更してから`notify`だけを再実行すると、`gate`の`should_notify`出力は
+成功当時の`true`のままキャッシュされて使われる。そのため`notify`ジョブ自身も、`CD_APP_PRIVATE_KEY`へ
+触れる最初のステップより前で`scripts/release-candidate-recheck.ps1`を実行し、同じ
+`Test-ShouldNotifyReleaseCandidate`を現在の`vars.CD_ENABLED`等で再評価する。判定が`false`になっていれば
+例外を投げてジョブを失敗させ、トークン発行・送信へ進ませない。CD_ENABLEDが無効なときに外部操作が
+起きないことは、この2段階（`gate`によるジョブ起動の抑止と、`notify`自身による再判定）で保証している。
+
+### 23.3 通知条件
+
+`scripts/release-candidate-notify-lib.ps1`の`Test-ShouldNotifyReleaseCandidate`が次の5条件をすべて
+満たす場合だけ通知する。1つでも満たさなければ通知しない。
+
+| 条件 | 判定内容 |
+| --- | --- |
+| CD有効化 | Repository Variable `CD_ENABLED`が文字列`"true"`と完全一致する（大文字小文字を区別。`True`/`TRUE`/`1`は無効） |
+| 成功 | `github.event.workflow_run.conclusion == 'success'`（失敗・キャンセル・タイムアウトを除外） |
+| push起点 | `github.event.workflow_run.event == 'push'`（PR、schedule、workflow_dispatch起点のCIを除外） |
+| mainブランチ | `github.event.workflow_run.head_branch == 'main'` |
+| fork除外 | `github.event.workflow_run.head_repository.full_name == github.repository` |
+
+`workflow_run`はfork PRのCI完了でもベースリポジトリのコンテキストとSecretで実行されるため、
+fork除外の条件を明示的に持つ。push起点であることの確認だけでは、将来他のイベントが絡んだ場合の
+安全側の担保にならないと判断し、この比較を独立した条件として残している。
+
+判定ロジックは`scripts/test-release-candidate-notify.ps1`が外部送信なしで検証する。
+
+### 23.4 送信内容（共通の連携仕様・変更禁止）
+
+| 項目 | 値 |
+| --- | --- |
+| 送信先 | Repository Variable `INFRA_REPOSITORY`（`owner/repository`形式）が指すリポジトリへの`repository_dispatch` |
+| `event_type` | `app-release-candidate-v1` |
+| `client_payload.component` | 固定値`"wwt"` |
+| `client_payload.source_sha` | 元CIの`workflow_run.head_sha`（40桁の完全なコミットSHA） |
+| `client_payload.source_run_id` | 元CIの`workflow_run.id`を10進数文字列にしたもの |
+| `client_payload.source_run_attempt` | 元CIの`workflow_run.run_attempt`（実際の試行番号、整数） |
+
+`source_sha`・`source_run_id`・`source_run_attempt`は必ず`github.event.workflow_run.*`から取得する。
+通知workflow自身の`github.sha`・`github.run_id`・`github.run_attempt`は使わない。`workflow_run`起点の
+`github.sha`はデフォルトブランチ先頭を指し、通知対象のコミットと一致しないためである。
+
+`scripts/release-candidate-notify-lib.ps1`の`ConvertTo-ReleaseCandidatePayload`が送信前に型と形式を
+検証する。`source_sha`は`^[0-9a-f]{40}$`、`source_run_id`は`^[0-9]+$`、`source_run_attempt`は
+`^[1-9][0-9]*$`のいずれかに一致しない場合は例外を投げて停止し、不正な値のまま送信しない。
+JSONとしては`source_run_id`を文字列、`source_run_attempt`を数値としてシリアライズし、契約の型と
+一致させる。
+
+`github.event.workflow_run.*`の値はworkflow YAMLの`run:`スクリプト本文へ直接埋め込まず、必ず`env:`
+経由で渡す。`${{ }}`をシェルスクリプトへ直接展開する実装は、値にシェルメタ文字が含まれた場合の
+スクリプトインジェクションを招き得る。`head_branch`等はコミッターが操作できる値であり、
+`workflow_run`はfork PRの完了でも発火するため、`env:`経由に統一している。
+
+### 23.5 認証（GitHub App短命トークン）
+
+| 項目 | 内容 |
+| --- | --- |
+| Variable | `CD_APP_ID` |
+| Secret | `CD_APP_PRIVATE_KEY` |
+| トークン発行 | `actions/create-github-app-token`（commit SHA固定） |
+| スコープ | `owner`/`repositories`入力で`INFRA_REPOSITORY`が指す1リポジトリだけに限定する |
+
+`scripts/release-candidate-resolve-infra-repo.ps1`が`INFRA_REPOSITORY`を`owner`と`repository`へ分割し、
+トークン発行ステップの`owner`/`repositories`入力へ渡す。これにより発行されるインストールトークンは
+infra側の対象リポジトリ以外を操作できない。`actions/create-github-app-token`の`token`出力は
+Secret相当としてログにマスクされる。
+
+必要な権限、Appのインストール先、有効化手順は[運用設計](operation-design.md)を正とする。
+
+### 23.6 失敗の扱いと成功時の表示
+
+`scripts/release-candidate-notify.ps1`は`Invoke-WebRequest`でHTTP応答を確認し、ステータスが204以外、
+または通信自体が失敗した場合は例外を投げる。GitHub Actionsの`run:`ステップは既定で`bash -e`相当のため、
+この例外（pwshの非0終了コード）でステップ・ジョブ・ワークフローが失敗になる。HTTPエラーを成功として
+扱う経路はない。
+
+成功時は最終ステップが`リリース候補を通知済み`とだけ`$GITHUB_STEP_SUMMARY`へ出力する。
+「本番デプロイ完了」という表示はしない。本番への反映は引き続き[運用設計](operation-design.md)14.2の
+手順で人手により行う。通知はあくまでinfra側への一次シグナルであり、本番デプロイの実行を意味しない。
+
+### 23.7 新規Actionsの固定
+
+| Action | 固定値 |
+| --- | --- |
+| `actions/checkout` | `d23441a48e516b6c34aea4fa41551a30e30af803`（v6.1.0） |
+| `actions/create-github-app-token` | `bcd2ba49218906704ab6c1aa796996da409d3eb1`（v3.2.0） |
+
+いずれもGitHub公開リポジトリのタグから実在を確認したコミットSHAで固定した。`ci.yaml`が使う
+`actions/checkout@v6`など既存Actionsの参照は変更していない。
+
+### 23.8 テスト
+
+`scripts/test-release-candidate-notify.ps1`が次を外部送信なしで検証する。`ci.yaml`の`build-test`
+（`pwsh`）と`script-compat`（Windows PowerShell 5.1）の両ジョブへ「Test release candidate notify
+logic」ステップとして組み込み、`scripts/test-production-compose.ps1`と同じ位置付けで毎回のCIで
+継続的に実行する。
+
+- main pushでCIが成功した場合だけ`Test-ShouldNotifyReleaseCandidate`が通知を承認すること。
+- `CD_ENABLED`未設定・`"false"`・大文字小文字違い・PR起点・fork起点・schedule起点・
+  `workflow_dispatch`起点・失敗・キャンセルのいずれも通知を承認しないこと。
+- `scripts/release-candidate-decide.ps1`を実際にサブプロセスとして起動し、`CD_ENABLED`が未設定のとき
+  `INFRA_REPOSITORY`・`CD_APP_ID`・`CD_APP_PRIVATE_KEY`が一切設定されていなくても正常終了し、
+  `GITHUB_OUTPUT`へ`should_notify=false`を書き込むこと。
+- `scripts/release-candidate-recheck.ps1`を実際にサブプロセスとして起動し、`gate`が承認した時点と
+  同じ条件（成功・push・main・fork除外を満たす状態）でも、`CD_ENABLED`が現在`"true"`でなければ
+  例外を投げて非0終了すること。これは23.2の「Re-run failed jobs」による迂回（`gate`成功→`notify`
+  失敗→`CD_ENABLED`無効化→`notify`だけ再実行）をそのまま模した回帰テストであり、
+  `INFRA_REPOSITORY`・`CD_APP_ID`・`CD_APP_PRIVATE_KEY`を設定しない状態で実行して、再判定が
+  トークン発行より前に止まることも確認する。
+- ペイロードの型が契約どおりになること（`source_run_id`はJSON文字列、`source_run_attempt`はJSON数値）。
+- 不正な形式のSHA・run id・run attemptを拒否すること。
+- ペイロードの`source_sha`が、無関係な`GITHUB_SHA`の値に影響されず、渡された値のみで決まること。
+- フェイクの送信関数（`scriptblock`）を注入し、成功応答と擬似HTTPエラーの両方で
+  `Send-ReleaseCandidateDispatch`が正しく振る舞う（エラーを握りつぶさない）こと。
+
+実際の`repository_dispatch`送信、およびライブのHTTPエンドポイントに対する送受信は検証していない。
+Secretを設定した環境でのenable後、最初の1回は[運用設計](operation-design.md)の手順に沿って
+実際の通知結果を確認する。

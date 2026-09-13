@@ -847,3 +847,100 @@ MVPでは以下の初期方針を採用する。運用実績、利用者数、�
 | worker分離時期 | MVPでは`app`内のBackgroundServiceとして同居させ、同時実行数1を基本とする。 | `Queued`ジョブ滞留が30分以上続く、Web UI応答が悪化する、メモリ高止まりが発生する、またはジョブ種別ごとのスケール・再起動が必要になった場合 |
 | ログ保存期間 | MVPでは30日保存を基本とする。Dockerログ、Caddyアクセスログ、PostgreSQLログはローテーションを設定する。 | 契約、監査、プライバシーポリシー、ディスク容量、インシデント調査要件により保存期間を変更する場合 |
 | AI使用量制限 | MVPでは課金連動の月次集計ではなく、事故防止用の月間安全上限とユーザー別停止設定を扱う。上限到達時は新規ジョブ登録を拒否し、管理者へ通知する。 | 課金、プラン別上限、残量表示、Provider別トークン換算、月次集計を実装する段階 |
+
+## 22. CDリリース候補通知運用
+
+web-writing-toolのmain CI成功をinfraリポジトリ（`INFRA_REPOSITORY`）へ通知する運用手順を定義する。
+設計と契約は[CI/CD設計](ci-cd-design.md)23章を正とする。通知はrepository_dispatchの送信までであり、
+本番デプロイの実行、GHCR等外部レジストリへのイメージ配布、複数リポジトリの一括更新はこのリポジトリの
+範囲外である。それらはinfra側（例: wwt-seo-infra）が行う。
+
+### 22.1 設定するVariables / Secrets（web-writing-tool側）
+
+リポジトリの Settings → Secrets and variables → Actions で設定する。
+
+| 種別 | 名前 | 例 | 用途 |
+| --- | --- | --- | --- |
+| Repository Variable | `CD_ENABLED` | `true` | 文字列`"true"`と完全一致する場合だけ通知を有効化する。未設定・`false`・大文字小文字違いは無効のまま |
+| Repository Variable | `INFRA_REPOSITORY` | `your-org/wwt-seo-infra` | 通知先。`owner/repository`形式 |
+| Repository Variable | `CD_APP_ID` | `123456` | 通知用GitHub AppのApp ID |
+| Repository Secret | `CD_APP_PRIVATE_KEY` | （PEM形式の秘密鍵） | 通知用GitHub Appの秘密鍵。改行を含むPEM全体を貼り付ける |
+
+`CD_APP_PRIVATE_KEY`はGitHub Actions Secretとして扱い、`.env`や平文ファイルへ保存しない。値の運用は
+16章「セキュリティ運用」16.3の秘密情報運用に準じる。
+
+### 22.2 GitHub Appの準備（infra側の準備が必要）
+
+通知用GitHub Appは**`INFRA_REPOSITORY`が指すリポジトリ（infra側）へインストールする**。
+web-writing-tool自体へのインストールは不要である。web-writing-tool側はApp IDと秘密鍵から
+インストールトークンを発行するだけであり、そのトークンはインストール先のリポジトリしか操作できない。
+
+| 項目 | 内容 |
+| --- | --- |
+| 作成場所 | Organization または個人アカウントの Developer settings → GitHub Apps |
+| インストール先 | infra側リポジトリのみ（Only select repositories）。web-writing-tool、seo-intelligence-platformへはインストールしない |
+| Repository permissions | Contents: Read and write。`repository_dispatch`の送信に必要な権限のみを付与し、他の権限は付与しない |
+| Webhook | 不要。Active のチェックを外してよい |
+| 発行物 | App ID（→`CD_APP_ID`）、秘密鍵.pem（→`CD_APP_PRIVATE_KEY`） |
+
+Contents: Read and writeは`repository_dispatch`送信に必要な権限としてGitHubのAPIドキュメントが
+要求するものである。実際にSecretを設定し`CD_ENABLED=true`にした直後の初回送信で、権限不足による
+HTTPエラー（401/403）が出ないことを受け入れ確認として行う。
+
+infra側であらかじめ用意しておく必要があるもの（web-writing-tool側のCD実装には含まれない）:
+
+- 上記GitHub Appの作成と、infra対象リポジトリへのインストール。
+- `event_type: app-release-candidate-v1`のrepository_dispatchを受け取るworkflow。`client_payload`の
+  `component`（本リポジトリからは常に`"wwt"`）から送信元リポジトリを特定し、`source_sha` /
+  `source_run_id` / `source_run_attempt`以外の値（任意のURLやコマンド）は受け取らない設計にする。
+- 受信した`source_sha`を使った検証、採用SHA更新PRの作成、本番デプロイの実装。
+
+### 22.3 有効化手順
+
+1. GitHub Appを作成し、infra側リポジトリへインストールする（22.2）。
+2. web-writing-toolリポジトリへ`CD_APP_ID`、`CD_APP_PRIVATE_KEY`、`INFRA_REPOSITORY`を設定する。
+3. `CD_ENABLED`を`true`に設定する。
+4. mainへ変更をpushし、CIが成功することを確認する。
+5. Actionsタブで`Notify release candidate`workflowが実行され、`gate`ジョブに続けて`notify`ジョブが
+   走り、`リリース候補を通知済み`が表示されることを確認する。
+6. infra側で対応する`repository_dispatch`（`app-release-candidate-v1`、`component: "wwt"`）を
+   受信できたことを確認する。
+
+`workflow_run`はワークフローファイルがデフォルトブランチに存在して初めて発火する。この仕組みを
+追加するマージコミット自体が、その時点でファイルを含んだ状態でmainへ入るため、`CD_ENABLED=true`
+など他の条件を満たしていれば、導入コミット自身のmain push CI成功から通知され得る。確実な猶予期間は
+ない。実際に最初の通知が発生するのは、`CD_ENABLED`を`true`にした後で最初に成功するmain push CIである
+（22.3の手順どおりに進めた場合、通常はworkflow追加時点ではまだ`CD_ENABLED`が`true`になっていない）。
+
+### 22.4 無効化・一時停止
+
+`CD_ENABLED`をリポジトリ設定から削除するか`false`に変更する。次のCI完了以降、`gate`ジョブが
+`should_notify=false`を返し、`notify`ジョブ（GitHub Appトークン発行、送信処理を含む）は実行されなく
+なる。`CD_APP_PRIVATE_KEY`等を削除する必要はない。`gate`が`false`を返す限り読み出されない。
+
+### 22.5 通知失敗時の再実行
+
+`notify`ジョブが失敗すると、workflow run全体が失敗として記録される（成功時のみ「リリース候補を
+通知済み」と表示され、失敗を成功として扱う経路はない）。
+
+1. Actionsタブで失敗した`Notify release candidate`のworkflow runを開く。
+2. 失敗したステップのログを確認する。想定される原因は、GitHub Appトークン発行の失敗（App ID/秘密鍵の
+   誤り、Appがinfra側にインストールされていない）、`INFRA_REPOSITORY`の設定ミス、権限不足による
+   HTTPエラー、GitHub側の一時的な障害などである。
+3. 原因に応じてVariables/Secretsの再設定、GitHub Appの権限またはインストール先の見直し、
+   `INFRA_REPOSITORY`の訂正を行う。
+4. Actionsタブから同じworkflow runを「Re-run failed jobs」で再実行する。`source_sha`等は元CIの
+   `workflow_run`イベントから再取得されるため、再実行しても送信内容（`component`、SHA、run id、
+   run attempt）は変わらない。
+5. 本workflowは`workflow_run`専用で`workflow_dispatch`を持たないため、即席の手動起動はできない。
+   任意のCI runに対して再送したい場合は、そのCI runをActionsタブから「Re-run」し、
+   `workflow_run`を再発火させる。
+
+通知が最終的に失敗しても、mainのCIそのもの（ビルド・テスト・スキャン）や本番運用には影響しない。
+本番デプロイは引き続き14.2の手順で人手により実施できる。
+
+### 22.6 監視・ログ上の注意
+
+`actions/create-github-app-token`が発行するインストールトークンはActionsログ上でマスクされる。
+`CD_APP_PRIVATE_KEY`自体もGitHub ActionsのSecretマスキングで出力されない。通知workflowを初めて
+有効化した際は、ログに秘密鍵やトークンの断片がそのままの形で出ていないことを一度確認する。
