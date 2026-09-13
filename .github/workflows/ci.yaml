@@ -80,6 +80,9 @@ jobs:
       - name: Test production Compose safeguards
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
 
+      - name: Test release candidate notify logic
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-release-candidate-notify.ps1
+
       - name: Build
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
@@ -119,6 +122,9 @@ jobs:
 
       - name: Test production Compose safeguards
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-production-compose.ps1
+
+      - name: Test release candidate notify logic
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-release-candidate-notify.ps1
 
   e2e-smoke:
     name: E2E smoke

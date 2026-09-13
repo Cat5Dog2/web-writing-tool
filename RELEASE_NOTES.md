@@ -10,6 +10,19 @@
 
 ## 未リリース
 
+### CDリリース候補通知
+
+main CI成功をinfraリポジトリ（`INFRA_REPOSITORY`）へ通知する`notify-release-candidate` workflowを
+追加した。同一VPSを使う3リポジトリ体制のうち、web-writing-tool側の担当（自リポジトリのCI成功を
+通知するだけ）を実装したもので、本番へのSSH、デプロイ、GHCRへのイメージ配布は行わない。既存のVPS内
+ビルド・Trivyスキャン・Migration・イメージのdigest固定は変更していない。
+
+Repository Variable `CD_ENABLED`が文字列`"true"`のときだけ有効になり、未設定時はGitHub Appの秘密鍵
+取得や外部への送信より前にスキップする。通知はGitHub Appの短命トークンで認証し、
+`repository_dispatch`（`event_type: app-release-candidate-v1`）を送る。設定するVariables/Secrets、
+GitHub Appの権限とインストール先、有効化・再実行手順は[運用設計](docs/operation-design.md)22章、
+設計は[CI/CD設計](docs/ci-cd-design.md)23章を参照。
+
 ### 既定の生成モデル
 
 既定の執筆モデルを `gemini-3.7-flash` から `gemini-3.8-flash` へ切り替えた。`gemini-3.7-flash`、
