@@ -137,7 +137,14 @@
                 <div class="alert alert-warning mt-3" role="alert">
                     @foreach (var rejectedLine in bulkRejectedLines)
                     {
-                        <div>@rejectedLine.LineNumber 行目: @rejectedLine.Reason</div>
+                        @if (rejectedLine.LineNumber > 0)
+                        {
+                            <div>@rejectedLine.LineNumber 行目: @rejectedLine.Reason</div>
+                        }
+                        else
+                        {
+                            <div>@rejectedLine.Reason</div>
+                        }
                     }
                 </div>
             }
@@ -534,9 +541,16 @@
         }
 
         bulkRejectedLines = result.Value.RejectedLines;
-        successMessage = $"{result.Value.CreatedArticleCount}件の記事を登録しました。";
         bulkLines = null;
         showBulkForm = result.Value.RejectedLines.Count > 0;
+
+        if (result.Value.CreatedArticleCount == 0)
+        {
+            errorMessage = "登録できる記事がありませんでした。入力内容を確認してください。";
+            return;
+        }
+
+        successMessage = $"{result.Value.CreatedArticleCount}件の記事を登録しました。";
         await LoadArticlesAsync(1);
     }
 

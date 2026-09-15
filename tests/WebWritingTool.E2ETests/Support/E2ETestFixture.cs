@@ -180,12 +180,15 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             article.Title!);
     }
 
-    public async Task<string> SeedPasswordChangeUserAsync(string suffix)
+    public Task<string> SeedPasswordChangeUserAsync(string suffix)
+    {
+        return SeedStandardUserAsync($"password-change-{suffix}@example.test", $"Password Change {suffix}");
+    }
+
+    public async Task<string> SeedStandardUserAsync(string email, string displayName)
     {
         await using var dbContext = CreateDbContext();
-        var user = CreateStandardUser(
-            $"password-change-{suffix}@example.test",
-            $"Password Change {suffix}");
+        var user = CreateStandardUser(email, displayName);
 
         var userRoleId = await dbContext.Roles
             .Where(role => role.NormalizedName == ApplicationRoles.User.ToUpperInvariant())
