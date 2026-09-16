@@ -19,7 +19,7 @@
             <h1>生成結果編集</h1>
             @if (article is not null)
             {
-                <div class="text-muted">@article.Status</div>
+                <div class="text-muted">@GetArticleStatusLabel(article.Status)</div>
             }
         </div>
         <div class="article-actions">
@@ -50,69 +50,77 @@
     }
     else
     {
+        <section class="article-panel article-editor-toolbar">
+            <div class="article-editor-actions">
+                <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveArticleAsync">記事情報を保存</button>
+                <button type="button" class="btn btn-outline-primary" disabled="@isSubmitting" @onclick="ConvertHtmlAsync">HTML変換</button>
+                <label class="form-check article-period-break">
+                    <input class="form-check-input" type="checkbox" @bind="insertLineBreakAfterPeriod" />
+                    <span class="form-check-label">句点改行</span>
+                </label>
+            </div>
+            <button type="button" class="btn btn-link" aria-expanded="@showMetaPanel" @onclick="() => showMetaPanel = !showMetaPanel">
+                記事情報@(showMetaPanel ? "を閉じる" : "を編集")
+            </button>
+        </section>
+
+        @if (showMetaPanel)
+        {
+            <section class="article-panel article-editor-meta mb-3">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="title">タイトル</label>
+                        <input id="title" class="form-control" @bind="form.Title" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="keyword">キーワード</label>
+                        <input id="keyword" class="form-control" @bind="form.Keyword" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="meta-description">メタディスクリプション</label>
+                        <textarea id="meta-description" class="form-control" rows="4" @bind="form.MetaDescription"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="tags">タグ</label>
+                        <input id="tags" class="form-control" @bind="form.Tags" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="memo">メモ</label>
+                        <textarea id="memo" class="form-control" rows="3" @bind="form.Memo"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="generation-model">生成モデル</label>
+                        <select id="generation-model" class="form-select" @bind="form.GenerationModel">
+                            @foreach (var model in formOptions.GenerationModels)
+                            {
+                                <option value="@model.Model">@model.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="outline-method">構成</label>
+                        <select id="outline-method" class="form-select" @bind="form.OutlineMethod">
+                            <option value="Keyword">キーワード</option>
+                            <option value="Search">検索</option>
+                            <option value="Ai">AI</option>
+                        </select>
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input id="search-mode" class="form-check-input" type="checkbox" @bind="form.SearchMode" />
+                            <label class="form-check-label" for="search-mode">検索モード</label>
+                        </div>
+                        <div class="form-check">
+                            <input id="is-domestic" class="form-check-input" type="checkbox" @bind="form.IsDomesticOnly" />
+                            <label class="form-check-label" for="is-domestic">国内限定</label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        }
+
         <div class="article-editor-grid">
             <aside class="article-editor-sidebar">
-                <section class="article-panel">
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label" for="title">タイトル</label>
-                            <input id="title" class="form-control" @bind="form.Title" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="keyword">キーワード</label>
-                            <input id="keyword" class="form-control" @bind="form.Keyword" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="meta-description">メタディスクリプション</label>
-                            <textarea id="meta-description" class="form-control" rows="4" @bind="form.MetaDescription"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="tags">タグ</label>
-                            <input id="tags" class="form-control" @bind="form.Tags" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="memo">メモ</label>
-                            <textarea id="memo" class="form-control" rows="3" @bind="form.Memo"></textarea>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label" for="generation-model">モデル</label>
-                            <select id="generation-model" class="form-select" @bind="form.GenerationModel">
-                                @foreach (var model in formOptions.GenerationModels)
-                                {
-                                    <option value="@model.Model">@model.DisplayName</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label" for="outline-method">構成</label>
-                            <select id="outline-method" class="form-select" @bind="form.OutlineMethod">
-                                <option value="Keyword">キーワード</option>
-                                <option value="Search">検索</option>
-                                <option value="Ai">AI</option>
-                            </select>
-                        </div>
-                        <div class="col-12 d-flex flex-wrap gap-3">
-                            <div class="form-check">
-                                <input id="search-mode" class="form-check-input" type="checkbox" @bind="form.SearchMode" />
-                                <label class="form-check-label" for="search-mode">検索モード</label>
-                            </div>
-                            <div class="form-check">
-                                <input id="is-domestic" class="form-check-input" type="checkbox" @bind="form.IsDomesticOnly" />
-                                <label class="form-check-label" for="is-domestic">国内限定</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="article-editor-actions">
-                        <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveArticleAsync">保存</button>
-                        <button type="button" class="btn btn-outline-primary" disabled="@isSubmitting" @onclick="ConvertHtmlAsync">HTML変換</button>
-                        <label class="form-check article-period-break">
-                            <input class="form-check-input" type="checkbox" @bind="insertLineBreakAfterPeriod" />
-                            <span class="form-check-label">句点改行</span>
-                        </label>
-                    </div>
-                </section>
-
                 <section class="article-panel">
                     <div class="article-section-header">
                         <h2 class="h5">見出し構成</h2>
@@ -166,7 +174,7 @@
                         <div class="article-section-header">
                             <div>
                                 <span class="badge text-bg-light">@($"H{selectedHeading.Level}")</span>
-                                <span class="badge text-bg-secondary ms-1">@selectedHeading.Status</span>
+                                <span class="badge text-bg-secondary ms-1">@GetHeadingStatusLabel(selectedHeading.Status)</span>
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveSelectedHeadingAsync(-1)">上へ</button>
@@ -221,6 +229,7 @@
     private readonly HeadingEditForm headingForm = new();
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool showMetaPanel;
     private bool insertLineBreakAfterPeriod;
     private Guid? deleteHeadingId;
     private string? errorMessage;
@@ -679,6 +688,36 @@
     private static Guid? ParseGuid(string? value)
     {
         return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private static string GetArticleStatusLabel(string status)
+    {
+        return status switch
+        {
+            "Draft" => "下書き",
+            "OutlineQueued" => "構成待機",
+            "OutlineGenerating" => "構成生成中",
+            "OutlineReady" => "構成完了",
+            "BodyQueued" => "本文待機",
+            "BodyGenerating" => "本文生成中",
+            "Completed" => "完了",
+            "Posted" => "投稿済み",
+            "Failed" => "失敗",
+            _ => status
+        };
+    }
+
+    private static string GetHeadingStatusLabel(string status)
+    {
+        return status switch
+        {
+            "Pending" => "未着手",
+            "Queued" => "生成待ち",
+            "Generating" => "生成中",
+            "Generated" => "生成済み",
+            "Failed" => "失敗",
+            _ => status
+        };
     }
 
     private static string GetServiceErrorMessage(

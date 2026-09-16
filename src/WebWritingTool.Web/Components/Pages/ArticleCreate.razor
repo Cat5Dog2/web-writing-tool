@@ -1,11 +1,18 @@
 @page "/articles/create"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IDisposable
 
 @using System.Security.Claims
+@using System.Text.Json
+@using WebWritingTool.Application.Generation
+@using WebWritingTool.Application.Jobs
+@using WebWritingTool.Domain.Jobs
 
 @inject IArticleQueryService ArticleQueryService
 @inject IArticleCommandService ArticleCommandService
+@inject IJobCommandService JobCommandService
+@inject IJobQueryService JobQueryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
@@ -18,12 +25,6 @@
         </div>
         <a class="btn btn-outline-secondary" href="articles">一覧へ戻る</a>
     </header>
-
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><span class="nav-link active">プロジェクト</span></li>
-        <li class="nav-item"><span class="nav-link disabled">詳細</span></li>
-        <li class="nav-item"><span class="nav-link disabled">設定</span></li>
-    </ul>
 
     @if (!string.IsNullOrWhiteSpace(errorMessage))
     {
@@ -42,7 +43,25 @@
                     <ValidationMessage For="() => form.Keyword" />
                 </div>
                 <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-secondary w-100" disabled>記事タイトル候補を出す</button>
+                    <button type="button" class="btn btn-outline-secondary w-100" disabled="@(!CanGenerateTitleCandidates)" @onclick="GenerateTitleCandidatesAsync">
+                        @if (isGeneratingTitles)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        }
+                        記事タイトル候補を出す
+                    </button>
+                    @if (string.IsNullOrWhiteSpace(form.Keyword) && !isGeneratingTitles)
+                    {
+                        <div class="form-text">キーワードを入力すると使用できます</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(titleGenerationError) && !showTitleCandidatesModal)
+                    {
+                        <div class="form-text text-danger">@titleGenerationError</div>
+                    }
+                    else if (isGeneratingTitles && !string.IsNullOrWhiteSpace(titleGenerationStatusText))
+                    {
+                        <div class="form-text">@titleGenerationStatusText</div>
+                    }
                 </div>
                 <div class="col-md-5">
                     <label class="form-label" for="title">タイトル</label>
@@ -53,8 +72,8 @@
         </section>
 
         <section class="article-panel mb-3">
-            <button type="button" class="btn btn-link px-0" @onclick="() => showDetails = !showDetails">
-                詳細設定
+            <button type="button" class="btn btn-link px-0" aria-expanded="@showDetails" @onclick="() => showDetails = !showDetails">
+                詳細設定@(showDetails ? "を閉じる" : "を開く")
             </button>
 
             @if (showDetails)
@@ -106,10 +125,13 @@
                             <option value="Url">URL</option>
                         </InputSelect>
                     </div>
-                    <div class="col-md-8">
-                        <label class="form-label" for="learning-text">事前学習本文</label>
-                        <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
-                    </div>
+                    @if (form.LearningType != "None")
+                    {
+                        <div class="col-md-8">
+                            <label class="form-label" for="learning-text">事前学習本文</label>
+                            <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
+                        </div>
+                    }
                     <div class="col-md-6">
                         <label class="form-label" for="additional-prompt">追加プロンプト</label>
                         <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
@@ -139,7 +161,7 @@
                     </InputSelect>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label" for="generation-model">何を作成する？</label>
+                    <label class="form-label" for="generation-model">生成モデル</label>
                     <InputSelect id="generation-model" class="form-select" @bind-Value="form.GenerationModel">
                         @foreach (var model in formOptions.GenerationModels)
                         {
@@ -164,17 +186,112 @@
         </section>
 
         <div class="d-flex justify-content-end gap-2">
-            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">構成を作成</button>
+            <button type="submit" class="btn btn-primary" disabled="@(isSubmitting || isGeneratingTitles)">構成を作成</button>
         </div>
     </EditForm>
+
+    @if (showTitleCandidatesModal)
+    {
+        <div class="article-dialog-backdrop">
+            <section class="article-dialog" role="dialog" aria-modal="true">
+                <h2 class="h5">タイトル候補</h2>
+                <p class="text-muted small mb-3">生成モデル: @titleCandidatesModelLabel</p>
+
+                @if (isGeneratingTitles)
+                {
+                    <div class="text-muted small mb-2">@titleGenerationStatusText</div>
+                }
+
+                <div class="article-title-candidate-list">
+                    @foreach (var candidate in titleCandidates)
+                    {
+                        <label class="article-title-candidate">
+                            <input type="radio" name="title-candidate" class="form-check-input"
+                                   checked="@(selectedCandidateTitle == candidate.Title)"
+                                   @onchange="() => selectedCandidateTitle = candidate.Title" />
+                            <span>
+                                <span class="article-title-candidate-text">@candidate.Title</span>
+                                @if (!string.IsNullOrWhiteSpace(candidate.Reason))
+                                {
+                                    <span class="article-title-candidate-reason">@candidate.Reason</span>
+                                }
+                            </span>
+                        </label>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(titleGenerationError))
+                {
+                    <div class="alert alert-danger mt-2" role="alert">@titleGenerationError</div>
+                }
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button type="button" class="btn btn-outline-secondary" disabled="@isGeneratingTitles" @onclick="GenerateTitleCandidatesAsync">
+                        @(isGeneratingTitles ? "再生成中…" : "再生成")
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseTitleCandidatesModal">閉じる</button>
+                        <button type="button" class="btn btn-primary" disabled="@(string.IsNullOrWhiteSpace(selectedCandidateTitle))" @onclick="ApplySelectedTitleCandidate">選択して反映</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    }
 </div>
 
 @code {
+    private static readonly JsonSerializerOptions JobPayloadJsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly ArticleCreateForm form = new();
+    private readonly CancellationTokenSource cancellationTokenSource = new();
     private ArticleFormOptionsResponse formOptions = new([], []);
-    private bool showDetails = true;
+    private bool showDetails;
     private bool isSubmitting;
     private string? errorMessage;
+
+    private Guid? draftArticleId;
+    private bool isGeneratingTitles;
+    private string? titleGenerationStatusText;
+    private string? titleGenerationError;
+    private bool showTitleCandidatesModal;
+    private bool modalDismissedForCurrentGeneration;
+    private IReadOnlyList<TitleCandidate> titleCandidates = [];
+    private string? selectedCandidateTitle;
+    private string? titleCandidatesModelLabel;
+
+    private bool CanGenerateTitleCandidates =>
+        !string.IsNullOrWhiteSpace(form.Keyword) && !isGeneratingTitles && !isSubmitting;
+
+    // Captured synchronously (before any await) so a save and its related job payload always
+    // agree, even if the user keeps editing the form while the save/generation is in flight.
+    private ArticleFormSnapshot CaptureFormSnapshot()
+    {
+        return new ArticleFormSnapshot(
+            form.Keyword,
+            form.Title,
+            form.H2Count,
+            form.H3Count,
+            form.Tone,
+            form.IsDomesticOnly,
+            form.Tags,
+            form.Memo,
+            form.SuggestedKeywords,
+            form.RelatedKeywords,
+            form.LearningType,
+            form.LearningText,
+            form.AdditionalPrompt,
+            form.WritingProfileWordpressSiteId,
+            form.OutlineMethod,
+            form.GenerationModel,
+            form.SearchMode,
+            form.NotificationMode);
+    }
+
+    public void Dispose()
+    {
+        cancellationTokenSource.Cancel();
+        cancellationTokenSource.Dispose();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -190,53 +307,362 @@
 
     private async Task CreateAsync()
     {
-        var userId = await GetUserIdAsync();
-        if (userId is null)
+        if (isSubmitting || isGeneratingTitles)
         {
             return;
         }
 
         isSubmitting = true;
         errorMessage = null;
+        StateHasChanged();
 
+        var snapshot = CaptureFormSnapshot();
+
+        try
+        {
+            var actor = await GetArticleActorAsync();
+            if (actor is null)
+            {
+                return;
+            }
+
+            Guid? articleId;
+            if (draftArticleId.HasValue)
+            {
+                var (updatedId, updateError) = await UpdateDraftAsync(
+                    actor,
+                    draftArticleId.Value,
+                    snapshot,
+                    cancellationTokenSource.Token);
+                errorMessage = updateError;
+                articleId = updatedId;
+            }
+            else
+            {
+                articleId = await CreateDraftAsync(actor.UserId, snapshot);
+            }
+
+            if (articleId is null)
+            {
+                return;
+            }
+
+            NavigationManager.NavigateTo($"/articles/{articleId}");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task<Guid?> CreateDraftAsync(string userId, ArticleFormSnapshot snapshot)
+    {
         var result = await ArticleCommandService.CreateAsync(
-            new CreateArticleCommand(
-                userId,
-                form.Keyword,
-                form.Title,
-                GenerateImage: false,
-                form.H2Count,
-                form.H3Count,
-                form.Tone,
-                ArticleInputNormalizer.SplitTags(form.Tags),
-                form.Memo,
-                form.SuggestedKeywords,
-                form.RelatedKeywords,
-                form.LearningType,
-                form.LearningText,
-                form.AdditionalPrompt,
-                ParseGuid(form.WritingProfileWordpressSiteId),
-                form.OutlineMethod,
-                form.GenerationModel,
-                form.SearchMode,
-                form.IsDomesticOnly,
-                form.NotificationMode));
-
-        isSubmitting = false;
+            BuildCreateArticleCommand(userId, snapshot),
+            cancellationTokenSource.Token);
 
         if (!result.Succeeded || result.Value is null)
         {
             errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            return null;
+        }
+
+        return result.Value.Id;
+    }
+
+    private async Task<(Guid? ArticleId, string? Error)> UpdateDraftAsync(
+        ArticleActor actor,
+        Guid articleId,
+        ArticleFormSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ArticleCommandService.UpdateAsync(
+            new UpdateArticleCommand(
+                actor,
+                articleId,
+                snapshot.Keyword,
+                string.IsNullOrWhiteSpace(snapshot.Title) ? snapshot.Keyword : snapshot.Title,
+                ArticleInputNormalizer.SplitTags(snapshot.Tags),
+                snapshot.Memo,
+                snapshot.Tone,
+                snapshot.SuggestedKeywords,
+                snapshot.RelatedKeywords,
+                snapshot.LearningType,
+                snapshot.LearningText,
+                snapshot.AdditionalPrompt,
+                MetaDescription: null,
+                snapshot.GenerationModel,
+                snapshot.OutlineMethod,
+                snapshot.SearchMode,
+                snapshot.IsDomesticOnly,
+                snapshot.NotificationMode,
+                ParseGuid(snapshot.WritingProfileWordpressSiteId),
+                Body: null,
+                HtmlBody: null,
+                RowVersion: null),
+            cancellationToken);
+
+        return result.Succeeded && result.Value is not null
+            ? (articleId, null)
+            : (null, GetServiceErrorMessage(result.Error, result.ValidationErrors));
+    }
+
+    private static CreateArticleCommand BuildCreateArticleCommand(string userId, ArticleFormSnapshot snapshot)
+    {
+        return new CreateArticleCommand(
+            userId,
+            snapshot.Keyword,
+            snapshot.Title,
+            GenerateImage: false,
+            snapshot.H2Count,
+            snapshot.H3Count,
+            snapshot.Tone,
+            ArticleInputNormalizer.SplitTags(snapshot.Tags),
+            snapshot.Memo,
+            snapshot.SuggestedKeywords,
+            snapshot.RelatedKeywords,
+            snapshot.LearningType,
+            snapshot.LearningText,
+            snapshot.AdditionalPrompt,
+            ParseGuid(snapshot.WritingProfileWordpressSiteId),
+            snapshot.OutlineMethod,
+            snapshot.GenerationModel,
+            snapshot.SearchMode,
+            snapshot.IsDomesticOnly,
+            snapshot.NotificationMode);
+    }
+
+    private async Task GenerateTitleCandidatesAsync()
+    {
+        if (!CanGenerateTitleCandidates)
+        {
             return;
         }
 
-        NavigationManager.NavigateTo($"/articles/{result.Value.Id}");
+        var cancellationToken = cancellationTokenSource.Token;
+
+        // Captured once, up front: both the draft save below and the job payload built in
+        // RunTitleGenerationAsync must agree, even if the user keeps typing while either await
+        // is in flight (see the code review that flagged the article/job keyword mismatch).
+        var snapshot = CaptureFormSnapshot();
+
+        titleGenerationError = null;
+        isGeneratingTitles = true;
+        modalDismissedForCurrentGeneration = false;
+        StateHasChanged();
+
+        try
+        {
+            var jobActor = await GetJobActorAsync();
+            if (jobActor is null)
+            {
+                titleGenerationError = "ログインが必要です。";
+                return;
+            }
+
+            if (draftArticleId is null)
+            {
+                titleGenerationStatusText = "下書きを作成しています…";
+                StateHasChanged();
+
+                var createResult = await ArticleCommandService.CreateAsync(
+                    BuildCreateArticleCommand(jobActor.UserId, snapshot),
+                    cancellationToken);
+
+                if (!createResult.Succeeded || createResult.Value is null)
+                {
+                    titleGenerationError = GetServiceErrorMessage(createResult.Error, createResult.ValidationErrors);
+                    return;
+                }
+
+                draftArticleId = createResult.Value.Id;
+            }
+            else
+            {
+                // Re-sync the draft before regenerating: the keyword or other fields may have
+                // changed since it was first saved, and the job handler reads its prompt context
+                // (including topic risk / strict mode) from the saved article, not the job payload.
+                titleGenerationStatusText = "下書きを更新しています…";
+                StateHasChanged();
+
+                var articleActor = new ArticleActor(jobActor.UserId, jobActor.IsAdmin);
+                var (updatedArticleId, updateError) = await UpdateDraftAsync(
+                    articleActor,
+                    draftArticleId.Value,
+                    snapshot,
+                    cancellationToken);
+
+                if (updatedArticleId is null)
+                {
+                    titleGenerationError = updateError ?? "下書きの更新に失敗しました。";
+                    return;
+                }
+            }
+
+            await RunTitleGenerationAsync(jobActor, draftArticleId.Value, snapshot, cancellationToken);
+        }
+        finally
+        {
+            isGeneratingTitles = false;
+            titleGenerationStatusText = null;
+        }
+    }
+
+    private async Task RunTitleGenerationAsync(
+        JobActor actor,
+        Guid articleId,
+        ArticleFormSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        titleGenerationStatusText = "タイトル候補を生成しています…";
+        StateHasChanged();
+
+        var payload = new TitleGenerationPayload(
+            articleId,
+            snapshot.Keyword,
+            snapshot.GenerationModel,
+            CandidateCount: null,
+            TitleMethod: null,
+            snapshot.SuggestedKeywords,
+            snapshot.RelatedKeywords,
+            snapshot.AdditionalPrompt);
+
+        var enqueueResult = await JobCommandService.EnqueueAsync(
+            new EnqueueJobCommand(
+                actor,
+                JobType.TitleGeneration,
+                articleId,
+                HeadingId: null,
+                JsonSerializer.Serialize(payload, JobPayloadJsonOptions),
+                Priority: 0),
+            cancellationToken);
+
+        if (!enqueueResult.Succeeded || enqueueResult.Value is null)
+        {
+            titleGenerationError = GetJobServiceErrorMessage(enqueueResult.Error, enqueueResult.ValidationErrors);
+            return;
+        }
+
+        titleCandidatesModelLabel = formOptions.GenerationModels
+            .FirstOrDefault(model => model.Model == snapshot.GenerationModel)?.DisplayName
+            ?? snapshot.GenerationModel;
+
+        var jobId = enqueueResult.Value.JobId;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(150);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+
+            var status = await JobQueryService.GetAsync(actor, jobId, cancellationToken);
+            if (status is null)
+            {
+                titleGenerationError = "ジョブの状態を取得できませんでした。";
+                return;
+            }
+
+            if (status.Status == "Succeeded")
+            {
+                var candidates = ParseCandidates(status.Result);
+                if (candidates.Count == 0)
+                {
+                    titleGenerationError = "タイトル候補を取得できませんでした。時間をおいて再実行してください。";
+                    return;
+                }
+
+                titleCandidates = candidates;
+                selectedCandidateTitle = candidates[0].Title;
+                showTitleCandidatesModal = !modalDismissedForCurrentGeneration;
+                return;
+            }
+
+            if (status.Status is "Failed" or "Canceled")
+            {
+                titleGenerationError = status.Status == "Canceled"
+                    ? "タイトル候補の生成がキャンセルされました。"
+                    : GetJobFailureMessage(status.ErrorMessage);
+                return;
+            }
+
+            titleGenerationStatusText = $"タイトル候補を生成しています…（{GetJobStatusLabel(status.Status)}）";
+            StateHasChanged();
+        }
+
+        titleGenerationError = "タイトル候補の生成がタイムアウトしました。時間をおいて再実行してください。";
+    }
+
+    private static IReadOnlyList<TitleCandidate> ParseCandidates(object? result)
+    {
+        if (result is not JsonElement element
+            || element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty("candidates", out var candidatesElement)
+            || candidatesElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var list = new List<TitleCandidate>();
+        foreach (var item in candidatesElement.EnumerateArray())
+        {
+            var title = item.TryGetProperty("title", out var titleProperty) && titleProperty.ValueKind == JsonValueKind.String
+                ? titleProperty.GetString()?.Trim()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                continue;
+            }
+
+            var reason = item.TryGetProperty("reason", out var reasonProperty) && reasonProperty.ValueKind == JsonValueKind.String
+                ? reasonProperty.GetString()?.Trim()
+                : null;
+
+            list.Add(new TitleCandidate(title, reason));
+        }
+
+        return list;
+    }
+
+    private void ApplySelectedTitleCandidate()
+    {
+        if (string.IsNullOrWhiteSpace(selectedCandidateTitle))
+        {
+            return;
+        }
+
+        form.Title = selectedCandidateTitle;
+        CloseTitleCandidatesModal();
+    }
+
+    private void CloseTitleCandidatesModal()
+    {
+        showTitleCandidatesModal = false;
+        if (isGeneratingTitles)
+        {
+            modalDismissedForCurrentGeneration = true;
+        }
     }
 
     private async Task<string?> GetUserIdAsync()
     {
         var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         return authenticationState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    private async Task<ArticleActor?> GetArticleActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId) ? null : new ArticleActor(userId, user.IsInRole("Admin"));
+    }
+
+    private async Task<JobActor?> GetJobActorAsync()
+    {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId) ? null : new JobActor(userId, user.IsInRole("Admin"));
     }
 
     private static Guid? ParseGuid(string? value)
@@ -257,6 +683,61 @@
             ? "選択したサイト別ライティング設定が見つかりません。"
             : "記事を作成できませんでした。";
     }
+
+    private static string GetJobServiceErrorMessage(
+        JobServiceError error,
+        IReadOnlyList<JobValidationError> validationErrors)
+    {
+        if (validationErrors.Count > 0)
+        {
+            return string.Join(" ", validationErrors.Select(item => item.Message));
+        }
+
+        return error switch
+        {
+            JobServiceError.NotFound => "対象のデータが見つかりません。",
+            JobServiceError.RunningJobExists => "対象の処理が実行中です。完了後に再度操作してください。",
+            JobServiceError.RateLimited => "リクエストが集中しています。時間をおいて再実行してください。",
+            _ => "タイトル候補の生成を開始できませんでした。"
+        };
+    }
+
+    private static string GetJobFailureMessage(string? errorMessage)
+    {
+        return string.IsNullOrWhiteSpace(errorMessage)
+            ? "タイトル候補の生成に失敗しました。時間をおいて再実行してください。"
+            : errorMessage;
+    }
+
+    private static string GetJobStatusLabel(string status)
+    {
+        return status switch
+        {
+            "Queued" => "生成待ち",
+            "Running" => "生成中",
+            _ => status
+        };
+    }
+
+    private sealed record ArticleFormSnapshot(
+        string Keyword,
+        string? Title,
+        int? H2Count,
+        int? H3Count,
+        string? Tone,
+        bool IsDomesticOnly,
+        string? Tags,
+        string? Memo,
+        string? SuggestedKeywords,
+        string? RelatedKeywords,
+        string? LearningType,
+        string? LearningText,
+        string? AdditionalPrompt,
+        string? WritingProfileWordpressSiteId,
+        string OutlineMethod,
+        string GenerationModel,
+        bool SearchMode,
+        string? NotificationMode);
 
     private sealed class ArticleCreateForm
     {

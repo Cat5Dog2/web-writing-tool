@@ -13,14 +13,14 @@
 
 <div class="article-page article-preview-page">
     <header class="article-page-header">
-        <div>
+        <div class="article-preview-heading">
             <h1>@(article?.Title ?? "記事プレビュー")</h1>
             @if (!string.IsNullOrWhiteSpace(article?.MetaDescription))
             {
                 <p class="article-preview-description">@article.MetaDescription</p>
             }
         </div>
-        <a class="btn btn-outline-secondary" href="@($"/articles/{ArticleId}")">編集に戻る</a>
+        <a class="btn btn-outline-secondary article-preview-back" href="@($"/articles/{ArticleId}")">編集に戻る</a>
     </header>
 
     @if (isLoading)

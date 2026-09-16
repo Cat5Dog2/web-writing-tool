@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Playwright;
 using Testcontainers.PostgreSql;
 using WebWritingTool.Application.Security;
@@ -255,6 +257,92 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
         await using var dbContext = CreateDbContext();
         return await dbContext.ArticleGenerationJobs.CountAsync(
             job => job.ArticleId == articleId && job.JobType == jobType);
+    }
+
+    public async Task<Guid?> FindArticleIdByKeywordAsync(string keyword)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.Articles
+            .Where(article => article.Keyword == keyword)
+            .Select(article => (Guid?)article.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<int> CountArticlesByKeywordAsync(string keyword)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.Articles.CountAsync(article => article.Keyword == keyword);
+    }
+
+    public async Task<string?> GetArticleKeywordAsync(Guid articleId)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.Articles
+            .Where(article => article.Id == articleId)
+            .Select(article => article.Keyword)
+            .SingleAsync();
+    }
+
+    public async Task<Guid?> GetLatestJobIdAsync(Guid articleId, JobType jobType)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.ArticleGenerationJobs
+            .Where(job => job.ArticleId == articleId && job.JobType == jobType)
+            .OrderByDescending(job => job.QueuedAt)
+            .Select(job => (Guid?)job.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    // Holds a Postgres row lock on the article so the app's own UPDATE (issued by
+    // ArticleCommandService.UpdateAsync's SaveChangesAsync, on its own pooled connection) blocks
+    // until the returned lock is disposed. This pins a test's "edit the form while the draft save
+    // is in flight" step to a real, deterministic window instead of racing the click against
+    // however fast the DB round-trip happens to be in a given environment.
+    public async Task<IAsyncDisposable> LockArticleRowForUpdateAsync(Guid articleId)
+    {
+        var dbContext = CreateDbContext();
+        IDbContextTransaction? transaction = null;
+        try
+        {
+            transaction = await dbContext.Database.BeginTransactionAsync();
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"""SELECT "Id" FROM "Articles" WHERE "Id" = {articleId} FOR UPDATE""");
+            return new ArticleRowLock(dbContext, transaction);
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+
+            await dbContext.DisposeAsync();
+            throw;
+        }
+    }
+
+    public async Task<string?> GetJobPayloadKeywordAsync(Guid jobId)
+    {
+        await using var dbContext = CreateDbContext();
+        var payloadJson = await dbContext.ArticleGenerationJobs
+            .Where(job => job.Id == jobId)
+            .Select(job => job.PayloadJson)
+            .SingleAsync();
+
+        using var document = JsonDocument.Parse(payloadJson);
+        return document.RootElement.TryGetProperty("keyword", out var keywordProperty)
+            ? keywordProperty.GetString()
+            : null;
+    }
+
+    public async Task MarkJobSucceededAsync(Guid jobId, string resultJson)
+    {
+        await using var dbContext = CreateDbContext();
+        var job = await dbContext.ArticleGenerationJobs.SingleAsync(item => item.Id == jobId);
+        job.Status = JobStatus.Succeeded;
+        job.ResultJson = resultJson;
+        job.FinishedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync();
     }
 
     public async Task<string?> GetArticleWritingProfileSnapshotJsonAsync(Guid articleId)
@@ -535,6 +623,22 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
 
     [GeneratedRegex("[^a-zA-Z0-9_.-]+")]
     private static partial Regex SafeNamePattern();
+}
+
+internal sealed class ArticleRowLock(ApplicationDbContext dbContext, IDbContextTransaction transaction) : IAsyncDisposable
+{
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await transaction.RollbackAsync();
+        }
+        finally
+        {
+            await transaction.DisposeAsync();
+            await dbContext.DisposeAsync();
+        }
+    }
 }
 
 public sealed record SeededArticleAccessScenario(

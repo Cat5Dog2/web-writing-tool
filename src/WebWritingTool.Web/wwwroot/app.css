@@ -63,6 +63,17 @@ h1:focus {
     max-width: 1280px;
 }
 
+.auth-page {
+    display: flex;
+    justify-content: center;
+    padding-top: 3rem;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 440px;
+}
+
 .article-page-header {
     display: flex;
     align-items: flex-start;
@@ -100,15 +111,29 @@ h1:focus {
     background: #f6f8fb;
 }
 
-.article-tag-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin-top: 0.35rem;
+.article-col-compact {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.article-col-actions {
+    width: 1%;
+}
+
+.article-col-actions .d-flex {
+    flex-wrap: nowrap;
+}
+
+.article-col-actions .btn {
+    white-space: nowrap;
 }
 
 .article-tags-cell {
-    min-width: 10rem;
+    max-width: 9rem;
+}
+
+.article-col-tags {
+    max-width: 9rem;
 }
 
 .article-tags-cell .badge {
@@ -116,10 +141,21 @@ h1:focus {
 }
 
 .article-memo-cell {
-    max-width: 18rem;
+    max-width: 9rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.article-disabled-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.article-disabled-hint {
+    color: #8a94a3;
+    font-size: 0.78rem;
 }
 
 .article-dialog-backdrop {
@@ -141,6 +177,44 @@ h1:focus {
     box-shadow: 0 1rem 3rem rgba(15, 23, 42, 0.2);
 }
 
+.article-title-candidate-list {
+    display: grid;
+    gap: 0.5rem;
+    max-height: 20rem;
+    overflow-y: auto;
+}
+
+.article-title-candidate {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.article-title-candidate:has(input:checked) {
+    border-color: #6b7a8c;
+    background: #f6f8fb;
+}
+
+.article-title-candidate input[type="radio"] {
+    margin-top: 0.3rem;
+}
+
+.article-title-candidate-text {
+    display: block;
+    font-weight: 600;
+}
+
+.article-title-candidate-reason {
+    display: block;
+    color: #667386;
+    font-size: 0.85rem;
+    margin-top: 0.15rem;
+}
+
 .article-heading-list {
     display: grid;
     gap: 0.5rem;
@@ -149,6 +223,15 @@ h1:focus {
 
 .article-preview-page {
     max-width: 920px;
+}
+
+.article-preview-heading {
+    min-width: 0;
+}
+
+.article-preview-back {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .article-preview-description {
@@ -189,7 +272,7 @@ h1:focus {
 
 .article-editor-grid {
     display: grid;
-    grid-template-columns: minmax(20rem, 0.9fr) minmax(0, 1.4fr);
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
     gap: 1rem;
     align-items: start;
 }
@@ -198,6 +281,25 @@ h1:focus {
 .article-editor-main {
     display: grid;
     gap: 1rem;
+}
+
+.article-editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+@media (min-width: 641px) {
+    .article-editor-toolbar {
+        /* Sit below MainLayout's sticky .top-row (height 3.5rem) instead of covering it. */
+        top: 3.5rem;
+    }
 }
 
 .article-editor-actions,
@@ -211,7 +313,6 @@ h1:focus {
 
 .article-editor-actions {
     flex-wrap: wrap;
-    margin-top: 1rem;
 }
 
 .article-section-header {
@@ -292,6 +393,17 @@ h1:focus {
 
 .article-editor-danger {
     margin-top: 1rem;
+}
+
+.article-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    border: 1px dashed #d7dee8;
+    border-radius: 8px;
+    background: #f6f8fb;
 }
 
 .admin-user-table td {

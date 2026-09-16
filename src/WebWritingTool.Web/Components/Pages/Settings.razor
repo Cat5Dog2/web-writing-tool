@@ -70,7 +70,7 @@
 
     <div class="row g-4">
         <div class="col-lg-5">
-            <section class="article-panel">
+            <section class="article-panel" id="wp-site-form">
                 <h2 class="h5 mb-3">@FormTitle</h2>
                 <div class="row g-3">
                     <div class="col-12">
@@ -86,12 +86,14 @@
                         <input id="login-id" class="form-control" @bind="form.LoginId" />
                     </div>
                     <div class="col-12">
-                        <label class="form-label" for="app-pass">APP-PASS</label>
+                        <label class="form-label" for="app-pass">アプリケーションパスワード（APP-PASS）</label>
                         <input id="app-pass" class="form-control" type="password" @bind="form.ApplicationPassword" />
+                        <div class="form-text">WordPress管理画面の「ユーザー」&gt;「プロフィール」&gt;「アプリケーションパスワード」で発行します。</div>
                     </div>
                     <div class="col-md-5">
                         <label class="form-label" for="default-category-id">既定カテゴリID</label>
                         <input id="default-category-id" class="form-control" type="number" @bind="form.DefaultCategoryId" />
+                        <div class="form-text">未設定の場合はWordPress側の既定カテゴリを使用します。投稿時に個別選択もできます。</div>
                     </div>
                     <div class="col-md-7">
                         <label class="form-label" for="default-category-name">既定カテゴリ名</label>
@@ -134,7 +136,10 @@
                 }
                 else if (sites.Items.Count == 0)
                 {
-                    <div class="text-muted">登録済みサイトはありません。</div>
+                    <div class="article-empty-state">
+                        <p class="text-muted mb-2">登録済みサイトはありません。フォームから登録してください。</p>
+                        <a class="btn btn-outline-primary btn-sm" href="#wp-site-form">サイトを追加</a>
+                    </div>
                 }
                 else
                 {

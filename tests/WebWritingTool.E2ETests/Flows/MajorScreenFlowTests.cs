@@ -22,7 +22,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await LoginAsync(page);
 
             Assert.Contains("/articles", page.Url, StringComparison.Ordinal);
-            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "記事作成" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "記事一覧" })).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Link, new() { Name = "記事を作成" })).ToBeVisibleAsync();
         }
         catch
@@ -119,10 +119,10 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
     }
 
     [Fact]
-    public async Task E2E005_TitleCandidates_RegistersGenerationJobAndPinsCurrentDisabledUi()
+    public async Task E2E005_TitleCandidatesApi_RegistersGenerationJob()
     {
         await using var session = await fixture.CreateSessionAsync(
-            nameof(E2E005_TitleCandidates_RegistersGenerationJobAndPinsCurrentDisabledUi));
+            nameof(E2E005_TitleCandidatesApi_RegistersGenerationJob));
         var page = session.Page;
         var suffix = Guid.NewGuid().ToString("N")[..10];
         var keyword = $"e2e-title-keyword-{suffix}";
@@ -131,10 +131,6 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         try
         {
             await LoginAsync(page);
-            await page.GotoAsync("/articles/create");
-            await WaitForInteractiveRenderAsync(page);
-            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" })).ToBeDisabledAsync();
-
             var articleId = await CreateArticleAsync(page, keyword, title);
             var response = await PostJsonAsync(
                 page,
@@ -155,6 +151,391 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             Assert.Equal("TitleGeneration", payload.RootElement.GetProperty("jobType").GetString());
             Assert.Equal("Queued", payload.RootElement.GetProperty("status").GetString());
             Assert.Equal(1, await fixture.GetJobCountAsync(articleId, JobType.TitleGeneration));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005B_TitleCandidatesButton_EnablesAfterKeywordAndRegistersJob()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005B_TitleCandidatesButton_EnablesAfterKeywordAndRegistersJob));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-button-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            var titleCandidateButton = page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" });
+            await Expect(titleCandidateButton).ToBeDisabledAsync();
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await Expect(titleCandidateButton).ToBeEnabledAsync();
+
+            await titleCandidateButton.ClickAsync();
+
+            // Waiting for the "queued" status text (instead of an arbitrary delay) proves the
+            // draft article and the generation job both exist server-side before we query the DB.
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var articleId = await fixture.FindArticleIdByKeywordAsync(keyword);
+            Assert.NotNull(articleId);
+            Assert.Equal(1, await fixture.GetJobCountAsync(articleId.Value, JobType.TitleGeneration));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005C_TitleCandidatesThenSubmit_ReusesSameDraftArticle()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005C_TitleCandidatesThenSubmit_ReusesSameDraftArticle));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-reuse-{suffix}";
+        var title = $"E2Eタイトル候補後の送信 {suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var draftArticleId = await fixture.FindArticleIdByKeywordAsync(keyword);
+            Assert.NotNull(draftArticleId);
+
+            // "構成を作成" stays disabled while a candidate generation is in flight (the DB
+            // concurrency fix), so the generation has to finish before submitting is possible.
+            var pendingJobId = await fixture.GetLatestJobIdAsync(draftArticleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(pendingJobId);
+            await fixture.MarkJobSucceededAsync(
+                pendingJobId!.Value,
+                """{"candidates":[{"title":"E2E候補A","reason":"確認用の候補"}]}""");
+
+            var candidatesDialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(candidatesDialog).ToBeVisibleAsync();
+            await candidatesDialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+            await Expect(candidatesDialog).ToBeHiddenAsync();
+
+            await FillAndChangeAsync(page.Locator("#title"), title);
+            await page.Locator("#outline-method").SelectOptionAsync("Keyword");
+            await page.Locator("#search-mode").SetCheckedAsync(false);
+            await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" }).ClickAsync();
+
+            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            var match = ArticleUrlPattern().Match(page.Url);
+            Assert.True(match.Success, $"Article detail URL was expected but current URL was {page.Url}.");
+            Assert.Equal(draftArticleId!.Value, Guid.Parse(match.Groups["id"].Value));
+
+            Assert.Equal(1, await fixture.CountArticlesByKeywordAsync(keyword));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005D_TitleCandidatesGenerating_DisablesSubmitButton()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005D_TitleCandidatesGenerating_DisablesSubmitButton));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-race-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+
+            // The submit button must be disabled as soon as draft creation starts: both handlers
+            // share the same ApplicationDbContext, so letting them run concurrently crashes the
+            // circuit (see the code review that flagged this race).
+            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" })).ToBeDisabledAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+            await Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005E_TitleCandidatesRegenerate_SyncsKeywordToDraft()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005E_TitleCandidatesRegenerate_SyncsKeywordToDraft));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var firstKeyword = $"e2e-title-sync-a-{suffix}";
+        var secondKeyword = $"e2e-title-sync-b-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), firstKeyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var articleId = await fixture.FindArticleIdByKeywordAsync(firstKeyword);
+            Assert.NotNull(articleId);
+            var firstJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(firstJobId);
+
+            // The button stays disabled for as long as the first generation is in flight (by
+            // design, to avoid the DB race the code review found), so completing it and closing
+            // the modal is required before a second, keyword-changed attempt can start.
+            await fixture.MarkJobSucceededAsync(
+                firstJobId!.Value,
+                """{"candidates":[{"title":"E2E候補A","reason":"確認用の候補"}]}""");
+
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(dialog.GetByText("E2E候補A")).ToBeVisibleAsync();
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+            await Expect(dialog).ToBeHiddenAsync();
+
+            await FillAndChangeAsync(page.Locator("#keyword"), secondKeyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+
+            // Reaching the "queued" status text again proves the draft update (which the job
+            // handler's prompt context depends on for keyword, topic risk and strict mode) has
+            // already committed, since a failed update would stop before this point.
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            Assert.Equal(secondKeyword, await fixture.GetArticleKeywordAsync(articleId!.Value));
+            Assert.Equal(1, await fixture.CountArticlesByKeywordAsync(secondKeyword));
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005F_TitleCandidatesModal_RendersSelectsAndRespectsClose()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005F_TitleCandidatesModal_RendersSelectsAndRespectsClose));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-close-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var articleId = await fixture.FindArticleIdByKeywordAsync(keyword);
+            Assert.NotNull(articleId);
+            var firstJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(firstJobId);
+
+            // The background worker is disabled for E2E, so we simulate a successful job the
+            // same way the worker would finish it, and let the page's own polling pick it up.
+            await fixture.MarkJobSucceededAsync(
+                firstJobId!.Value,
+                """{"candidates":[{"title":"E2E候補タイトル","reason":"確認用の候補"}]}""");
+
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(dialog.GetByText("E2E候補タイトル")).ToBeVisibleAsync();
+
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "再生成" }).ClickAsync();
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+            await Expect(dialog).ToBeHiddenAsync();
+
+            var secondJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(secondJobId);
+            Assert.NotEqual(firstJobId!.Value, secondJobId!.Value);
+
+            await fixture.MarkJobSucceededAsync(
+                secondJobId!.Value,
+                """{"candidates":[{"title":"E2E再生成候補","reason":"確認用の候補"}]}""");
+
+            // Wait for the app to actually observe the second generation's completion (the
+            // button re-enabling) instead of a blind sleep, so a slow environment can't make
+            // this pass before the poll loop has picked up the result. The modal must stay
+            // closed because the user already dismissed it for this generation.
+            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" })).ToBeEnabledAsync();
+            await Expect(dialog).ToBeHiddenAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005G_TitleCandidatesRegenerate_JobPayloadMatchesKeywordAtClickTime()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005G_TitleCandidatesRegenerate_JobPayloadMatchesKeywordAtClickTime));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var firstKeyword = $"e2e-title-snap-a-{suffix}";
+        var snapshotKeyword = $"e2e-title-snap-b-{suffix}";
+        var editedAfterClickKeyword = $"e2e-title-snap-c-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), firstKeyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var articleId = await fixture.FindArticleIdByKeywordAsync(firstKeyword);
+            Assert.NotNull(articleId);
+            var firstJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(firstJobId);
+
+            await fixture.MarkJobSucceededAsync(
+                firstJobId!.Value,
+                """{"candidates":[{"title":"E2E候補A","reason":"確認用の候補"}]}""");
+
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(dialog).ToBeVisibleAsync();
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+            await Expect(dialog).ToBeHiddenAsync();
+
+            // Set the keyword the click below must snapshot, then edit it again while the draft
+            // save is in flight: GenerateTitleCandidatesAsync captures its snapshot synchronously
+            // before its first await, so this edit can never land ahead of that capture. Holding a
+            // Postgres row lock on the article pins the edit inside that exact save-in-flight
+            // window deterministically, instead of racing the click against however fast this
+            // environment's DB round-trip happens to be (see the code review that found the
+            // article/job keyword mismatch when the form kept changing under an in-flight save).
+            await FillAndChangeAsync(page.Locator("#keyword"), snapshotKeyword);
+
+            await using (await fixture.LockArticleRowForUpdateAsync(articleId!.Value))
+            {
+                await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+                await Expect(page.GetByText("下書きを更新しています…")).ToBeVisibleAsync();
+
+                // The server's SaveChangesAsync is blocked on the row lock above, so this edit is
+                // guaranteed to land before the draft update (and the job payload built after it)
+                // can be produced.
+                await FillAndChangeAsync(page.Locator("#keyword"), editedAfterClickKeyword);
+
+                // Confirm the edit above actually reached the server before releasing the lock,
+                // without a blind sleep: Blazor Server processes circuit messages strictly in the
+                // order they were dispatched, so once this later, unrelated toggle's own effect is
+                // observed, the keyword change sent earlier over the same connection is guaranteed
+                // to have already been applied.
+                await page.GetByRole(AriaRole.Button, new() { Name = "詳細設定を開く" }).ClickAsync();
+                await Expect(page.GetByRole(AriaRole.Button, new() { Name = "詳細設定を閉じる" })).ToBeVisibleAsync();
+            }
+
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var secondJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(secondJobId);
+            Assert.NotEqual(firstJobId!.Value, secondJobId!.Value);
+
+            Assert.Equal(snapshotKeyword, await fixture.GetArticleKeywordAsync(articleId!.Value));
+            Assert.Equal(snapshotKeyword, await fixture.GetJobPayloadKeywordAsync(secondJobId!.Value));
+
+            // Clean up so the circuit isn't left polling: let the second generation finish.
+            await fixture.MarkJobSucceededAsync(
+                secondJobId!.Value,
+                """{"candidates":[{"title":"E2E候補B","reason":"確認用の候補"}]}""");
+            await Expect(dialog).ToBeVisibleAsync();
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
+            await Expect(dialog).ToBeHiddenAsync();
+        }
+        catch
+        {
+            await session.CaptureFailureScreenshotAsync();
+            throw;
+        }
+    }
+
+    [Fact]
+    public async Task E2E005H_TitleCandidatesApplySelected_SuppressesReopenAfterRegenerate()
+    {
+        await using var session = await fixture.CreateSessionAsync(
+            nameof(E2E005H_TitleCandidatesApplySelected_SuppressesReopenAfterRegenerate));
+        var page = session.Page;
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var keyword = $"e2e-title-apply-{suffix}";
+
+        try
+        {
+            await LoginAsync(page);
+            await page.GotoAsync("/articles/create");
+            await WaitForInteractiveRenderAsync(page);
+
+            await FillAndChangeAsync(page.Locator("#keyword"), keyword);
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" }).ClickAsync();
+            await Expect(page.GetByText("タイトル候補を生成しています…（生成待ち）")).ToBeVisibleAsync();
+
+            var articleId = await fixture.FindArticleIdByKeywordAsync(keyword);
+            Assert.NotNull(articleId);
+            var firstJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(firstJobId);
+
+            await fixture.MarkJobSucceededAsync(
+                firstJobId!.Value,
+                """{"candidates":[{"title":"E2E候補適用前","reason":"確認用の候補"}]}""");
+
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Expect(dialog.GetByText("E2E候補適用前")).ToBeVisibleAsync();
+
+            // Mirrors the review's repro: start a second generation without closing the modal,
+            // then apply a candidate from the still-open modal while that generation is running.
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "再生成" }).ClickAsync();
+            await dialog.GetByRole(AriaRole.Button, new() { Name = "選択して反映" }).ClickAsync();
+
+            await Expect(page.Locator("#title")).ToHaveValueAsync("E2E候補適用前");
+            await Expect(dialog).ToBeHiddenAsync();
+
+            var secondJobId = await fixture.GetLatestJobIdAsync(articleId!.Value, JobType.TitleGeneration);
+            Assert.NotNull(secondJobId);
+            Assert.NotEqual(firstJobId!.Value, secondJobId!.Value);
+
+            await fixture.MarkJobSucceededAsync(
+                secondJobId!.Value,
+                """{"candidates":[{"title":"E2E候補適用後","reason":"確認用の候補"}]}""");
+
+            // Wait for the app to observe the second generation's completion (button re-enabling)
+            // before asserting the modal is still hidden, instead of racing a blind sleep.
+            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" })).ToBeEnabledAsync();
+            await Expect(dialog).ToBeHiddenAsync();
         }
         catch
         {
@@ -303,7 +684,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await page.GotoAsync("/articles");
             await WaitForInteractiveRenderAsync(page);
             await FillAndChangeAsync(page.Locator("#search-q"), scenario.ArticleTitle);
-            await page.GetByRole(AriaRole.Button, new() { Name = "検索" }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "検索", Exact = true }).ClickAsync();
 
             await Expect(page.GetByText("該当する記事はありません")).ToBeVisibleAsync();
             await Expect(page.GetByText(scenario.ArticleTitle)).ToHaveCountAsync(0);
@@ -346,6 +727,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
 
             await FillAndChangeAsync(page.Locator("#keyword"), keyword);
             await FillAndChangeAsync(page.Locator("#title"), title);
+            await page.GetByRole(AriaRole.Button, new() { Name = "詳細設定を開く" }).ClickAsync();
             var profileValue = await page.Locator("#writing-profile option")
                 .Filter(new LocatorFilterOptions { HasText = siteName })
                 .GetAttributeAsync("value");
@@ -435,7 +817,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         await page.GotoAsync("/articles");
         await WaitForInteractiveRenderAsync(page);
         await FillAndChangeAsync(page.Locator("#search-q"), query);
-        await page.GetByRole(AriaRole.Button, new() { Name = "検索" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "検索", Exact = true }).ClickAsync();
         await WaitForInteractiveRenderAsync(page);
     }
 
@@ -576,7 +958,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         await page.GotoAsync("/articles");
         await WaitForInteractiveRenderAsync(page);
         await FillAndChangeAsync(page.Locator("#search-q"), title);
-        await page.GetByRole(AriaRole.Button, new() { Name = "検索" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "検索", Exact = true }).ClickAsync();
 
         var articleRow = page.Locator("tbody tr").Filter(new LocatorFilterOptions { HasText = title });
         await Expect(articleRow).ToHaveCountAsync(1);
