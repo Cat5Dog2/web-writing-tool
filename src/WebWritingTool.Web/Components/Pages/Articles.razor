@@ -18,20 +18,17 @@
 <div class="article-page">
     <header class="article-page-header">
         <div>
-            <h1>記事作成</h1>
+            <h1>記事一覧</h1>
         </div>
         <div class="article-actions">
             <a class="btn btn-primary" href="articles/create">記事を作成</a>
             <button class="btn btn-outline-secondary" type="button" @onclick="ToggleBulkForm">一括作成</button>
-            <button class="btn btn-outline-secondary" type="button" disabled>記事インポート</button>
+            <span class="article-disabled-action">
+                <button class="btn btn-outline-secondary" type="button" disabled title="準備中の機能です。今後のフェーズで提供予定です。">記事インポート</button>
+                <span class="article-disabled-hint">準備中</span>
+            </span>
         </div>
     </header>
-
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><span class="nav-link active">プロジェクト</span></li>
-        <li class="nav-item"><span class="nav-link disabled">詳細</span></li>
-        <li class="nav-item"><span class="nav-link disabled">設定</span></li>
-    </ul>
 
     @if (!string.IsNullOrWhiteSpace(errorMessage))
     {
@@ -54,7 +51,8 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label" for="bulk-lines">キーワード一覧</label>
-                    <textarea id="bulk-lines" class="form-control" rows="6" @bind="bulkLines"></textarea>
+                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="1行に1件。「キーワード」または「キーワード|タイトル」の形式で入力してください。&#10;例: Blazor SEO&#10;例: WordPress REST API|投稿連携の記事" @bind="bulkLines"></textarea>
+                    <div class="form-text">1行に1件、「キーワード」または「キーワード|タイトル」の形式で入力します。</div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label" for="bulk-h2">H2の個数</label>
@@ -80,7 +78,7 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label" for="bulk-model">何を作成する？</label>
+                    <label class="form-label" for="bulk-model">生成モデル</label>
                     <select id="bulk-model" class="form-select" @bind="bulkGenerationModel">
                         @foreach (var model in formOptions.GenerationModels)
                         {
@@ -190,20 +188,26 @@
         <table class="table table-sm align-middle article-table">
             <thead>
                 <tr>
-                    <th>作成日</th>
-                    <th>見出し取得</th>
-                    <th>ステータス</th>
+                    <th class="article-col-compact">作成日</th>
+                    <th class="article-col-compact">見出し取得</th>
+                    <th class="article-col-compact">ステータス</th>
                     <th>記事タイトル</th>
-                    <th>タグ</th>
-                    <th>メモ</th>
-                    <th class="text-end">操作</th>
+                    <th class="article-col-tags">タグ</th>
+                    <th class="article-col-memo">メモ</th>
+                    <th class="article-col-actions text-end">操作</th>
                 </tr>
             </thead>
             <tbody>
                 @if (articleList.Items.Count == 0 && !isLoading)
                 {
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">該当する記事はありません</td>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            <div>該当する記事はありません</div>
+                            @if (HasActiveSearchFilter)
+                            {
+                                <button type="button" class="btn btn-link btn-sm" @onclick="ClearSearchAsync">検索条件をクリア</button>
+                            }
+                        </td>
                     </tr>
                 }
                 else
@@ -211,20 +215,11 @@
                     @foreach (var article in articleList.Items)
                     {
                         <tr>
-                            <td class="text-nowrap">@ToDisplayDate(article.CreatedAt)</td>
-                            <td><span class="badge text-bg-light">@article.HeadlineSource</span></td>
-                            <td><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
+                            <td class="article-col-compact">@ToDisplayDate(article.CreatedAt)</td>
+                            <td class="article-col-compact"><span class="badge text-bg-light">@GetHeadlineSourceLabel(article.HeadlineSource)</span></td>
+                            <td class="article-col-compact"><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
                             <td>
                                 <a href="@($"articles/{article.Id}")" class="fw-semibold">@GetArticleTitle(article)</a>
-                                @if (article.Tags.Count > 0)
-                                {
-                                    <div class="article-tag-row">
-                                        @foreach (var tag in article.Tags)
-                                        {
-                                            <span class="badge text-bg-secondary">@tag</span>
-                                        }
-                                    </div>
-                                }
                             </td>
                             <td class="article-tags-cell">
                                 @foreach (var tag in article.Tags)
@@ -232,8 +227,8 @@
                                     <span class="badge text-bg-secondary">@tag</span>
                                 }
                             </td>
-                            <td class="article-memo-cell">@article.Memo</td>
-                            <td>
+                            <td class="article-memo-cell" title="@article.Memo">@article.Memo</td>
+                            <td class="article-col-actions">
                                 <div class="d-flex justify-content-end gap-2">
                                     <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
                                     <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
@@ -247,11 +242,14 @@
         </table>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mt-3">
-        <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasPrevious)" @onclick="() => GoToPage(articleList.Page - 1)">前へ</button>
-        <span>@articleList.Page / @Math.Max(articleList.TotalPages, 1)</span>
-        <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasNext)" @onclick="() => GoToPage(articleList.Page + 1)">次へ</button>
-    </div>
+    @if (articleList.TotalCount > 0)
+    {
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasPrevious)" @onclick="() => GoToPage(articleList.Page - 1)">前へ</button>
+            <span>@articleList.Page / @Math.Max(articleList.TotalPages, 1)</span>
+            <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasNext)" @onclick="() => GoToPage(articleList.Page + 1)">次へ</button>
+        </div>
+    }
 
     @if (deleteTarget is not null)
     {
@@ -461,9 +459,20 @@
         }
     }
 
+    private bool HasActiveSearchFilter =>
+        !string.IsNullOrWhiteSpace(searchQuery) || !string.IsNullOrWhiteSpace(searchTags);
+
     private Task SearchAsync()
     {
         NavigationManager.NavigateTo(BuildListUrl(1));
+        return Task.CompletedTask;
+    }
+
+    private Task ClearSearchAsync()
+    {
+        searchQuery = null;
+        searchTags = null;
+        NavigationManager.NavigateTo("/articles");
         return Task.CompletedTask;
     }
 
@@ -789,6 +798,16 @@
             "OutlineGenerating" or "BodyGenerating" => "text-bg-primary",
             "OutlineQueued" or "BodyQueued" => "text-bg-warning",
             _ => "text-bg-secondary"
+        };
+    }
+
+    private static string GetHeadlineSourceLabel(string headlineSource)
+    {
+        return headlineSource switch
+        {
+            "WebSearch" => "WEB検索",
+            "Keyword" => "キーワード",
+            _ => headlineSource
         };
     }
 
