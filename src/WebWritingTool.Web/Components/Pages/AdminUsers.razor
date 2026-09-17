@@ -141,24 +141,24 @@
                     @foreach (var row in rows)
                     {
                         <tr>
-                            <td>
+                            <td data-label="メールアドレス">
                                 <div class="fw-semibold">@row.Email</div>
                                 <div class="text-muted small">@row.Id</div>
                             </td>
-                            <td><input class="form-control form-control-sm" @bind="row.DisplayName" /></td>
-                            <td>
+                            <td data-label="表示名"><input class="form-control form-control-sm" @bind="row.DisplayName" /></td>
+                            <td data-label="ロール">
                                 <select class="form-select form-select-sm" @bind="row.Role">
                                     <option value="User">User</option>
                                     <option value="Admin">Admin</option>
                                 </select>
                             </td>
-                            <td class="text-center">
+                            <td class="text-center" data-label="有効">
                                 <input class="form-check-input" type="checkbox" @bind="row.IsEnabled" />
                             </td>
-                            <td><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.MonthlyLimitChars" /></td>
-                            <td><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.RemainingOutlineCount" /></td>
-                            <td class="text-nowrap">@ToDisplayDate(row.LastLoginAt)</td>
-                            <td>
+                            <td data-label="月間上限"><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.MonthlyLimitChars" /></td>
+                            <td data-label="残り構成数"><input class="form-control form-control-sm admin-number-input" type="number" min="0" @bind="row.RemainingOutlineCount" /></td>
+                            <td class="text-nowrap" data-label="最終ログイン">@ToDisplayDate(row.LastLoginAt)</td>
+                            <td data-label="操作">
                                 <div class="admin-user-actions">
                                     <button type="button" class="btn btn-sm btn-outline-primary" disabled="@isSubmitting" @onclick="() => SaveUserAsync(row)">保存</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@isSubmitting" @onclick="() => ChangeRoleAsync(row)">ロール保存</button>

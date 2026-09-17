@@ -290,6 +290,10 @@ public static class WordpressEndpoints
                 title: "External integration failed",
                 detail: validationErrors.FirstOrDefault()?.Message ?? "WordPress連携に失敗しました。",
                 statusCode: StatusCodes.Status502BadGateway),
+            WordpressServiceError.Unauthorized => Results.Problem(
+                title: "External integration unauthorized",
+                detail: validationErrors.FirstOrDefault()?.Message ?? "WordPress接続が認証されていません。",
+                statusCode: StatusCodes.Status502BadGateway),
             WordpressServiceError.HumanReviewRequired => Results.Problem(
                 title: "HumanReviewRequired",
                 detail: "人間確認前の記事はWordPressへ公開投稿できません。",
