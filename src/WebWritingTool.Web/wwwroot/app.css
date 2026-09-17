@@ -171,6 +171,11 @@ h1:focus {
 
 .article-dialog {
     width: min(34rem, 100%);
+    /* Matches the backdrop's 1rem padding on each side, so a dialog taller than the
+       viewport scrolls internally instead of overflowing top and bottom with its own
+       action buttons left unreachable (mobile-ui-dialog-review-2026-09-17 review). */
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
     border-radius: 8px;
     padding: 1rem;
     background: #fff;
@@ -454,5 +459,116 @@ h1:focus {
     .article-heading-save {
         width: 100%;
         justify-content: space-between;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Mobile: stack table rows as cards instead of a table that needs horizontal scroll to
+       reach the title or the row actions. Column order is reshuffled per-cell (title/status/
+       actions first, supplementary fields after) via `order`, independent of source order so
+       the desktop table markup and column order stay unchanged. */
+    .article-table thead {
+        display: none;
+    }
+
+    .article-table,
+    .article-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .article-table tbody tr {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #d7dee8;
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        margin-bottom: 0.65rem;
+    }
+
+    .article-table tbody td {
+        display: block;
+        width: 100%;
+        border: none !important;
+        padding: 0.2rem 0;
+        overflow-wrap: anywhere;
+    }
+
+    .article-table tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        color: #667386;
+        font-size: 0.75rem;
+    }
+
+    .article-table tbody td.article-col-actions .d-flex {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    /* Bootstrap's .badge is `white-space: nowrap`, which blocks the tbody td's
+       `overflow-wrap: anywhere` from ever taking effect: nowrap suppresses all wrap
+       opportunities before overflow-wrap gets a say. A tag at the 50-char limit
+       (ArticleService's per-tag cap) then renders as one unbroken run wider than the
+       card, reintroducing horizontal scroll (mobile-ui-second-followup-2026-09-17 review). */
+    .article-tags-cell {
+        max-width: none;
+    }
+
+    .article-tags-cell .badge {
+        white-space: normal;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .admin-user-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        white-space: normal;
+    }
+
+    .article-table:not(.admin-user-table) tbody td:nth-child(4) { order: 1; font-size: 1.05rem; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(3) { order: 2; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(7) { order: 3; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(1) { order: 4; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(2) { order: 5; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(5) { order: 6; }
+    .article-table:not(.admin-user-table) tbody td:nth-child(6) { order: 7; }
+
+    .admin-user-table tbody td:nth-child(1) { order: 1; }
+    .admin-user-table tbody td:nth-child(8) { order: 2; }
+    .admin-user-table tbody td:nth-child(2) { order: 3; }
+    .admin-user-table tbody td:nth-child(3) { order: 4; }
+    .admin-user-table tbody td:nth-child(4) { order: 5; }
+    .admin-user-table tbody td:nth-child(5) { order: 6; }
+    .admin-user-table tbody td:nth-child(6) { order: 7; }
+    .admin-user-table tbody td:nth-child(7) { order: 8; }
+}
+
+@media (max-width: 640.98px), (max-height: 430px) {
+    /* The editor toolbar wraps onto three rows at narrow widths; sticky there permanently
+       covers ~23% of an SE-height viewport (mobile-ui-review-2026-09-16 report, finding #3)
+       and strands the "記事情報を編集" panel off-screen when it expands (finding #4). Letting
+       it scroll with the page fixes both: the trigger and the panel it reveals stay together.
+       The max-height arm covers landscape phones (e.g. SE 667x375): width alone stays above
+       641px there, which would otherwise leave both the sticky toolbar and the PC-style sidebar
+       layout active on a viewport too short for either (mobile-ui-followup-2026-09-16 review). */
+    .article-editor-toolbar {
+        position: static;
+    }
+
+    .btn:not(.btn-sm) {
+        min-height: 44px;
+    }
+
+    .article-col-actions .btn,
+    .admin-user-actions .btn {
+        min-height: 44px;
+    }
+
+    .top-row ::deep .btn-link {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
     }
 }

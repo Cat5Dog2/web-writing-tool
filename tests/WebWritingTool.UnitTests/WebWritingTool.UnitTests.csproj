@@ -16,9 +16,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\WebWritingTool.Application\WebWritingTool.Application.csproj" />
     <ProjectReference Include="..\..\src\WebWritingTool.Domain\WebWritingTool.Domain.csproj" />
     <ProjectReference Include="..\..\src\WebWritingTool.Infrastructure\WebWritingTool.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\WebWritingTool.Web\WebWritingTool.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

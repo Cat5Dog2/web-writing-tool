@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Generation;
@@ -238,10 +239,25 @@ public sealed class WordpressSiteService(
         }
         catch (ExternalIntegrationException ex)
         {
+            // UnauthorizedExternalApi/ForbiddenExternalApi mean the stored credential itself is
+            // unusable (undecryptable, revoked, or rejected by WordPress) rather than a transient
+            // fetch problem. WordpressPostJobHandler posts with this same credential, so submitting
+            // a post would fail identically -- the caller needs to know posting is blocked too, not
+            // just that the category list is unavailable (mobile-ui-dialog-decrypt-followup-2026-09-17 review).
+            var error = IsAuthorizationFailure(ex.ErrorCode)
+                ? WordpressServiceError.Unauthorized
+                : WordpressServiceError.ExternalFailure;
+
             return WordpressServiceResult<WordpressCategoryListResponse>.Failure(
-                WordpressServiceError.ExternalFailure,
+                error,
                 [new WordpressValidationError("wordpress", ex.UserMessage)]);
         }
+    }
+
+    private static bool IsAuthorizationFailure(string errorCode)
+    {
+        return errorCode is ExternalIntegrationErrorCodes.UnauthorizedExternalApi
+            or ExternalIntegrationErrorCodes.ForbiddenExternalApi;
     }
 
     private async Task<List<WordpressValidationError>> ValidateSiteInputAsync(
@@ -281,10 +297,24 @@ public sealed class WordpressSiteService(
 
     private WordpressSiteConnection CreateConnection(WordpressSite site)
     {
-        return new WordpressSiteConnection(
-            site.BaseUrl,
-            site.LoginId,
-            secretProtector.Unprotect(site.EncryptedApplicationPassword));
+        string applicationPassword;
+        try
+        {
+            applicationPassword = secretProtector.Unprotect(site.EncryptedApplicationPassword);
+        }
+        catch (CryptographicException ex)
+        {
+            // A row saved through Settings.razor is always encrypted correctly at write time, so
+            // this only fires if the Data Protection key ring can no longer read it (lost/rotated
+            // keys, corrupted data). Surface it the same way an invalid Application Password would
+            // be, instead of letting it escape as an unhandled exception and crash the caller.
+            throw new ExternalIntegrationException(
+                ExternalIntegrationErrorCodes.UnauthorizedExternalApi,
+                "WordPress接続情報を復号できませんでした。サイトの登録情報を確認してください。",
+                ex);
+        }
+
+        return new WordpressSiteConnection(site.BaseUrl, site.LoginId, applicationPassword);
     }
 
     private static WordpressSiteResponse ToResponse(WordpressSite site)

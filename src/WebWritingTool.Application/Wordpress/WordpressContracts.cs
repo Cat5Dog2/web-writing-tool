@@ -113,6 +113,7 @@ public enum WordpressServiceError
     Conflict,
     ConcurrencyConflict,
     ExternalFailure,
+    Unauthorized,
     HumanReviewRequired,
     NotPostable,
     RateLimited

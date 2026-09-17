@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Notifications;
@@ -102,18 +103,19 @@ public sealed class NotificationSettingService(
             return NotificationServiceResult<NotificationTestResponse>.Failure(NotificationServiceError.RateLimited);
         }
 
-        var destination = await ResolveDestinationAsync(command, cancellationToken);
-        if (destination is null)
-        {
-            return NotificationServiceResult<NotificationTestResponse>.Failure(
-                NotificationServiceError.Disabled,
-                [new NotificationValidationError(nameof(command.Destination), "有効なDiscord通知設定がありません。")]);
-        }
-
         var message = "Discord通知の送信テストです。";
         var sentAt = DateTimeOffset.UtcNow;
+        NotificationDestination? destination = null;
         try
         {
+            destination = await ResolveDestinationAsync(command, cancellationToken);
+            if (destination is null)
+            {
+                return NotificationServiceResult<NotificationTestResponse>.Failure(
+                    NotificationServiceError.Disabled,
+                    [new NotificationValidationError(nameof(command.Destination), "有効なDiscord通知設定がありません。")]);
+            }
+
             var result = await discordNotificationClient.SendAsync(
                 new DiscordNotificationRequest(
                     destination.WebhookUrl,
@@ -148,16 +150,22 @@ public sealed class NotificationSettingService(
         }
         catch (ExternalIntegrationException ex)
         {
-            AddNotificationLog(
-                command.Actor.UserId,
-                destination,
-                NotificationEventTypes.Test,
-                success: false,
-                message,
-                ex.ErrorCode,
-                ex.UserMessage,
-                sentAt);
-            await dbContext.SaveChangesAsync(CancellationToken.None);
+            // destination is null when resolving it is itself what failed (e.g. the stored
+            // webhook URL could not be decrypted) -- there is nothing to log a destination for
+            // in that case, only the failure reported back to the caller.
+            if (destination is not null)
+            {
+                AddNotificationLog(
+                    command.Actor.UserId,
+                    destination,
+                    NotificationEventTypes.Test,
+                    success: false,
+                    message,
+                    ex.ErrorCode,
+                    ex.UserMessage,
+                    sentAt);
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+            }
 
             return NotificationServiceResult<NotificationTestResponse>.Success(
                 new NotificationTestResponse(false, ex.UserMessage, sentAt));
@@ -237,12 +245,29 @@ public sealed class NotificationSettingService(
                     && item.Enabled,
                 cancellationToken);
 
-        return setting is null
-            ? null
-            : new NotificationDestination(
-                setting.Id,
-                secretProtector.Unprotect(setting.EncryptedWebhookUrl),
-                setting.DestinationMasked);
+        if (setting is null)
+        {
+            return null;
+        }
+
+        string webhookUrl;
+        try
+        {
+            webhookUrl = secretProtector.Unprotect(setting.EncryptedWebhookUrl);
+        }
+        catch (CryptographicException ex)
+        {
+            // A row saved through Settings.razor is always encrypted correctly at write time, so
+            // this only fires if the Data Protection key ring can no longer read it (lost/rotated
+            // keys, corrupted data). Let SendTestAsync's existing ExternalIntegrationException
+            // handling report it the same way a live Discord send failure would be.
+            throw new ExternalIntegrationException(
+                ExternalIntegrationErrorCodes.UnauthorizedExternalApi,
+                "Discord Webhook URLを復号できませんでした。通知設定を確認してください。",
+                ex);
+        }
+
+        return new NotificationDestination(setting.Id, webhookUrl, setting.DestinationMasked);
     }
 
     private void AddNotificationLog(

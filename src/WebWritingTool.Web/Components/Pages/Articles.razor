@@ -1,6 +1,7 @@
 @page "/articles"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using System.Security.Claims
 
@@ -12,6 +13,8 @@
 @inject IWordpressSiteQueryService WordpressSiteQueryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<Articles> Logger
 
 <PageTitle>記事一覧</PageTitle>
 
@@ -51,7 +54,7 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label" for="bulk-lines">キーワード一覧</label>
-                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="1行に1件。「キーワード」または「キーワード|タイトル」の形式で入力してください。&#10;例: Blazor SEO&#10;例: WordPress REST API|投稿連携の記事" @bind="bulkLines"></textarea>
+                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="@BulkLinesPlaceholder" @bind="bulkLines"></textarea>
                     <div class="form-text">1行に1件、「キーワード」または「キーワード|タイトル」の形式で入力します。</div>
                 </div>
                 <div class="col-md-2">
@@ -215,20 +218,20 @@
                     @foreach (var article in articleList.Items)
                     {
                         <tr>
-                            <td class="article-col-compact">@ToDisplayDate(article.CreatedAt)</td>
-                            <td class="article-col-compact"><span class="badge text-bg-light">@GetHeadlineSourceLabel(article.HeadlineSource)</span></td>
-                            <td class="article-col-compact"><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
-                            <td>
+                            <td class="article-col-compact" data-label="作成日">@ToDisplayDate(article.CreatedAt)</td>
+                            <td class="article-col-compact" data-label="見出し取得"><span class="badge text-bg-light">@GetHeadlineSourceLabel(article.HeadlineSource)</span></td>
+                            <td class="article-col-compact" data-label="ステータス"><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
+                            <td data-label="記事タイトル">
                                 <a href="@($"articles/{article.Id}")" class="fw-semibold">@GetArticleTitle(article)</a>
                             </td>
-                            <td class="article-tags-cell">
+                            <td class="article-tags-cell" data-label="タグ">
                                 @foreach (var tag in article.Tags)
                                 {
                                     <span class="badge text-bg-secondary">@tag</span>
                                 }
                             </td>
-                            <td class="article-memo-cell" title="@article.Memo">@article.Memo</td>
-                            <td class="article-col-actions">
+                            <td class="article-memo-cell" title="@article.Memo" data-label="メモ">@article.Memo</td>
+                            <td class="article-col-actions" data-label="操作">
                                 <div class="d-flex justify-content-end gap-2">
                                     <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
                                     <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
@@ -254,7 +257,7 @@
     @if (deleteTarget is not null)
     {
         <div class="article-dialog-backdrop">
-            <section class="article-dialog" role="dialog" aria-modal="true">
+            <section class="article-dialog" role="dialog" aria-modal="true" @ref="deleteDialogRef">
                 <h2 class="h5">記事を削除</h2>
                 <p class="mb-2">@GetArticleTitle(deleteTarget)</p>
                 @if (deleteTarget.HasQueuedJob)
@@ -262,7 +265,7 @@
                     <p class="text-muted">待機中ジョブは削除時にキャンセルされます。</p>
                 }
                 <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete">キャンセル</button>
+                    <button type="button" class="btn btn-outline-secondary" @ref="deleteCancelButtonRef" @onclick="CancelDelete">キャンセル</button>
                     <button type="button" class="btn btn-danger" @onclick="DeleteAsync">削除</button>
                 </div>
             </section>
@@ -310,6 +313,14 @@
                                 <option value="@category.Id">@category.Name</option>
                             }
                         </select>
+                        @if (!string.IsNullOrWhiteSpace(postCategoriesError) && postCategoriesUnauthorized)
+                        {
+                            <div class="form-text text-danger">カテゴリ一覧を取得できませんでした。@postCategoriesError 認証または権限の問題があります。<a href="/settings">設定</a>でサイトの登録情報と権限を確認してください。</div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(postCategoriesError))
+                        {
+                            <div class="form-text text-danger">カテゴリ一覧を取得できませんでした。@postCategoriesError 既定カテゴリで投稿できます。</div>
+                        }
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="post-status">投稿ステータス</label>
@@ -362,6 +373,8 @@
     private string? errorMessage;
     private string? successMessage;
     private bool showBulkForm;
+    private const string BulkLinesPlaceholder =
+        "1行に1件。「キーワード」または「キーワード|タイトル」の形式で入力してください。\n例: Blazor SEO\n例: WordPress REST API|投稿連携の記事";
     private string? bulkLines;
     private int? bulkH2Count = 5;
     private int? bulkH3Count = 12;
@@ -377,9 +390,19 @@
     private bool isBulkSubmitting;
     private IReadOnlyList<BulkArticleRejectedLine> bulkRejectedLines = [];
     private ArticleListItemResponse? deleteTarget;
+    private ElementReference deleteDialogRef;
+    private ElementReference deleteCancelButtonRef;
+    private IJSObjectReference? dialogFocusModule;
+    private Task<IJSObjectReference>? dialogFocusModuleImport;
+    private DotNetObjectReference<Articles>? dialogFocusDotNetRef;
+    private bool deleteDialogFocusActive;
+    private int deleteDialogGeneration;
+    private bool disposed;
     private ArticleListItemResponse? postTarget;
     private WordpressPostPreviewResponse? postPreview;
     private IReadOnlyList<WordpressCategoryDto> postCategories = [];
+    private string? postCategoriesError;
+    private bool postCategoriesUnauthorized;
     private readonly WordpressPostForm postForm = new();
     private bool isPostDialogLoading;
     private bool isPostSubmitting;
@@ -403,6 +426,109 @@
         pageSize = QueryPageSize is 30 ? 30 : 10;
         await EnsureOptionsAsync();
         await LoadArticlesAsync(QueryPage ?? 1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (deleteTarget is not null && !deleteDialogFocusActive)
+        {
+            // Captured so a stale invocation can tell it has been superseded by a newer one (see
+            // below) instead of relying on deleteTarget alone, which a cancel-then-reopen can make
+            // non-null again before this invocation resumes (delete-focus-followup-2026-09-17 review).
+            var generation = ++deleteDialogGeneration;
+
+            // Shared so concurrent invocations (a cancel-then-reopen while this is in flight) await
+            // the same import instead of each starting their own: two separate JSRuntime.InvokeAsync
+            // calls would each hand back a distinct IJSObjectReference, and plain "dialogFocusModule
+            // ??= ..." only keeps whichever one is assigned last, leaking the other
+            // (delete-focus-followup-2026-09-18 review, second follow-up).
+            dialogFocusModuleImport ??= JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/dialogFocus.js").AsTask();
+            dialogFocusModule = await dialogFocusModuleImport;
+
+            if (disposed)
+            {
+                // DisposeAsync can run while the import above is still awaited. dialogFocusModule
+                // was null when it ran, so it never got a reference to release -- release the one
+                // just received here instead of leaking it for the rest of the circuit's lifetime
+                // (delete-focus-followup-2026-09-18 review).
+                await DisposeDialogFocusModuleAsync();
+                return;
+            }
+
+            // CancelDelete() or a cancel-then-reopen can run while the import above is awaited. A
+            // superseded generation means a newer invocation now owns the dialog's lifecycle --
+            // either way this invocation must stop here without touching JS state
+            // (precommit-review-2026-09-17 review).
+            if (generation != deleteDialogGeneration || deleteTarget is null)
+            {
+                return;
+            }
+
+            dialogFocusDotNetRef ??= DotNetObjectReference.Create(this);
+            await dialogFocusModule.InvokeVoidAsync(
+                "open",
+                deleteDialogRef,
+                deleteCancelButtonRef,
+                dialogFocusDotNetRef);
+
+            if (disposed)
+            {
+                // dialogFocusModule may already be disposed by the time this resumes; calling
+                // "close" on it would throw ObjectDisposedException instead of cleaning up.
+                return;
+            }
+
+            if (generation != deleteDialogGeneration)
+            {
+                // A newer open attempt has already taken over (or is about to) by now -- calling
+                // close() here would tear down its listener instead of this stale attempt's own
+                // (delete-focus-followup-2026-09-18 review). Only the current generation's own
+                // cancel path below is responsible for cleanup.
+                return;
+            }
+
+            if (deleteTarget is null)
+            {
+                await dialogFocusModule.InvokeVoidAsync("close");
+                return;
+            }
+
+            deleteDialogFocusActive = true;
+        }
+        else if (deleteTarget is null && deleteDialogFocusActive)
+        {
+            deleteDialogFocusActive = false;
+            if (dialogFocusModule is not null && !disposed)
+            {
+                await dialogFocusModule.InvokeVoidAsync("close");
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        dialogFocusDotNetRef?.Dispose();
+        await DisposeDialogFocusModuleAsync();
+    }
+
+    private async Task DisposeDialogFocusModuleAsync()
+    {
+        if (dialogFocusModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await dialogFocusModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException exception)
+        {
+            Logger.LogDebug(
+                exception,
+                "Skipped dialogFocus.js cleanup because the circuit disconnected before disposal ran.");
+        }
     }
 
     private async Task EnsureOptionsAsync()
@@ -573,6 +699,13 @@
         deleteTarget = null;
     }
 
+    [JSInvokable]
+    public void OnDeleteDialogEscape()
+    {
+        CancelDelete();
+        StateHasChanged();
+    }
+
     private async Task DeleteAsync()
     {
         if (deleteTarget is null)
@@ -633,6 +766,8 @@
         postTarget = null;
         postPreview = null;
         postCategories = [];
+        postCategoriesError = null;
+        postCategoriesUnauthorized = false;
         ClearPostForm();
     }
 
@@ -654,6 +789,8 @@
     private async Task LoadPostCategoriesAsync()
     {
         postCategories = [];
+        postCategoriesError = null;
+        postCategoriesUnauthorized = false;
         var actor = await GetWordpressActorAsync();
         if (actor is null || !Guid.TryParse(postForm.SiteId, out var siteId))
         {
@@ -664,7 +801,16 @@
         if (result.Succeeded && result.Value is not null)
         {
             postCategories = result.Value.Items;
+            return;
         }
+
+        // Category list is a convenience, not a requirement: SubmitPostAsync still works with the
+        // default category when the failure is category-fetch-only. But WordpressServiceError.Unauthorized
+        // means the site's stored credential itself is unusable, and WordpressPostJobHandler posts with
+        // that same credential, so submitting would fail identically -- don't tell the user they can
+        // post anyway in that case (mobile-ui-dialog-decrypt-followup-2026-09-17 review).
+        postCategoriesError = GetWordpressServiceErrorMessage(result.Error, result.ValidationErrors);
+        postCategoriesUnauthorized = result.Error == WordpressServiceError.Unauthorized;
     }
 
     private async Task SubmitPostAsync()

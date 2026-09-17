@@ -483,6 +483,46 @@
   - 条件: CIとVPSは`pwsh`、ローカル手順は`powershell`。両方で同じ結果になることを機械的に確認する。
   - 完了条件: `scripts/*.ps1`の非ASCIIとBOMがCIで拒否され、`windows-latest`上のWindows PowerShell 5.1でも受容記録の検証とセルフテストが通る。
 
+- [x] `T-1319` `artifacts/mobile-ui-review-2026-09-16/report.md`のモバイル表示指摘に対応する。
+  - 対象: 設定画面の「サイトを追加」導線、記事一覧・ユーザー管理表のモバイル表示、生成結果編集の固定ツールバー、記事削除ダイアログのフォーカス制御、一括作成プレースホルダー、`html lang`とナビゲーショントグルの名前付け。
+  - 完了条件: 指摘8件のうちコード対応が必要な7件を修正し、既存E2E一式とSlopwatchが通る。管理画面をユーザーごとの詳細編集へ分割する提案は対象外（スコープ外として見送り）。
+
+- [x] `T-1320` WordPress接続情報の復号失敗でBlazor回路がクラッシュする不具合を修正する。
+  - 対象: [WordpressSiteService.CreateConnection](src/WebWritingTool.Infrastructure/Wordpress/WordpressSiteService.cs)、[Articles.razor](src/WebWritingTool.Web/Components/Pages/Articles.razor)の投稿ダイアログ。
+  - 経緯: モバイルダイアログ修正の検証中に、暗号化されていない`EncryptedApplicationPassword`で`CryptographicException`が未処理のまま伝播し、投稿ダイアログを開く操作全体がクラッシュすることを発見した。
+  - 完了条件: `CreateConnection`の復号失敗を`ExternalIntegrationException`（`UnauthorizedExternalApi`）へ変換し、`TestConnectionAsync`・`GetCategoriesAsync`が例外の代わりに`Failure`を返す。投稿ダイアログはカテゴリ取得失敗時に画面内で案内を表示し、既定カテゴリでの投稿は継続できる。Red/Green確認済みの結合テストを追加し、Slopwatch・結合テスト・E2E一式が通る。
+
+- [x] `T-1321` Discord Webhook URLの復号失敗でBlazor回路がクラッシュする不具合を修正する。
+  - 対象: [NotificationSettingService.ResolveDestinationAsync/SendTestAsync](src/WebWritingTool.Infrastructure/Notifications/NotificationSettingService.cs)。
+  - 経緯: T-1320のWordPress側修正と同じ形の不具合。`ResolveDestinationAsync`が`SendTestAsync`のtry節の外で`Unprotect`していたため、復号失敗の`CryptographicException`が未処理のまま伝播していた。
+  - 完了条件: 復号失敗を`ExternalIntegrationException`（`UnauthorizedExternalApi`）へ変換し、既存の`catch (ExternalIntegrationException)`が例外の代わりに`NotificationTestResponse(Success: false, ...)`を返す。Red/Green確認済みの結合テストを追加し、Slopwatch・単体・結合テスト全件が通る。
+
+- [x] `T-1322` WordPress投稿ダイアログが、接続情報の認証エラー時にも「既定カテゴリで投稿できます」と誤案内する不具合を修正する。
+  - 対象: [WordpressSiteService.GetCategoriesAsync](src/WebWritingTool.Infrastructure/Wordpress/WordpressSiteService.cs)、[WordpressEndpoints.ToProblemResult](src/WebWritingTool.Web/Endpoints/WordpressEndpoints.cs)、[Articles.razor](src/WebWritingTool.Web/Components/Pages/Articles.razor)の投稿ダイアログ。
+  - 経緯: T-1320で追加した復号失敗の`Failure`変換により、`Articles.razor`のカテゴリ取得失敗案内が復号失敗時にも表示されるようになったが、その案内文は失敗理由を問わず末尾に「既定カテゴリで投稿できます。」と付け足していた。`WordpressPostJobHandler`は投稿時に同じ`EncryptedApplicationPassword`を`Unprotect`するため、接続情報自体が使えない場合は投稿ジョブも同じ理由で必ず失敗する。フォローアップレビューで、この案内が復号不能時にも投稿可能だと断言する誤りだと指摘された。
+  - 完了条件: `WordpressServiceError`に`Unauthorized`を追加し、`GetCategoriesAsync`は`ExternalIntegrationErrorCodes.UnauthorizedExternalApi`/`ForbiddenExternalApi`の場合に`Unauthorized`を返す。`Articles.razor`は`Unauthorized`のときだけ「既定カテゴリで投稿できます」を表示せず、設定画面での再確認・再保存を促す案内に切り替える。既存の`GetCategoriesAsync`結合テストの期待値を更新し、実機相当環境（Testcontainers起動のE2Eハーネス）で案内文の切り替わりを確認する。Slopwatch・書式検証・結合テスト・単体テスト全件が通る。
+  - 追記（再レビュー）: 案内文「この接続では投稿も失敗します。」は、`ForbiddenExternalApi`（403）がカテゴリ取得側だけの権限不足であり投稿権限不足とは限らない点を踏まえると断定が強すぎると指摘された。「認証または権限の問題があります。設定でサイトの登録情報と権限を確認してください。」に修正。エラー分類（`Unauthorized`が401/403をまとめて扱う判断）自体は変更していない。
+
+- [x] `T-1323` 削除ダイアログのフォーカストラップ初期化中にキャンセルすると、閉じた後もJS初期化が続き未処理例外で回路が停止し得る不具合を修正する。
+  - 対象: [Articles.razor.OnAfterRenderAsync](src/WebWritingTool.Web/Components/Pages/Articles.razor:428)、[dialogFocus.js.open](src/WebWritingTool.Web/wwwroot/js/dialogFocus.js:41)。
+  - 経緯: コミット前レビューで、削除ダイアログを開いた直後（`dialogFocusModule`のJSモジュールimportを`await`している間）にキャンセルすると`deleteTarget`がnullになりダイアログがDOMから除去されるが、当時`deleteDialogFocusActive`がfalseのため閉じる分岐も実行されない。import完了後、古い処理が対象の存続を再確認せず`open`を呼ぶため、削除済みのElementReferenceがJS側でnullとなり`dialogElement.addEventListener(...)`が例外を投げる。未処理のままOnAfterRenderAsyncへ伝わり、InteractiveServerの回路を停止させ得る。レビューは実際のArticlesコンポーネントとJS transportを差し替えた再現コード（reflection経由でOnAfterRenderAsync/ConfirmDelete/CancelDeleteを直接呼び出し）で`openCalledAfterCancel=True`を実証した。
+  - 完了条件: `OnAfterRenderAsync`はJSモジュールimportの`await`後、および`open`呼び出しの`await`後の両方で`deleteTarget`の存続を再確認し、nullならopen呼び出しを中止（またはclose呼び出しのみ行い）、`deleteDialogFocusActive`を立てない。`dialogFocus.js`の`open`はnull／DOM未接続の`dialogElement`を防御的に無視する。レビューの再現手法（reflectionで実コンポーネントを直接操作し、JS transportの完了タイミングを制御するテストダブル）を`tests/WebWritingTool.UnitTests/Articles/ArticlesDeleteDialogFocusTests.cs`として恒久化し、Red（修正前コードで`open`がキャンセル後に呼ばれることを確認）→Green確認済み。Slopwatch・書式検証・単体・結合・E2Eテスト全件が通る。
+
+- [x] `T-1324` T-1323の修正自体に残っていた2件のレース（破棄済みJS参照へのclose呼び出し、import待機中の再オープンによるopen二重呼び出し）を修正する。
+  - 対象: [Articles.razor.OnAfterRenderAsync/DisposeAsync](src/WebWritingTool.Web/Components/Pages/Articles.razor:430)。
+  - 経緯: フォローアップレビューで、T-1323のnullチェックだけでは防げない2つの残存レースが指摘された。(1) `open`呼び出しの`await`中にキャンセル→画面遷移でDisposeAsyncが`dialogFocusModule`を破棄し、`await`完了後の新しいnull分岐が破棄済みJSObjectReferenceへ`close`を呼んで`ObjectDisposedException`を送出する（JS側のnull/isConnectedガードでは防げない、.NET側の破棄チェックが必要）。(2) import待機中にキャンセルして完了前に再度開くと、古い初期化と新しい初期化のどちらも`deleteTarget`非nullのガードを通過し、同じダイアログに`open`が2回呼ばれる（2回目の呼び出しが`previouslyFocused`を上書きし、閉じた後のフォーカス復帰先を破壊し得る）。レビューは実際のJSRuntime基底クラスを継承し本物のJSObjectReferenceを生成する再現コードで両方を実証した。
+  - 完了条件: `OnAfterRenderAsync`開始時に採番する世代カウンター（`deleteDialogGeneration`）で、import・open呼び出し後に「自分が最新の初期化試行か」を再確認し、古ければJSを一切操作せず中断する。`DisposeAsync`の先頭で`disposed`フラグを立て、`OnAfterRenderAsync`内の各`await`後に確認して、破棄後は`close`を含めJS呼び出しを一切行わない。レビューの再現手法（`JSRuntime`基底クラスの薄いテストダブルで完了タイミングを制御）を模した回帰テスト2件を`ArticlesDeleteDialogFocusTests.cs`に追加し、Red（修正の世代・破棄チェック部分のみ一時的に戻し、`ObjectDisposedException`と`openCalls=2`をそれぞれ再現）→Green確認済み。Slopwatch・書式検証・単体・結合・E2Eテスト全件が通る。
+
+- [x] `T-1325` T-1324の修正自体に残っていた2件の不具合（古い初期化が新しいダイアログをcloseする、破棄後に届いたJS参照が解放されない）を修正する。
+  - 対象: [Articles.razor.OnAfterRenderAsync/DisposeAsync](src/WebWritingTool.Web/Components/Pages/Articles.razor:430)。
+  - 経緯: フォローアップレビューで2件指摘された。(1) `open`呼び出しの`await`中にキャンセルして開き直すと、新しいダイアログが自身の`open`を成功させて`deleteDialogFocusActive=true`になった後、古い（世代不一致の）処理の`await`が完了し、世代不一致を理由に`close`を呼んでしまい、新しいダイアログのキー操作ハンドラーを解除する（open→open→closeとなり、.NET側は有効扱いのままJS側のEscape/Tab制御が失われる）。(2) import待機中に`DisposeAsync`が完了すると、その時点で`dialogFocusModule`はまだnullのため`DisposeAsync`は何も解放できない。import完了後に取得したJS参照は、破棄済みガードでreturnするだけで一度も解放されず、Blazorの公式JS参照解放方針に反してリークする。
+  - 完了条件: 世代不一致のみを理由に`close`を呼ばないよう分岐を分離し、世代不一致では常にJSへ触れず中断する（`close`は「現世代かつdeleteTargetがnull」の場合のみ呼ぶ）。import完了直後に`disposed`を検出した場合は、`DisposeAsync`と共通の解放処理（`DisposeDialogFocusModuleAsync`、`JSDisconnectedException`を捕捉）でその場で参照を解放してからreturnする。回帰テスト2件を追加し、Red（修正部分のみ一時的に戻し、`CloseCalls=1`・`DisposeCalls=0`をそれぞれ再現）→Green確認済み。Slopwatch・書式検証・単体・結合・E2Eテスト全件が通る。
+
+- [x] `T-1326` import待機中の再オープンで、並行取得した2件のJS参照のうち1件が未解放になる不具合を修正する。
+  - 対象: [Articles.razor.OnAfterRenderAsync](src/WebWritingTool.Web/Components/Pages/Articles.razor:439)。
+  - 経緯: フォローアップレビューで、`dialogFocusModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", ...)`が、import待機中にキャンセルして開き直した場合に2回独立して呼ばれることが指摘された。それぞれの呼び出しは別々の`IJSObjectReference`を返すため（公式実装で参照ごとに別IDが採番されることを確認済みとのこと）、`??=`は後から代入された側だけをフィールドに残し、先に解決した側の参照は誰にも解放されずリークする。レビューは、両方の完了に同一のモジュールを返す既存の再オープンテストではこの漏れを検出できない点も指摘した。
+  - 完了条件: 進行中のimportを`Task<IJSObjectReference>`型のフィールドで共有し、`??=`で1回しか`JSRuntime.InvokeAsync`を呼ばないようにする（後発の呼び出しは同じTaskを`await`するだけで、独立した2件目のimportを発生させない）。既存の再オープンテストを、import呼び出し回数が1回のままであることを検証するように更新（Red: 修正前は2回になることを確認）。Slopwatch・書式検証・単体・結合・E2Eテスト全件が通る。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
