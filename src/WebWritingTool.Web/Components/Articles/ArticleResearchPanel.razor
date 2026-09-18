@@ -10,8 +10,18 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<ArticleResearchPanel> Logger
 
-<section class="article-panel mb-3" aria-label="検索・参考情報">
-    <h2 class="h5">検索・参考情報</h2>
+@* Keep native disclosure changes from being lost when prerender is replaced. *@
+<section class="article-panel mb-3" aria-label="検索・参考情報" inert="@(!RendererInfo.IsInteractive)">
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
+        <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>
+        <span class="small text-muted">対象：@(HeadingId is null ? "記事全体" : Headings.FirstOrDefault(h => h.Id == HeadingId)?.Title)</span>
+    </div>
+    <p class="small text-muted mb-2">本文生成は対象の保存済み本文を置き換えます。対象・参考資料は下の「検索・参考情報」で変更できます。</p>
+    @if (!string.IsNullOrEmpty(error)) { <div class="alert alert-danger" role="alert">@error</div> }
+    @if (!string.IsNullOrEmpty(status)) { <div class="generation-status" role="status">@status</div> }
+    <details class="research-disclosure">
+    <summary>検索・参考情報</summary>
     <p class="text-muted">取得した参考情報は構成・本文の生成に使います。X検索はボタンを押したときだけ実行します。有効な結果を各20件まで表示します。</p>
     <p class="small text-muted">Web資料は手動取得を優先し、残りの枠に自動検索結果を使います。生成への採用はWeb・X各10件までです。同じ優先度では取得日時が新しい順に採用します。</p>
     <div class="row g-2 mb-3">
@@ -38,18 +48,7 @@
         <button class="btn btn-outline-primary" disabled="@busy" @onclick='() => RunAsync("web")'>Web検索を実行</button>
         <button class="btn btn-outline-primary" disabled="@busy" @onclick='() => RunAsync("x")'>X検索を実行</button>
         <button class="btn btn-outline-secondary" disabled="@busy" @onclick="ReloadAsync">参考情報を更新</button>
-        <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
-        <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>
     </div>
-    <p class="small text-muted">生成には保存済みの設定を使います。本文生成は対象の本文を置き換えます。記事全体の参考情報は各見出しでも利用されます。</p>
-    @if (!string.IsNullOrEmpty(error))
-    {
-        <div class="alert alert-danger" role="alert">@error</div>
-    }
-    @if (!string.IsNullOrEmpty(status))
-    {
-        <div class="alert alert-info" role="status">@status</div>
-    }
     @if (results is not null)
     {
         @if (results.IsDummy)
@@ -111,9 +110,13 @@
             </div>
         </div>
     }
+    </details>
 </section>
 
 @code {
+    [Parameter] public Guid? InitialJobId { get; set; }
+    [Parameter] public Func<Task<bool>>? BeforeGenerate { get; set; }
+    [Parameter] public EventCallback<bool> OnBusyChanged { get; set; }
     [Parameter] public Guid ArticleId { get; set; }
     [Parameter] public string Keyword { get; set; } = string.Empty;
     [Parameter] public bool SearchMode { get; set; }
@@ -140,6 +143,12 @@
             headingValue = string.Empty;
             await ReloadAsync();
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Poll only after the interactive render; prerender must be allowed to finish.
+        if (firstRender && InitialJobId is Guid jobId) await MonitorInitialJobAsync(jobId);
     }
 
     private async Task<ArticleActor?> GetActorAsync()
@@ -178,7 +187,9 @@
     private async Task RunAsync(string action)
     {
         if (busy) return;
+        if (action is "outline" or "body" && BeforeGenerate is not null && !await BeforeGenerate()) return;
         busy = true;
+        if (action is "outline" or "body") await OnBusyChanged.InvokeAsync(true);
         error = null;
         status = "ジョブを登録しています。";
         try
@@ -208,21 +219,7 @@
                 status = null;
                 return;
             }
-            while (!lifetime.IsCancellationRequested)
-            {
-                var job = await scope.ServiceProvider.GetRequiredService<IJobQueryService>().GetAsync(
-                    new JobActor(actor.UserId, actor.IsAdmin), queued.Value.JobId, lifetime.Token);
-                if (job is null || job.Status is "Failed" or "Canceled")
-                {
-                    error = job?.ErrorMessage ?? "処理が中断されました。";
-                    status = null;
-                    return;
-                }
-                if (job.Status == "Succeeded") break;
-                status = job.Status == "Queued" ? "実行待ちです。" : $"処理中です（{job.Progress}%）。";
-                await InvokeAsync(StateHasChanged);
-                await Task.Delay(1000, lifetime.Token);
-            }
+            if (!await WaitForJobAsync(new JobActor(actor.UserId, actor.IsAdmin), queued.Value.JobId)) return;
             if (lifetime.IsCancellationRequested) return;
             if (action is "outline" or "body") await OnGenerated.InvokeAsync();
             await ReloadAsync();
@@ -238,7 +235,53 @@
             status = null;
             Logger.LogWarning("Research operation failed. exceptionType={ExceptionType}", exception.GetType().Name);
         }
-        finally { busy = false; }
+        finally { busy = false; await OnBusyChanged.InvokeAsync(false); }
+    }
+
+    private async Task<bool> WaitForJobAsync(JobActor actor, Guid jobId)
+    {
+        while (!lifetime.IsCancellationRequested)
+        {
+            using var scope = CreateResearchScope();
+            var job = await scope.ServiceProvider.GetRequiredService<IJobQueryService>().GetAsync(actor, jobId, lifetime.Token);
+            if (job is null || job.ArticleId != ArticleId || job.Status is "Failed" or "Canceled")
+            {
+                error = job?.ArticleId == ArticleId ? job.ErrorMessage ?? "処理が中断されました。再実行できます。" : "対象のジョブを確認できませんでした。";
+                status = null;
+                return false;
+            }
+            if (job.Status == "Succeeded") return true;
+            status = job.Status == "Queued" ? "実行待ちです。この画面で完了を確認できます。" : $"処理中です（{job.Progress}%）。";
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1000, lifetime.Token);
+        }
+        return false;
+    }
+
+    private async Task MonitorInitialJobAsync(Guid jobId)
+    {
+        busy = true;
+        await OnBusyChanged.InvokeAsync(true);
+        try
+        {
+            var actor = await GetActorAsync();
+            if (actor is not null && await WaitForJobAsync(new JobActor(actor.UserId, actor.IsAdmin), jobId))
+            {
+                await OnGenerated.InvokeAsync();
+                await ReloadAsync();
+                status = "構成が完成しました。見出しを確認して本文を生成してください。";
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            Logger.LogDebug("Initial generation monitoring canceled because the component was disposed.");
+        }
+        catch (Exception exception)
+        {
+            error = "生成状況を確認できませんでした。記事一覧から状態を確認してください。";
+            Logger.LogWarning("Initial generation monitoring failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally { busy = false; await OnBusyChanged.InvokeAsync(false); }
     }
 
     private IServiceScope CreateResearchScope()

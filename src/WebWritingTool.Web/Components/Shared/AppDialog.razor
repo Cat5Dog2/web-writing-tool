@@ -1,0 +1,52 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ILogger<AppDialog> Logger
+
+<dialog class="article-dialog app-dialog" aria-labelledby="@titleId" @ref="element">
+    <h2 id="@titleId" class="h5">@Title</h2>
+    @ChildContent
+</dialog>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string? ReturnFocusId { get; set; }
+
+    private readonly string titleId = $"dialog-title-{Guid.NewGuid():N}";
+    private ElementReference element;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<AppDialog>? reference;
+    private bool disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var imported = await JS.InvokeAsync<IJSObjectReference>("import", "./js/appDialog.js");
+        if (disposed) { await imported.DisposeAsync(); return; }
+        module = imported;
+        reference = DotNetObjectReference.Create(this);
+        await module.InvokeVoidAsync("open", element, reference, ReturnFocusId);
+    }
+
+    [JSInvokable]
+    public Task CloseAsync() => disposed ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("close", element);
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                Logger.LogDebug("Skipped app dialog cleanup because the circuit disconnected before disposal ran.");
+            }
+        }
+        reference?.Dispose();
+    }
+}

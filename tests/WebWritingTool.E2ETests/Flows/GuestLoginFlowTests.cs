@@ -25,7 +25,7 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await Expect(page.Locator("#generation-model option")).Not.ToHaveCountAsync(0);
             await page.Locator("#keyword").FillAsync("家庭菜園 ゲスト体験");
             await page.Locator("#keyword").DispatchEventAsync("change");
-            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "記事タイトル候補を出す" })).ToBeEnabledAsync();
+            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "タイトル候補を生成" })).ToBeEnabledAsync();
             await page.Locator("#title").FillAsync("ゲストの記事");
             await page.Locator("#title").DispatchEventAsync("change");
             await page.Locator("#search-mode").SetCheckedAsync(true);
@@ -33,6 +33,7 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" }))
                 .ToBeVisibleAsync(new() { Timeout = 30000 });
 
+            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
             var web = page.GetByRole(AriaRole.Button, new() { Name = "Web検索を実行" });
             await Expect(web).ToBeEnabledAsync();
             await web.ClickAsync();
@@ -41,8 +42,7 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await page.GetByRole(AriaRole.Button, new() { Name = "X検索を実行" }).ClickAsync();
             await Expect(page.GetByTestId("research-x-results")).ToContainTextAsync("サンプル投稿", new() { Timeout = 30000 });
             var outline = page.GetByRole(AriaRole.Button, new() { Name = "構成を生成", Exact = true });
-            await Expect(outline).ToBeEnabledAsync();
-            await outline.ClickAsync();
+            await Expect(outline).ToBeDisabledAsync();
 
             var body = page.GetByRole(AriaRole.Button, new() { Name = "本文を生成", Exact = true });
             await Expect(body).ToBeEnabledAsync(new() { Timeout = 30000 });
@@ -51,7 +51,13 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
                 new System.Text.RegularExpressions.Regex("ダミー"), new() { Timeout = 30000 });
             await Expect(body).ToBeEnabledAsync();
             await page.ReloadAsync();
+            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
             await Expect(page.GetByTestId("research-x-results")).ToContainTextAsync("サンプル投稿");
+            await page.GotoAsync("/settings");
+            await Expect(page.GetByText("認証情報の入力は不要です。", new() { Exact = false })).ToBeVisibleAsync();
+            await Expect(page.Locator("#app-pass, #discord-webhook-url")).ToHaveCountAsync(0);
+            await page.GotoAsync("/account");
+            await Expect(page.GetByText("残り約", new() { Exact = false })).ToBeVisibleAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "ログアウト", Exact = true }).ClickAsync();
             await page.WaitForURLAsync("**/login");
         }

@@ -1,4 +1,4 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 @inject Microsoft.Extensions.Options.IOptions<WebWritingTool.Web.Configuration.ExternalApiOptions> ExternalApiOptions
 
@@ -28,9 +28,11 @@
                 <Authorized>
                     @if (WebWritingTool.Application.Security.GuestIdentity.IsGuest(context.User))
                     {
-                        <div class="alert alert-info" role="status">
-                            <strong>ゲストモード</strong>：生成・検索はサンプルです。外部APIへの接続、WordPress投稿、Discord通知は行いません。
-                        </div>
+                        <details class="guest-mode-banner">
+                            <summary><strong>ゲストモード</strong> · サンプルで記事作成を体験</summary>
+                            <p class="mb-1">生成・検索はサンプルです。外部APIへの接続、WordPress投稿、Discord通知は行いません。</p>
+                            <a href="/account">利用期限とデータの扱いを確認</a>
+                        </details>
                     }
                 </Authorized>
             </AuthorizeView>
@@ -46,7 +48,7 @@
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    接続または処理でエラーが発生しました。入力中の内容を控えてから再読み込みしてください。
+    <a href="." class="reload">再読み込み</a>
     <span class="dismiss">🗙</span>
 </div>

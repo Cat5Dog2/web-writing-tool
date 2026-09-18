@@ -3,6 +3,8 @@
 @rendermode InteractiveServer
 
 @using System.Security.Claims
+@inject WebWritingTool.Application.Security.ExternalApiExecutionContext ExecutionContext
+@inject IJSRuntime JS
 
 @inject IWordpressSiteCommandService WordpressSiteCommandService
 @inject IWordpressSiteQueryService WordpressSiteQueryService
@@ -12,7 +14,7 @@
 
 <PageTitle>設定</PageTitle>
 
-<div class="article-page">
+<div class="article-page article-settings-page">
     <header class="article-page-header">
         <div>
             <h1>設定</h1>
@@ -29,9 +31,19 @@
         <div class="alert alert-success" role="status">@successMessage</div>
     }
 
+    @if (ExecutionContext.IsGuest)
+    {
+        <section class="article-panel mb-4"><h2 class="h5">外部サービスとの連携</h2>
+            <p>ゲストモードではWordPress接続・投稿とDiscord通知を利用できません。認証情報の入力は不要です。</p>
+            <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary" disabled>WordPress接続</button><button class="btn btn-outline-secondary" disabled>Discord通知</button></div>
+            <a class="btn btn-primary mt-3" href="/articles">記事作成を試す</a>
+        </section>
+    }
+    else
+    {
     <section class="article-panel mb-4">
         <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-            <div>
+            <div class="notification-summary">
                 <h2 class="h5 mb-1">Discord通知</h2>
                 <div class="text-muted small">
                     現在の送信先: @(notificationSetting.DestinationMasked ?? "未設定")
@@ -72,47 +84,75 @@
         <div class="col-lg-5">
             <section class="article-panel" id="wp-site-form">
                 <h2 class="h5 mb-3">@FormTitle</h2>
+                <p class="small text-muted">接続情報の必須項目を入力してください。ライティング設定は任意です。</p>
+                @if (fieldErrors.Count > 0)
+                {
+                    <div class="alert alert-danger" role="alert"><strong>入力内容を確認してください。</strong><ul class="mb-0">
+                    @foreach (var item in fieldErrors)
+                    { <li><a href="@($"#{item.Key}")" @onclick="() => FocusFieldAsync(item.Key)" @onclick:preventDefault>@item.Value</a></li> }
+                    </ul></div>
+                }
+                <h3 class="h6">接続情報</h3>
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="form-label" for="site-name">サイト名</label>
-                        <input id="site-name" class="form-control" @bind="form.SiteName" />
+                        <input id="site-name" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("site-name") ? "true" : "false")" aria-describedby="site-name-help site-name-error" maxlength="100" @bind="form.SiteName" />
+                        <div id="site-name-help" class="form-text">必須・100文字以内</div>
+                        @if (fieldErrors.TryGetValue("site-name", out var siteNameError)) { <div id="site-name-error" class="text-danger small">@siteNameError</div> }
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="base-url">URL</label>
-                        <input id="base-url" class="form-control" type="url" @bind="form.BaseUrl" />
+                        <input id="base-url" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("base-url") ? "true" : "false")" aria-describedby="base-url-help base-url-error" type="url" @bind="form.BaseUrl" />
+                        <div id="base-url-help" class="form-text">必須・例：https://example.com</div>
+                        @if (fieldErrors.TryGetValue("base-url", out var baseUrlError)) { <div id="base-url-error" class="text-danger small">@baseUrlError</div> }
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="login-id">WordPressログインID</label>
-                        <input id="login-id" class="form-control" @bind="form.LoginId" />
+                        <input id="login-id" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("login-id") ? "true" : "false")" aria-describedby="login-id-help login-id-error" maxlength="100" @bind="form.LoginId" />
+                        <div id="login-id-help" class="form-text">必須・100文字以内</div>
+                        @if (fieldErrors.TryGetValue("login-id", out var loginIdError)) { <div id="login-id-error" class="text-danger small">@loginIdError</div> }
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="app-pass">アプリケーションパスワード（APP-PASS）</label>
-                        <input id="app-pass" class="form-control" type="password" @bind="form.ApplicationPassword" />
+                        <input id="app-pass" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("app-pass") ? "true" : "false")" aria-describedby="app-pass-help app-pass-error" maxlength="300" type="password" @bind="form.ApplicationPassword" />
+                        <div id="app-pass-help" class="form-text">新規登録時は必須・300文字以内。編集時の空欄は現在の値を保持します。</div>
+                        @if (fieldErrors.TryGetValue("app-pass", out var applicationPasswordError)) { <div id="app-pass-error" class="text-danger small">@applicationPasswordError</div> }
                         <div class="form-text">WordPress管理画面の「ユーザー」&gt;「プロフィール」&gt;「アプリケーションパスワード」で発行します。</div>
                     </div>
                     <div class="col-md-5">
                         <label class="form-label" for="default-category-id">既定カテゴリID</label>
                         <input id="default-category-id" class="form-control" type="number" @bind="form.DefaultCategoryId" />
-                        <div class="form-text">未設定の場合はWordPress側の既定カテゴリを使用します。投稿時に個別選択もできます。</div>
+                        <div class="form-text">任意。WordPressの「投稿 → カテゴリー」で確認できる数値IDです。空欄ならWordPress側の既定カテゴリを使用し、投稿時に一覧から個別選択できます。</div>
                     </div>
                     <div class="col-md-7">
                         <label class="form-label" for="default-category-name">既定カテゴリ名</label>
-                        <input id="default-category-name" class="form-control" @bind="form.DefaultCategoryName" />
+                        <input id="default-category-name" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("default-category-name") ? "true" : "false")" aria-describedby="default-category-name-help default-category-name-error" maxlength="200" @bind="form.DefaultCategoryName" />
+                        <div id="default-category-name-help" class="form-text">任意・200文字以内</div>
+                        @if (fieldErrors.TryGetValue("default-category-name", out var defaultCategoryNameError)) { <div id="default-category-name-error" class="text-danger small">@defaultCategoryNameError</div> }
                     </div>
+                </div>
+                <details class="mt-3" open="@showWritingSettings"><summary>ライティング設定（任意）</summary><div class="row g-3">
                     <div class="col-12">
                         <label class="form-label" for="site-admin-profile">管理人プロフィール</label>
-                        <textarea id="site-admin-profile" class="form-control" rows="4" @bind="form.SiteAdminProfile"></textarea>
+                        <textarea id="site-admin-profile" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("site-admin-profile") ? "true" : "false")" aria-describedby="site-admin-profile-help site-admin-profile-error" maxlength="2000" rows="4" @bind="form.SiteAdminProfile"></textarea>
+                        <div id="site-admin-profile-help" class="form-text">任意・2000文字以内</div>
+                        @if (fieldErrors.TryGetValue("site-admin-profile", out var siteAdminProfileError)) { <div id="site-admin-profile-error" class="text-danger small">@siteAdminProfileError</div> }
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="writing-character">語り手・キャラ設定</label>
-                        <textarea id="writing-character" class="form-control" rows="4" @bind="form.WritingCharacter"></textarea>
+                        <textarea id="writing-character" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("writing-character") ? "true" : "false")" aria-describedby="writing-character-help writing-character-error" maxlength="3000" rows="4" @bind="form.WritingCharacter"></textarea>
+                        <div id="writing-character-help" class="form-text">任意・3000文字以内</div>
+                        @if (fieldErrors.TryGetValue("writing-character", out var writingCharacterError)) { <div id="writing-character-error" class="text-danger small">@writingCharacterError</div> }
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="reader-persona">読者ペルソナ</label>
-                        <textarea id="reader-persona" class="form-control" rows="4" @bind="form.ReaderPersona"></textarea>
+                        <textarea id="reader-persona" class="form-control" aria-invalid="@(fieldErrors.ContainsKey("reader-persona") ? "true" : "false")" aria-describedby="reader-persona-help reader-persona-error" maxlength="3000" rows="4" @bind="form.ReaderPersona"></textarea>
+                        <div id="reader-persona-help" class="form-text">任意・3000文字以内</div>
+                        @if (fieldErrors.TryGetValue("reader-persona", out var readerPersonaError)) { <div id="reader-persona-error" class="text-danger small">@readerPersonaError</div> }
                     </div>
                 </div>
 
+                </details>
                 <div class="d-flex gap-2 mt-3">
                     <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveAsync">@SaveButtonLabel</button>
                     @if (editingSiteId.HasValue)
@@ -181,9 +221,39 @@
             </section>
         </div>
     </div>
+    }
 </div>
 
 @code {
+    private readonly Dictionary<string, string> fieldErrors = new();
+    private string? pendingFocusId;
+    private bool showWritingSettings;
+    private static (string Id, string Label) GetField(string field) => field.ToLowerInvariant() switch
+    {
+            "sitename" => ("site-name", "サイト名"),
+            "baseurl" => ("base-url", "URL（HTTPS）"),
+            "loginid" => ("login-id", "WordPressログインID"),
+            "applicationpassword" => ("app-pass", "アプリケーションパスワード"),
+            "defaultcategoryname" => ("default-category-name", "既定カテゴリ名"),
+            "siteadminprofile" => ("site-admin-profile", "管理人プロフィール"),
+            "writingcharacter" => ("writing-character", "語り手・キャラ設定"),
+            "readerpersona" => ("reader-persona", "読者ペルソナ"),
+            _ => ("site-name", "設定")
+    };
+
+    private async Task FocusFieldAsync(string id)
+    {
+        await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/appDialog.js");
+        await module.InvokeVoidAsync("focus", id);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (pendingFocusId is not { } id) return;
+        pendingFocusId = null;
+        await FocusFieldAsync(id);
+    }
+
     private WordpressSiteListResponse sites = new([]);
     private readonly WordpressSiteForm form = new();
     private NotificationSettingResponse notificationSetting = new(NotificationProviders.Discord, null, false, null);
@@ -202,6 +272,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (ExecutionContext.IsGuest) return;
         await LoadSitesAsync();
         await LoadNotificationSettingAsync();
     }
@@ -304,6 +375,7 @@
 
     private async Task SaveAsync()
     {
+        fieldErrors.Clear();
         var actor = await GetActorAsync();
         if (actor is null)
         {
@@ -351,7 +423,14 @@
 
         if (!result.Succeeded || result.Value is null)
         {
-            errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            foreach (var error in result.ValidationErrors)
+            {
+                var field = GetField(error.Field);
+                fieldErrors[field.Id] = $"{field.Label}：{error.Message}";
+            }
+            showWritingSettings = fieldErrors.Keys.Any(id => id is "site-admin-profile" or "writing-character" or "reader-persona");
+            errorMessage = fieldErrors.Count == 0 ? GetServiceErrorMessage(result.Error, result.ValidationErrors) : null;
+            pendingFocusId = fieldErrors.Keys.FirstOrDefault();
             return;
         }
 
@@ -445,6 +524,7 @@
 
     private void ClearMessages()
     {
+        fieldErrors.Clear();
         errorMessage = null;
         successMessage = null;
     }

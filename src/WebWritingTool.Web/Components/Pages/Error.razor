@@ -10,7 +10,8 @@
 @if (ShowRequestId)
 {
     <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
+        <strong>問い合わせ用の識別番号：</strong> <code>@RequestId</code>
+        <CopyText Text="@(RequestId!)" @rendermode="InteractiveServer" />
     </p>
 }
 

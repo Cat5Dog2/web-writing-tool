@@ -9,10 +9,10 @@ public sealed partial class MajorScreenFlowTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task E2E003_BulkCreate_WithEmptyInput_ShowsErrorWithoutSuccess(string input)
+    public async Task E2E003_BulkCreate_WithEmptyInput_PreventsSubmissionWithoutSuccess(string input)
     {
         await using var session = await fixture.CreateSessionAsync(
-            nameof(E2E003_BulkCreate_WithEmptyInput_ShowsErrorWithoutSuccess)
+            nameof(E2E003_BulkCreate_WithEmptyInput_PreventsSubmissionWithoutSuccess)
             + (input.Length == 0 ? "_empty" : "_whitespace"));
         var page = session.Page;
         var email = await fixture.SeedStandardUserAsync(
@@ -27,23 +27,8 @@ public sealed partial class MajorScreenFlowTests
 
             await page.GetByRole(AriaRole.Button, new() { Name = "一括作成", Exact = true }).ClickAsync();
             await FillAndChangeAsync(page.Locator("#bulk-lines"), input);
-            await page.GetByRole(AriaRole.Button, new() { Name = "登録", Exact = true }).ClickAsync();
-
-            var error = page.GetByRole(AriaRole.Alert).Filter(new LocatorFilterOptions
-            {
-                HasText = "登録できる記事がありませんでした。入力内容を確認してください。"
-            });
-            var rejectedLines = page.Locator(".alert-warning");
-            await Expect(rejectedLines).ToContainTextAsync("1 行目: 行が空です。");
-            await Expect(rejectedLines).ToContainTextAsync("登録可能な行がありません。");
-            await Expect(rejectedLines).Not.ToContainTextAsync("0 行目:");
-            await Expect(error).ToBeVisibleAsync();
+            await Expect(page.Locator("#bulk-submit")).ToBeDisabledAsync();
             await Expect(page.GetByRole(AriaRole.Status)).ToHaveCountAsync(0);
-            await Expect(page.GetByRole(AriaRole.Button, new() { Name = "登録", Exact = true })).ToBeEnabledAsync();
-
-            // 別の入力による再描画後も、登録失敗の表示が残ることを確認する。
-            await page.Locator("#bulk-domestic").SetCheckedAsync(false);
-            await Expect(error).ToBeVisibleAsync();
             Assert.Equal(originalTitles, await articleTitles.AllTextContentsAsync());
 
             await page.ReloadAsync();
@@ -78,9 +63,10 @@ public sealed partial class MajorScreenFlowTests
             await FillAndChangeAsync(
                 page.Locator("#bulk-lines"),
                 $"{keywordOnly}\n{invalidKeyword}|タイトル|余分\n{titledKeyword}|{title}");
+            await page.Locator("summary").Filter(new() { HasText = "構成・生成・自動投稿の設定" }).ClickAsync();
             await page.Locator("#bulk-outline-method").SelectOptionAsync("Keyword");
             await page.Locator("#bulk-search").SetCheckedAsync(false);
-            await page.GetByRole(AriaRole.Button, new() { Name = "登録", Exact = true }).ClickAsync();
+            await page.Locator("#bulk-submit").ClickAsync();
 
             await Expect(page.GetByRole(AriaRole.Status)).ToHaveTextAsync("2件の記事を登録しました。");
             await Expect(page.Locator(".alert-warning")).ToHaveTextAsync(
@@ -114,7 +100,8 @@ public sealed partial class MajorScreenFlowTests
         try
         {
             await LoginAsync(page);
-            await CreateArticleAsync(page, $"e2e-badges-{suffix}", $"見出しバッジ確認 {suffix}");
+            var articleId = await CreateArticleAsync(page, $"e2e-badges-{suffix}", $"見出しバッジ確認 {suffix}");
+            await CancelInitialOutlineAsync(page, articleId);
             var levelBadge = page.Locator(".article-heading-editor .article-section-header .text-bg-light");
             var headingTitle = page.Locator("#heading-title");
 

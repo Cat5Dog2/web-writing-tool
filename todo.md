@@ -548,6 +548,25 @@
   - 完了条件: 起動時・1分ごとの清掃、Cookieと保持期限の統一、Runningジョブの完了待ち、通常ユーザー・Adminの保護、トランザクションによる関連データ一括削除、境界値・失敗系・起動時のテストと設計書更新。
   - 確認: `dotnet test tests/WebWritingTool.IntegrationTests --filter 'FullyQualifiedName~GuestAccountCleanupTests|FullyQualifiedName~GuestLoginTests|FullyQualifiedName~HealthEndpointTests|FullyQualifiedName~DatabaseIntegrationTests' --no-restore` で24件成功。変更C#のformat、`dotnet slopwatch analyze -d . --exclude 'test-results/**' --fail-on warning`、diffチェック成功。全体テスト・E2Eは今回未実行。
 
+## 17.1 UI/UXレビュー修正（2026-09-18）
+
+- [x] `T-1333` R01/R05: 未保存変更の検知と保存・破棄・キャンセル、まとめて保存、操作単位のスコープ、近接フィードバックを実装する。
+- [x] `T-1334` R02: 作成時に保存設定で構成ジョブを1件登録し、編集画面で進捗と生成結果を表示する。失敗時は同じ下書きを再利用する。
+- [x] `T-1335` R03: タイトル候補・投稿・未保存確認ダイアログのフォーカス管理、Esc、起点復帰を統一する。
+- [x] `T-1336` R04/R08: 本文優先、参考情報の折りたたみ、モバイル切替、長い見出し表示、プレビュー目次を整備する。
+- [x] `T-1337` R06/R07: 設定の項目別エラー、説明、ゲストの連携制限表示、利用期限を改善する。
+- [x] `T-1338` 共通ブランド、一覧・作成・詳細設定、削除確認、横向き表示、エラー復帰のデザイン改善を反映し、設計書・E2Eで確認する。
+
+確認: E2E全30件、関連単体52件（Linux SDKコンテナー）成功。PC・390×844・667×375で画像確認、`git diff --check`成功。変更記録: `artifacts/reviews/ui-ux-fixes-2026-09-18.md`。
+
+- [x] `T-1339` UI/UX改善で追加した空catch4か所によるSlopwatchのCI失敗を修正する。
+  - 完了条件: コンポーネント終了時のキャンセル・回路切断をDebugログで記録し、SlopwatchとWebビルドが成功する。
+  - 確認: 修正前にSW003の4件を再現。`./scripts/dotnet.ps1 slopwatch analyze -d . --exclude 'test-results/**' --fail-on warning`で0件、`./scripts/dotnet.ps1 build src/WebWritingTool.Web/WebWritingTool.Web.csproj '--property:RestoreLockedMode=true'`で警告・エラー0件。除外対象はCIに含まれないローカルの過去テスト成果物のみ。
+
+- [x] `T-1340` Slopwatch通過後のE2Eで判明した検索パネル初期化と設定画面の幅検証を修正する。
+  - 完了条件: 対話描画前の検索パネル操作を防ぎ、通知先表示を折り返す。設定のE2Eは通知先の登録とリサイズ後の幅を明示的に検証し、関連E2E・Slopwatchを確認する。
+  - 確認: CIトレースで初期描画による検索パネルの閉鎖と設定画面の幅検証失敗を確認。修正後の関連E2E2件とSlopwatch、`git diff --check`が成功。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

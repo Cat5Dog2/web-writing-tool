@@ -346,6 +346,13 @@ public partial class E2ETestFixture : IAsyncLifetime
             : null;
     }
 
+    public async Task<string> GetJobPayloadAsync(Guid jobId)
+    {
+        await using var dbContext = CreateDbContext();
+        return await dbContext.ArticleGenerationJobs.Where(job => job.Id == jobId)
+            .Select(job => job.PayloadJson!).SingleAsync();
+    }
+
     public async Task MarkJobSucceededAsync(Guid jobId, string resultJson)
     {
         await using var dbContext = CreateDbContext();
@@ -469,7 +476,7 @@ public partial class E2ETestFixture : IAsyncLifetime
             configuration = "Debug";
         }
 
-        var logPath = Path.Combine(TestResultsDirectory, useDummyMode ? "web-app-dummy.log" : "web-app.log");
+        var logPath = Path.Combine(TestResultsDirectory, $"web-app-{GetType().Name}-{Guid.NewGuid():N}.log");
         appLogWriter = new StreamWriter(logPath, append: false)
         {
             AutoFlush = true

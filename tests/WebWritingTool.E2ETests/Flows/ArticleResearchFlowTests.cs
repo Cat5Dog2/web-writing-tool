@@ -32,6 +32,7 @@ public sealed class ArticleResearchFlowTests : IClassFixture<ResearchE2ETestFixt
             await page.GetByRole(AriaRole.Button, new() { Name = "ログイン", Exact = true }).ClickAsync();
             await page.WaitForURLAsync("**/articles");
             await page.GotoAsync($"/articles/{articleId}");
+            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
             var webButton = page.GetByRole(AriaRole.Button, new() { Name = "Web検索を実行" });
             await Expect(webButton).ToBeEnabledAsync();
             await Expect(page.Locator("#research-query")).ToHaveValueAsync(keyword);
@@ -56,6 +57,20 @@ public sealed class ArticleResearchFlowTests : IClassFixture<ResearchE2ETestFixt
             await Expect(page.Locator("#heading-body")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex("参考情報（動作確認用）"), new() { Timeout = 30000 });
             await Expect(page.Locator("#heading-body")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex(manualQuery));
             await Expect(bodyButton).ToBeEnabledAsync();
+            // Generation updates versions outside the UI scope. Two subsequent saves must
+            // use fresh data and must preserve unsaved metadata while saving a heading.
+            await page.GetByRole(AriaRole.Button, new() { Name = "記事情報を編集" }).ClickAsync();
+            await page.Locator("#title").FillAsync("保持される記事情報");
+            await page.Locator("#heading-body").FillAsync("生成直後に編集した本文");
+            await page.GetByRole(AriaRole.Button, new() { Name = "本文を保存", Exact = true }).ClickAsync();
+            await Expect(page.Locator("#title")).ToHaveValueAsync("保持される記事情報");
+            await page.GetByRole(AriaRole.Button, new() { Name = "変更をまとめて保存" }).ClickAsync();
+            await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("保存済み");
+            await page.Locator("#heading-body").FillAsync("二度目の保存も成功");
+            await page.GetByRole(AriaRole.Button, new() { Name = "本文を保存", Exact = true }).ClickAsync();
+            await Expect(page.GetByRole(AriaRole.Alert)).ToHaveCountAsync(0);
+            await page.ReloadAsync();
+            await Expect(page.Locator("#heading-body")).ToHaveValueAsync("二度目の保存も成功");
             await page.SetViewportSizeAsync(390, 844);
             Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"));
             await page.ScreenshotAsync(new() { Path = Path.Combine(fixture.TestResultsDirectory, "research-mobile.png"), FullPage = true });
