@@ -9,12 +9,10 @@
 @using WebWritingTool.Application.Jobs
 @using WebWritingTool.Domain.Jobs
 
-@inject IArticleQueryService ArticleQueryService
-@inject IArticleCommandService ArticleCommandService
-@inject IJobCommandService JobCommandService
-@inject IJobQueryService JobQueryService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@inject IServiceScopeFactory ScopeFactory
+@inject WebWritingTool.Application.Security.ExternalApiExecutionContext ExecutionContext
 
 <PageTitle>記事作成</PageTitle>
 
@@ -37,18 +35,18 @@
 
         <section class="article-panel mb-3">
             <div class="row g-3 align-items-end">
-                <div class="col-md-5">
-                    <label class="form-label" for="keyword">キーワード</label>
+                <div class="col-lg-4">
+                    <label class="form-label" for="keyword">キーワード <span class="required-label">必須</span></label>
                     <InputText id="keyword" class="form-control" @bind-Value="form.Keyword" />
                     <ValidationMessage For="() => form.Keyword" />
                 </div>
-                <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-secondary w-100" disabled="@(!CanGenerateTitleCandidates)" @onclick="GenerateTitleCandidatesAsync">
+                <div class="col-lg-4">
+                    <button type="button" id="generate-titles" class="btn btn-outline-secondary w-100" disabled="@(!CanGenerateTitleCandidates)" @onclick="GenerateTitleCandidatesAsync">
                         @if (isGeneratingTitles)
                         {
                             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                         }
-                        記事タイトル候補を出す
+                        タイトル候補を生成
                     </button>
                     @if (string.IsNullOrWhiteSpace(form.Keyword) && !isGeneratingTitles)
                     {
@@ -63,10 +61,11 @@
                         <div class="form-text">@titleGenerationStatusText</div>
                     }
                 </div>
-                <div class="col-md-5">
-                    <label class="form-label" for="title">タイトル</label>
+                <div class="col-lg-4">
+                    <label class="form-label" for="title">タイトル <span class="text-muted small">任意</span></label>
                     <InputText id="title" class="form-control" @bind-Value="form.Title" />
                     <ValidationMessage For="() => form.Title" />
+                    <div class="form-text">未入力の場合はキーワードを使います。</div>
                 </div>
             </div>
         </section>
@@ -79,14 +78,19 @@
             @if (showDetails)
             {
                 <div class="row g-3 mt-1">
+                    <fieldset class="col-12 create-settings-group"><legend class="h6">構成</legend><div class="row g-3">
                     <div class="col-md-2">
                         <label class="form-label" for="h2-count">H2の個数</label>
-                        <InputNumber id="h2-count" class="form-control" @bind-Value="form.H2Count" />
+                        <InputNumber id="h2-count" class="form-control" min="1" max="20" @bind-Value="form.H2Count" />
+                        <ValidationMessage For="() => form.H2Count" /><div class="form-text">大見出しを1〜20個</div>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label" for="h3-count">H3の個数</label>
-                        <InputNumber id="h3-count" class="form-control" @bind-Value="form.H3Count" />
+                        <InputNumber id="h3-count" class="form-control" min="0" max="60" @bind-Value="form.H3Count" />
+                        <ValidationMessage For="() => form.H3Count" /><div class="form-text">小見出しを記事全体で0〜60個</div>
                     </div>
+                    </div></fieldset>
+                    <fieldset class="col-12 create-settings-group"><legend class="h6">文体・読者</legend><div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label" for="tone">文章のトーン</label>
                         <InputSelect id="tone" class="form-select" @bind-Value="form.Tone">
@@ -102,41 +106,6 @@
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="tags">タグ</label>
-                        <InputText id="tags" class="form-control" @bind-Value="form.Tags" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="memo">メモ</label>
-                        <InputText id="memo" class="form-control" @bind-Value="form.Memo" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="suggested">サジェストキーワード</label>
-                        <InputTextArea id="suggested" class="form-control" rows="4" @bind-Value="form.SuggestedKeywords" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="related">関連キーワード</label>
-                        <InputTextArea id="related" class="form-control" rows="4" @bind-Value="form.RelatedKeywords" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="learning-type">事前学習種別</label>
-                        <InputSelect id="learning-type" class="form-select" @bind-Value="form.LearningType">
-                            <option value="None">なし</option>
-                            <option value="Text">テキスト</option>
-                            <option value="Url">URL</option>
-                        </InputSelect>
-                    </div>
-                    @if (form.LearningType != "None")
-                    {
-                        <div class="col-md-8">
-                            <label class="form-label" for="learning-text">事前学習本文</label>
-                            <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
-                        </div>
-                    }
-                    <div class="col-md-6">
-                        <label class="form-label" for="additional-prompt">追加プロンプト</label>
-                        <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
-                    </div>
-                    <div class="col-md-6">
                         <label class="form-label" for="writing-profile">サイト別ライティング設定</label>
                         <select id="writing-profile" class="form-select" @bind="form.WritingProfileWordpressSiteId">
                             <option value="">使用しない</option>
@@ -146,6 +115,48 @@
                             }
                         </select>
                     </div>
+                    </div></fieldset>
+                    <fieldset class="col-12 create-settings-group"><legend class="h6">参考資料</legend><div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="suggested">サジェストキーワード</label>
+                        <InputTextArea id="suggested" class="form-control" rows="4" @bind-Value="form.SuggestedKeywords" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="related">関連キーワード</label>
+                        <InputTextArea id="related" class="form-control" rows="4" @bind-Value="form.RelatedKeywords" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="learning-type">参考資料の種類</label>
+                        <InputSelect id="learning-type" class="form-select" @bind-Value="form.LearningType">
+                            <option value="None">なし</option>
+                            <option value="Text">テキスト</option>
+                            <option value="Url">URL</option>
+                        </InputSelect>
+                    </div>
+                    @if (form.LearningType != "None")
+                    {
+                        <div class="col-md-8">
+                            <label class="form-label" for="learning-text">参考資料</label>
+                            <InputTextArea id="learning-text" class="form-control" rows="3" @bind-Value="form.LearningText" />
+                            <div class="form-text">テキストは参考にしたい内容、URLはhttps://から始まる公開ページを入力してください。</div>
+                        </div>
+                    }
+                    <div class="col-md-6">
+                        <label class="form-label" for="additional-prompt">追加プロンプト</label>
+                        <InputTextArea id="additional-prompt" class="form-control" rows="4" @bind-Value="form.AdditionalPrompt" />
+                    </div>
+                    </div></fieldset>
+                    <fieldset class="col-12 create-settings-group"><legend class="h6">管理情報</legend><div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="tags">タグ</label>
+                        <InputText id="tags" class="form-control" @bind-Value="form.Tags" />
+                        <div class="form-text">例：コーヒー, 初心者（カンマ区切り）</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="memo">メモ</label>
+                        <InputText id="memo" class="form-control" @bind-Value="form.Memo" />
+                    </div>
+                    </div></fieldset>
                 </div>
             }
         </section>
@@ -177,14 +188,18 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label" for="notification-mode">通知設定</label>
-                    <InputSelect id="notification-mode" class="form-select" @bind-Value="form.NotificationMode">
+                    <InputSelect disabled="@ExecutionContext.IsGuest" id="notification-mode" class="form-select" @bind-Value="form.NotificationMode">
                         <option value="None">通知なし</option>
-                        <option value="Discord">Discord</option>
+                        @if (!ExecutionContext.IsGuest)
+                        {
+                            <option value="Discord">Discord</option>
+                        }
                     </InputSelect>
                 </div>
             </div>
         </section>
 
+        <p class="form-text">構築方法の「検索」は検索結果を参考に見出しを作成します。「検索モード」は本文生成でもWeb情報を参照します。@(ExecutionContext.IsGuest ? "ゲストの生成・検索はサンプルで、Discord通知は利用できません。" : "")</p>
         <div class="d-flex justify-content-end gap-2">
             <button type="submit" class="btn btn-primary" disabled="@(isSubmitting || isGeneratingTitles)">構成を作成</button>
         </div>
@@ -192,9 +207,7 @@
 
     @if (showTitleCandidatesModal)
     {
-        <div class="article-dialog-backdrop">
-            <section class="article-dialog" role="dialog" aria-modal="true">
-                <h2 class="h5">タイトル候補</h2>
+        <AppDialog Title="タイトル候補" OnClose="CloseTitleCandidatesModal" ReturnFocusId="generate-titles">
                 <p class="text-muted small mb-3">生成モデル: @titleCandidatesModelLabel</p>
 
                 @if (isGeneratingTitles)
@@ -234,8 +247,7 @@
                         <button type="button" class="btn btn-primary" disabled="@(string.IsNullOrWhiteSpace(selectedCandidateTitle))" @onclick="ApplySelectedTitleCandidate">選択して反映</button>
                     </div>
                 </div>
-            </section>
-        </div>
+        </AppDialog>
     }
 </div>
 
@@ -295,18 +307,20 @@
 
     protected override async Task OnInitializedAsync()
     {
+        using var scope = CreateOperationScope();
         var userId = await GetUserIdAsync();
         if (userId is null)
         {
             return;
         }
 
-        formOptions = await ArticleQueryService.GetFormOptionsAsync(userId);
+        formOptions = await scope.ServiceProvider.GetRequiredService<IArticleQueryService>().GetFormOptionsAsync(userId);
         form.GenerationModel = formOptions.GenerationModels.FirstOrDefault()?.Model ?? string.Empty;
     }
 
     private async Task CreateAsync()
     {
+        using var scope = CreateOperationScope();
         if (isSubmitting || isGeneratingTitles)
         {
             return;
@@ -347,7 +361,21 @@
                 return;
             }
 
-            NavigationManager.NavigateTo($"/articles/{articleId}");
+            // Keep the draft on enqueue failure so retrying does not create another article.
+            draftArticleId = articleId;
+            var payload = new OutlineGenerationPayload(articleId.Value, snapshot.Keyword, snapshot.Title,
+                snapshot.H2Count, snapshot.H3Count, snapshot.OutlineMethod, snapshot.GenerationModel,
+                snapshot.SearchMode, snapshot.IsDomesticOnly, snapshot.Tone, snapshot.SuggestedKeywords,
+                snapshot.RelatedKeywords, snapshot.LearningType, snapshot.LearningText, snapshot.AdditionalPrompt);
+            var queued = await scope.ServiceProvider.GetRequiredService<IJobCommandService>().EnqueueAsync(new EnqueueJobCommand(
+                new JobActor(actor.UserId, actor.IsAdmin), JobType.OutlineGeneration, articleId.Value, null,
+                JsonSerializer.Serialize(payload, JobPayloadJsonOptions), 0), cancellationTokenSource.Token);
+            if (!queued.Succeeded || queued.Value is null)
+            {
+                errorMessage = "下書きは保存済みです。" + GetJobServiceErrorMessage(queued.Error, queued.ValidationErrors);
+                return;
+            }
+            NavigationManager.NavigateTo($"/articles/{articleId}?job={queued.Value.JobId}");
         }
         finally
         {
@@ -357,7 +385,8 @@
 
     private async Task<Guid?> CreateDraftAsync(string userId, ArticleFormSnapshot snapshot)
     {
-        var result = await ArticleCommandService.CreateAsync(
+        using var scope = CreateOperationScope();
+        var result = await scope.ServiceProvider.GetRequiredService<IArticleCommandService>().CreateAsync(
             BuildCreateArticleCommand(userId, snapshot),
             cancellationTokenSource.Token);
 
@@ -376,7 +405,8 @@
         ArticleFormSnapshot snapshot,
         CancellationToken cancellationToken = default)
     {
-        var result = await ArticleCommandService.UpdateAsync(
+        using var scope = CreateOperationScope();
+        var result = await scope.ServiceProvider.GetRequiredService<IArticleCommandService>().UpdateAsync(
             new UpdateArticleCommand(
                 actor,
                 articleId,
@@ -434,6 +464,7 @@
 
     private async Task GenerateTitleCandidatesAsync()
     {
+        using var scope = CreateOperationScope();
         if (!CanGenerateTitleCandidates)
         {
             return;
@@ -465,7 +496,7 @@
                 titleGenerationStatusText = "下書きを作成しています…";
                 StateHasChanged();
 
-                var createResult = await ArticleCommandService.CreateAsync(
+                var createResult = await scope.ServiceProvider.GetRequiredService<IArticleCommandService>().CreateAsync(
                     BuildCreateArticleCommand(jobActor.UserId, snapshot),
                     cancellationToken);
 
@@ -514,6 +545,7 @@
         ArticleFormSnapshot snapshot,
         CancellationToken cancellationToken)
     {
+        using var scope = CreateOperationScope();
         titleGenerationStatusText = "タイトル候補を生成しています…";
         StateHasChanged();
 
@@ -527,7 +559,7 @@
             snapshot.RelatedKeywords,
             snapshot.AdditionalPrompt);
 
-        var enqueueResult = await JobCommandService.EnqueueAsync(
+        var enqueueResult = await scope.ServiceProvider.GetRequiredService<IJobCommandService>().EnqueueAsync(
             new EnqueueJobCommand(
                 actor,
                 JobType.TitleGeneration,
@@ -554,7 +586,7 @@
         {
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
-            var status = await JobQueryService.GetAsync(actor, jobId, cancellationToken);
+            var status = await scope.ServiceProvider.GetRequiredService<IJobQueryService>().GetAsync(actor, jobId, cancellationToken);
             if (status is null)
             {
                 titleGenerationError = "ジョブの状態を取得できませんでした。";
@@ -698,7 +730,7 @@
             JobServiceError.NotFound => "対象のデータが見つかりません。",
             JobServiceError.RunningJobExists => "対象の処理が実行中です。完了後に再度操作してください。",
             JobServiceError.RateLimited => "リクエストが集中しています。時間をおいて再実行してください。",
-            _ => "タイトル候補の生成を開始できませんでした。"
+            _ => "生成を開始できませんでした。"
         };
     }
 
@@ -717,6 +749,14 @@
             "Running" => "生成中",
             _ => status
         };
+    }
+
+    private IServiceScope CreateOperationScope()
+    {
+        var scope = ScopeFactory.CreateScope();
+        if (ExecutionContext.IsGuest)
+            scope.ServiceProvider.GetRequiredService<WebWritingTool.Application.Security.ExternalApiExecutionContext>().EnableGuestMode();
+        return scope;
     }
 
     private sealed record ArticleFormSnapshot(
@@ -748,8 +788,10 @@
         [StringLength(250, ErrorMessage = "タイトルは250文字以内で入力してください。")]
         public string? Title { get; set; }
 
+        [Range(1, 20, ErrorMessage = "H2は1〜20個で指定してください。") ]
         public int? H2Count { get; set; } = 5;
 
+        [Range(0, 60, ErrorMessage = "H3は0〜60個で指定してください。") ]
         public int? H3Count { get; set; } = 12;
 
         public string? Tone { get; set; } = "Normal";

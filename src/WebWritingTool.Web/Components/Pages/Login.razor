@@ -5,7 +5,8 @@
 
 <div class="auth-page">
     <section class="article-panel auth-card">
-        <h1 class="h3 mb-3">ログイン</h1>
+        <p class="text-muted small mb-1">Web Writing Tool</p><h1 class="h3 mb-3">ログイン</h1>
+        <p>キーワードから見出し構成・本文を作り、編集・公開準備まで進められます。</p>
 
         @if (AccountDeleted)
         {
@@ -47,7 +48,11 @@
             <AntiforgeryToken />
             <input type="hidden" name="returnUrl" value="@ReturnUrl" />
             <button type="submit" class="btn btn-outline-primary w-100">ゲストとして試す</button>
-            <p class="small text-muted mt-2 mb-0">登録不要で記事作成を試せます。生成・検索はサンプルを使用し、外部APIへの接続、WordPress投稿、Discord通知は行いません。ログアウト後は同じゲストデータに戻れません。データはゲスト利用開始から8時間経過後に自動削除します（処理中の場合は完了後）。</p>
+            <ul class="small text-muted mt-3 mb-0">
+                <li>登録不要。生成・検索はサンプルで体験できます。</li>
+                <li>外部APIへの接続、WordPress投稿、Discord通知は行いません。</li>
+                <li>ログアウト後は同じデータに戻れません。利用開始から8時間経過後に自動削除します（処理中の場合は完了後）。</li>
+            </ul>
         </form>
     </section>
 </div>

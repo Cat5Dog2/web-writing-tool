@@ -1,5 +1,6 @@
 @page "/account"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.Authentication
 
 <PageTitle>アカウント</PageTitle>
 
@@ -9,9 +10,11 @@
     <Authorized>
         @if (WebWritingTool.Application.Security.GuestIdentity.IsGuest(context.User))
         {
+            @if (guestExpiresAt is { } expires) { <GuestSessionStatus ExpiresAt="expires" @rendermode="InteractiveServer" /> }
             <p>ゲストとして利用しています。パスワード変更と退会は利用できません。終了するにはログアウトしてください。</p>
             <p>ログアウトまたはログインの有効期限（8時間）が過ぎると、同じゲストデータには戻れません。</p>
-            <p>ゲスト利用開始から8時間経過後、記事・設定・履歴とアカウントを自動削除します。1分ごとに確認し、実行中の処理がある場合は完了後に削除します。</p>
+            <details><summary>データの削除について</summary><p>ゲスト利用開始から8時間経過後、記事・設定・履歴とアカウントを自動削除します。1分ごとに確認し、実行中の処理がある場合は完了後に削除します。</p></details>
+            <a class="btn btn-primary mt-3" href="/articles">記事一覧へ戻る</a>
         }
         else
         {
@@ -82,6 +85,17 @@
 </AuthorizeView>
 
 @code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    private DateTimeOffset? guestExpiresAt;
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpContext is not null && WebWritingTool.Application.Security.GuestIdentity.IsGuest(HttpContext.User))
+        {
+            var authentication = await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+            guestExpiresAt = authentication.Properties?.ExpiresUtc;
+        }
+    }
+
     [SupplyParameterFromQuery]
     public string? WithdrawError { get; set; }
 

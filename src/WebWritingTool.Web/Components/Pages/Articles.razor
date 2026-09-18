@@ -1,4 +1,5 @@
 @page "/articles"
+@inject WebWritingTool.Application.Security.ExternalApiExecutionContext ExecutionContext
 @attribute [Authorize]
 @rendermode InteractiveServer
 @implements IAsyncDisposable
@@ -54,9 +55,11 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label" for="bulk-lines">キーワード一覧</label>
-                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="@BulkLinesPlaceholder" @bind="bulkLines"></textarea>
+                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="@BulkLinesPlaceholder" @bind="bulkLines" @bind:event="oninput"></textarea>
                     <div class="form-text">1行に1件、「キーワード」または「キーワード|タイトル」の形式で入力します。</div>
                 </div>
+            </div>
+            <details class="mt-3"><summary>構成・生成・自動投稿の設定</summary><div class="row g-3">
                 <div class="col-md-2">
                     <label class="form-label" for="bulk-h2">H2の個数</label>
                     <input id="bulk-h2" class="form-control" type="number" min="1" max="20" @bind="bulkH2Count" />
@@ -99,6 +102,8 @@
                         }
                     </select>
                 </div>
+                @if (bulkAutoPostToWordpress && !ExecutionContext.IsGuest)
+                {
                 <div class="col-md-4">
                     <label class="form-label" for="bulk-auto-post-site">自動投稿先サイト</label>
                     <select id="bulk-auto-post-site" class="form-select" @bind="bulkAutoPostSiteId" disabled="@(!bulkAutoPostToWordpress)">
@@ -113,6 +118,7 @@
                     <label class="form-label" for="bulk-category">自動投稿カテゴリ</label>
                     <input id="bulk-category" class="form-control" type="number" @bind="bulkAutoPostCategoryId" disabled="@(!bulkAutoPostToWordpress)" />
                 </div>
+                }
                 <div class="col-md-3 d-flex align-items-end">
                     <div class="form-check">
                         <input id="bulk-domestic" class="form-check-input" type="checkbox" @bind="bulkIsDomesticOnly" />
@@ -127,12 +133,14 @@
                 </div>
                 <div class="col-md-3 d-flex align-items-end">
                     <div class="form-check">
-                        <input id="bulk-auto-post" class="form-check-input" type="checkbox" @bind="bulkAutoPostToWordpress" />
+                        <input id="bulk-auto-post" class="form-check-input" type="checkbox" @bind="bulkAutoPostToWordpress" disabled="@ExecutionContext.IsGuest" />
                         <label class="form-check-label" for="bulk-auto-post">WordPress自動投稿</label>
                     </div>
                 </div>
             </div>
 
+            </details>
+            @if (ExecutionContext.IsGuest) { <p class="form-text">ゲストはWordPress自動投稿を利用できません。</p> }
             @if (bulkRejectedLines.Count > 0)
             {
                 <div class="alert alert-warning mt-3" role="alert">
@@ -151,13 +159,14 @@
             }
 
             <div class="mt-3">
-                <button type="button" class="btn btn-primary" @onclick="SubmitBulkAsync" disabled="@isBulkSubmitting">登録</button>
+                <button id="bulk-submit" type="button" class="btn btn-primary" @onclick="SubmitBulkAsync" disabled="@(isBulkSubmitting || string.IsNullOrWhiteSpace(bulkLines))">@((bulkLines ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries).Count(line => !string.IsNullOrWhiteSpace(line)))件の記事を作成</button>
             </div>
         </section>
     }
 
-    <section class="article-panel mb-3">
-        <div class="row g-3 align-items-end">
+    <section class="article-panel mb-3 article-search-disclosure">
+        <button type="button" class="btn btn-link search-toggle" aria-expanded="@showSearch" @onclick="() => showSearch = !showSearch">記事を検索・絞り込み</button>
+        <div class="row g-3 align-items-end search-fields @(showSearch ? "expanded" : "")">
             <div class="col-md-3">
                 <label class="form-label" for="search-tags">タグ</label>
                 <input id="search-tags" class="form-control" @bind="searchTags" />
@@ -187,6 +196,7 @@
         }
     </div>
 
+    @if (ExecutionContext.IsGuest) { <p class="small text-muted">ゲストではWordPress投稿を利用できません。</p> }
     <div class="table-responsive article-table-wrap">
         <table class="table table-sm align-middle article-table">
             <thead>
@@ -205,7 +215,8 @@
                 {
                     <tr>
                         <td colspan="7" class="text-center text-muted py-4">
-                            <div>該当する記事はありません</div>
+                            <div>@(HasActiveSearchFilter ? "検索条件に一致する記事がありません" : "最初の記事を作成しましょう")</div>
+                            @if (!HasActiveSearchFilter) { <p class="small mt-2">キーワードを入力すると、見出し構成から本文まで作成できます。</p><a href="/articles/create" class="btn btn-primary">最初の記事を作成</a> }
                             @if (HasActiveSearchFilter)
                             {
                                 <button type="button" class="btn btn-link btn-sm" @onclick="ClearSearchAsync">検索条件をクリア</button>
@@ -225,16 +236,17 @@
                                 <a href="@($"articles/{article.Id}")" class="fw-semibold">@GetArticleTitle(article)</a>
                             </td>
                             <td class="article-tags-cell" data-label="タグ">
+                                @if (article.Tags.Count == 0) { <span class="text-muted">—</span> }
                                 @foreach (var tag in article.Tags)
                                 {
                                     <span class="badge text-bg-secondary">@tag</span>
                                 }
                             </td>
-                            <td class="article-memo-cell" title="@article.Memo" data-label="メモ">@article.Memo</td>
+                            <td class="article-memo-cell" title="@article.Memo" data-label="メモ">@(string.IsNullOrWhiteSpace(article.Memo) ? "—" : article.Memo)</td>
                             <td class="article-col-actions" data-label="操作">
                                 <div class="d-flex justify-content-end gap-2">
                                     <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
-                                    <button class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress)" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
+                                    <button id="@($"post-{article.Id}")" class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress || ExecutionContext.IsGuest)" title="@(ExecutionContext.IsGuest ? "ゲストはWordPressへ投稿できません" : "WordPressへ投稿")" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
                                     <button class="btn btn-sm btn-outline-danger" type="button" disabled="@article.HasRunningJob" @onclick="() => ConfirmDelete(article)">削除</button>
                                 </div>
                             </td>
@@ -245,7 +257,7 @@
         </table>
     </div>
 
-    @if (articleList.TotalCount > 0)
+    @if (articleList.TotalPages > 1)
     {
         <div class="d-flex justify-content-between align-items-center mt-3">
             <button type="button" class="btn btn-outline-secondary" disabled="@(!articleList.HasPrevious)" @onclick="() => GoToPage(articleList.Page - 1)">前へ</button>
@@ -260,6 +272,7 @@
             <section class="article-dialog" role="dialog" aria-modal="true" @ref="deleteDialogRef">
                 <h2 class="h5">記事を削除</h2>
                 <p class="mb-2">@GetArticleTitle(deleteTarget)</p>
+                <p>この記事と配下の見出し・本文を一覧から削除します。画面から元には戻せません。</p>
                 @if (deleteTarget.HasQueuedJob)
                 {
                     <p class="text-muted">待機中ジョブは削除時にキャンセルされます。</p>
@@ -274,9 +287,7 @@
 
     @if (postTarget is not null)
     {
-        <div class="article-dialog-backdrop">
-            <section class="article-dialog" role="dialog" aria-modal="true">
-                <h2 class="h5">WordPress投稿</h2>
+        <AppDialog Title="WordPress投稿" OnClose="ClosePostDialog" ReturnFocusId="@($"post-{postTarget.Id}")">
                 @if (isPostDialogLoading)
                 {
                     <div class="text-muted">読み込み中</div>
@@ -345,8 +356,7 @@
                     <button type="button" class="btn btn-outline-secondary" @onclick="ClosePostDialog">閉じる</button>
                     <button type="button" class="btn btn-success" disabled="@(!CanSubmitPost)" @onclick="SubmitPostAsync">投稿ジョブ登録</button>
                 </div>
-            </section>
-        </div>
+        </AppDialog>
     }
 </div>
 
@@ -375,6 +385,7 @@
     private bool showBulkForm;
     private const string BulkLinesPlaceholder =
         "1行に1件。「キーワード」または「キーワード|タイトル」の形式で入力してください。\n例: Blazor SEO\n例: WordPress REST API|投稿連携の記事";
+    private bool showSearch;
     private string? bulkLines;
     private int? bulkH2Count = 5;
     private int? bulkH3Count = 12;

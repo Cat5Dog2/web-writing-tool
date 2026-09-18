@@ -1,5 +1,7 @@
 @page "/articles/{ArticleId:guid}/preview"
 @attribute [Authorize]
+@rendermode InteractiveServer
+@inject IJSRuntime JS
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components
@@ -37,15 +39,56 @@
     }
     else
     {
-        <article class="article-preview-body">
+        <p class="small text-muted">最後にHTML変換した保存内容のプレビューです。編集後は「HTML変換」で表示を更新してください。</p>
+        @if (toc.Count > 0)
+        {
+            <nav class="article-panel preview-toc" aria-label="記事の目次">
+                <h2 class="h5">目次</h2><ol>
+                @foreach (var item in toc)
+                {
+                    <li class="@($"level-{item.Level}")">
+                        <a href="@($"#{item.Id}")">@item.Title</a>
+                        @if (item.HeadingId is Guid headingId)
+                        { <a class="preview-edit-link" href="@($"/articles/{ArticleId}?heading={headingId}")" aria-label="@($"{item.Title}を編集")">この見出しを編集</a> }
+                    </li>
+                }
+                </ol>
+            </nav>
+        }
+        <article class="article-preview-body" @ref="bodyElement">
             @((MarkupString)sanitizedHtml)
         </article>
+        <a class="btn btn-outline-primary mt-4" href="@($"/articles/{ArticleId}")">編集に戻る</a>
     }
 </div>
 
 @code {
     [Parameter]
     public Guid ArticleId { get; set; }
+
+    private ElementReference bodyElement;
+    private bool navigationReady;
+    private IReadOnlyList<PreviewHeading> toc = [];
+    private sealed record PreviewHeading(string Id, string Title, int Level)
+    {
+        public Guid? HeadingId { get; init; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (navigationReady || string.IsNullOrWhiteSpace(sanitizedHtml)) return;
+        navigationReady = true;
+        await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/previewNavigation.js");
+        var headings = await module.InvokeAsync<PreviewHeading[]>("headings", bodyElement);
+        var available = article!.Headings.OrderBy(h => h.DisplayOrder).ToList();
+        toc = headings.Select(item =>
+        {
+            var match = available.FirstOrDefault(h => h.Level == item.Level && h.Title == item.Title);
+            if (match is not null) available.Remove(match);
+            return item with { HeadingId = match?.Id };
+        }).ToArray();
+        StateHasChanged();
+    }
 
     private ArticleDetailResponse? article;
     private string sanitizedHtml = string.Empty;

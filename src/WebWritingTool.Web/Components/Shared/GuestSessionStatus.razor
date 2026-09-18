@@ -1,0 +1,32 @@
+@implements IDisposable
+
+<section class="article-panel mb-3">
+    <h2 class="h5">ゲストの利用期限</h2>
+    <p class="mb-1">@RemainingLabel</p>
+    <p class="small text-muted mb-0">終了予定：@ExpiresAt.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy/MM/dd HH:mm")（日本時間）</p>
+</section>
+
+@code {
+    [Parameter] public DateTimeOffset ExpiresAt { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private DateTimeOffset now = DateTimeOffset.UtcNow;
+    private string RemainingLabel => ExpiresAt <= now ? "利用期限が終了しました。" : $"残り約{Math.Ceiling((ExpiresAt - now).TotalMinutes):0}分";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+            {
+                now = DateTimeOffset.UtcNow;
+                await InvokeAsync(StateHasChanged);
+                if (now >= ExpiresAt) break;
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+    }
+
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}
