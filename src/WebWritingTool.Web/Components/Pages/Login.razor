@@ -42,6 +42,13 @@
 
             <button type="submit" class="btn btn-primary w-100">ログイン</button>
         </form>
+
+        <form method="post" action="/login/guest" class="mt-4">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <button type="submit" class="btn btn-outline-primary w-100">ゲストとして試す</button>
+            <p class="small text-muted mt-2 mb-0">登録不要で記事作成を試せます。生成・検索はサンプルを使用し、外部APIへの接続、WordPress投稿、Discord通知は行いません。ログアウト後は同じゲストデータに戻れません。データはゲスト利用開始から8時間経過後に自動削除します（処理中の場合は完了後）。</p>
+        </form>
     </section>
 </div>
 

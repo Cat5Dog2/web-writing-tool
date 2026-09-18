@@ -6,6 +6,8 @@
 
 実装はEF Coreを前提とし、スキーマ変更はEF Core Migrationsで管理する。
 
+ゲストの自動削除は既存の `AspNetUsers.CreatedAt` と `AspNetUserClaims` のゲストClaimを利用する。追加カラム・Migrationは不要。関連行の削除順序は既存のユーザー物理削除処理を共用する。保持期限・除外条件・ロックは [データ保持・プライバシー](data-retention-privacy.md#54-ゲストデータ) を参照。
+
 ## 2. 基本方針
 
 - DBMSはPostgreSQLを使用する。

@@ -182,6 +182,7 @@ Discord Webhook URLはユーザー別にDB暗号化保存する。環境変数�
 | `BackgroundJobs__SearchCacheCleanupIntervalMinutes` | `BackgroundJobs:SearchCacheCleanupIntervalMinutes` | 任意 | 任意 | No | 60 |
 
 `BackgroundJobOptions`は上記の単位付き数値プロパティへバインドし、処理内で`TimeSpan`へ変換する。
+`BackgroundJobs:Enabled=false` はジョブ実行・検索キャッシュ清掃に加え、期限切れゲストの自動削除も停止する。ゲスト削除は起動時と1分ごと、最大100ユーザーずつ実行する。保持期間は作成から8時間で固定し、追加の環境変数は設けない。
 ジョブ種別ごとの上書きが必要になった場合は、`BackgroundJobs:JobTypes:{JobType}:MaxAttempts` のような階層で追加する。
 
 ### 6.9 Security / Data Protection
@@ -219,6 +220,8 @@ Data ProtectionキーはCookie認証と暗号化保存に影響する。producti
 ### 6.12 ダミーモード
 
 `ExternalApis__UseMocks=true`（設定キー `ExternalApis:UseMocks`）で有効にする。既定は `false`。環境名とは独立したアプリ全体の起動設定で、切り替えには再起動が必要である。
+
+ゲストログインしたユーザーは、この設定が `false` でも常にダミーClientを利用する。リクエスト、Blazor circuit、検索画面の独立スコープ、バックグラウンドジョブで適用し、通常ユーザーの設定は変更しない。ゲスト機能に追加の環境変数は不要。アプリ全体の外部依存ヘルスチェックは引き続きこの起動設定に従う。
 
 - タイトル候補、H2/H3構成、Markdown本文、本文操作をサンプル生成Clientへ切り替える。候補数と見出し数を反映するが、文体・追加指示・文字数目安に基づくAI生成は行わない。
 - Gemini・Tavily・XのAPIキーは不要。Web検索・X検索はキーワードを含むサンプルを返し、`IsDummy=true` でDBへ保存する。サンプルX投稿の再取得では実APIを呼ばず、保存済みサンプルを維持する。

@@ -20,12 +20,14 @@ namespace WebWritingTool.E2ETests.Support;
 public partial class E2ETestFixture : IAsyncLifetime
 {
     private readonly bool useDummyMode;
+    private readonly bool enableGuestJobs;
 
     public E2ETestFixture() : this(false) { }
 
-    protected E2ETestFixture(bool useDummyMode)
+    protected E2ETestFixture(bool useDummyMode, bool enableGuestJobs = false)
     {
         this.useDummyMode = useDummyMode;
+        this.enableGuestJobs = enableGuestJobs;
     }
 
     public const string AdminEmail = "admin-e2e@example.test";
@@ -519,14 +521,14 @@ public partial class E2ETestFixture : IAsyncLifetime
         startInfo.Environment["ASPNETCORE_URLS"] = BaseAddress.ToString();
         startInfo.Environment["ConnectionStrings__DefaultConnection"] = postgres.GetConnectionString();
         startInfo.Environment["Security__RequireHttps"] = "false";
-        startInfo.Environment["BackgroundJobs__Enabled"] = useDummyMode ? "true" : "false";
+        startInfo.Environment["BackgroundJobs__Enabled"] = useDummyMode || enableGuestJobs ? "true" : "false";
         startInfo.Environment["ExternalApis__UseMocks"] = useDummyMode ? "true" : "false";
         startInfo.Environment["AdminSeed__Email"] = AdminEmail;
         startInfo.Environment["AdminSeed__Password"] = AdminPassword;
         startInfo.Environment["AdminSeed__DisplayName"] = "E2E Admin";
-        startInfo.Environment["AiProviders__Gemini__ApiKey"] = "e2e-gemini-key";
-        startInfo.Environment["SearchProviders__Tavily__ApiKey"] = "e2e-tavily-key";
-        startInfo.Environment["SearchProviders__X__BearerToken"] = "e2e-x-token";
+        startInfo.Environment["AiProviders__Gemini__ApiKey"] = enableGuestJobs ? "" : "e2e-gemini-key";
+        startInfo.Environment["SearchProviders__Tavily__ApiKey"] = enableGuestJobs ? "" : "e2e-tavily-key";
+        startInfo.Environment["SearchProviders__X__BearerToken"] = enableGuestJobs ? "" : "e2e-x-token";
         startInfo.Environment["SearchCache__Policy"] = "dev";
         startInfo.Environment["Wordpress__TimeoutSeconds"] = "60";
         startInfo.Environment["Notifications__Provider"] = "Discord";

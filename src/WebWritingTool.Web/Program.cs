@@ -65,6 +65,15 @@ if (securityOptions.RequireHttps)
 app.UseStaticFiles();
 
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (GuestIdentity.IsGuest(context.User))
+    {
+        context.RequestServices.GetRequiredService<ExternalApiExecutionContext>().EnableGuestMode();
+    }
+
+    await next(context);
+});
 app.UseAuthorization();
 app.UseRateLimiter();
 app.UseAntiforgery();

@@ -6,6 +6,7 @@
 @using WebWritingTool.Domain.Jobs
 @implements IDisposable
 @inject IServiceScopeFactory ScopeFactory
+@inject ExternalApiExecutionContext ExecutionContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<ArticleResearchPanel> Logger
 
@@ -156,7 +157,7 @@
         {
             var actor = await GetActorAsync();
             if (actor is null) return;
-            using var scope = ScopeFactory.CreateScope();
+            using var scope = CreateResearchScope();
             results = await scope.ServiceProvider.GetRequiredService<IArticleResearchService>()
                 .GetAsync(actor, ArticleId, HeadingId, lifetime.Token);
             if (results is null) error = "記事または見出しが見つかりません。";
@@ -184,7 +185,7 @@
         {
             var actor = await GetActorAsync();
             if (actor is null) return;
-            using var scope = ScopeFactory.CreateScope();
+            using var scope = CreateResearchScope();
             JobServiceResult<JobAcceptedResponse> queued;
             if (action is "web" or "x")
             {
@@ -238,6 +239,16 @@
             Logger.LogWarning("Research operation failed. exceptionType={ExceptionType}", exception.GetType().Name);
         }
         finally { busy = false; }
+    }
+
+    private IServiceScope CreateResearchScope()
+    {
+        var scope = ScopeFactory.CreateScope();
+        if (ExecutionContext.IsGuest)
+        {
+            scope.ServiceProvider.GetRequiredService<ExternalApiExecutionContext>().EnableGuestMode();
+        }
+        return scope;
     }
 
     public void Dispose()

@@ -13,7 +13,8 @@ internal sealed class BackgroundWorkerHealthCheck(
     private static readonly string[] RequiredWorkerNames =
     [
         nameof(ArticleJobWorker),
-        nameof(SearchCacheCleanupWorker)
+        nameof(SearchCacheCleanupWorker),
+        nameof(GuestAccountCleanupWorker)
     ];
 
     public Task<HealthCheckResult> CheckHealthAsync(
@@ -61,7 +62,8 @@ internal sealed class BackgroundWorkerHealthCheck(
                 continue;
             }
 
-            if (snapshot.LastHeartbeatAt is null || now - snapshot.LastHeartbeatAt > staleThreshold)
+            var workerThreshold = workerName == nameof(GuestAccountCleanupWorker) ? TimeSpan.FromMinutes(3) : staleThreshold;
+            if (snapshot.LastHeartbeatAt is null || now - snapshot.LastHeartbeatAt > workerThreshold)
             {
                 yield return $"{workerName} heartbeat is stale";
             }

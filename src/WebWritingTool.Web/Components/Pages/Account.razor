@@ -5,67 +5,81 @@
 
 <h1>アカウント</h1>
 
-@if (PasswordChanged)
-{
-    <div class="alert alert-success" role="status">パスワードを変更しました。</div>
-}
+<AuthorizeView>
+    <Authorized>
+        @if (WebWritingTool.Application.Security.GuestIdentity.IsGuest(context.User))
+        {
+            <p>ゲストとして利用しています。パスワード変更と退会は利用できません。終了するにはログアウトしてください。</p>
+            <p>ログアウトまたはログインの有効期限（8時間）が過ぎると、同じゲストデータには戻れません。</p>
+            <p>ゲスト利用開始から8時間経過後、記事・設定・履歴とアカウントを自動削除します。1分ごとに確認し、実行中の処理がある場合は完了後に削除します。</p>
+        }
+        else
+        {
+            @if (PasswordChanged)
+            {
+                <div class="alert alert-success" role="status">パスワードを変更しました。</div>
+            }
 
-@if (!string.IsNullOrWhiteSpace(passwordErrorMessage))
-{
-    <div class="alert alert-danger" role="alert">@passwordErrorMessage</div>
-}
+            @if (!string.IsNullOrWhiteSpace(passwordErrorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@passwordErrorMessage</div>
+            }
 
-@if (!string.IsNullOrWhiteSpace(withdrawErrorMessage))
-{
-    <div class="alert alert-danger" role="alert">@withdrawErrorMessage</div>
-}
+            @if (!string.IsNullOrWhiteSpace(withdrawErrorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@withdrawErrorMessage</div>
+            }
 
-<section class="mt-4">
-    <h2 class="h4">パスワード変更</h2>
-    <p>現在のパスワードと、12文字以上で英大文字・英小文字・数字・記号を含む新しいパスワードを入力してください。</p>
+            <section class="mt-4">
+                <h2 class="h4">パスワード変更</h2>
+                <p>現在のパスワードと、12文字以上で英大文字・英小文字・数字・記号を含む新しいパスワードを入力してください。</p>
 
-    <form method="post" action="/account/password" class="auth-form">
-        <AntiforgeryToken />
+                <form method="post" action="/account/password" class="auth-form">
+                    <AntiforgeryToken />
 
-        <div class="mb-3">
-            <label class="form-label" for="password-current-password">現在のパスワード</label>
-            <input id="password-current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
-        </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password-current-password">現在のパスワード</label>
+                        <input id="password-current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+                    </div>
 
-        <div class="mb-3">
-            <label class="form-label" for="password-new-password">新しいパスワード</label>
-            <input id="password-new-password" name="newPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
-        </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password-new-password">新しいパスワード</label>
+                        <input id="password-new-password" name="newPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
+                    </div>
 
-        <div class="mb-3">
-            <label class="form-label" for="password-confirm-new-password">新しいパスワード（確認）</label>
-            <input id="password-confirm-new-password" name="confirmNewPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
-        </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password-confirm-new-password">新しいパスワード（確認）</label>
+                        <input id="password-confirm-new-password" name="confirmNewPassword" type="password" class="form-control" autocomplete="new-password" minlength="12" required />
+                    </div>
 
-        <button type="submit" class="btn btn-primary">パスワードを変更する</button>
-    </form>
-</section>
+                    <button type="submit" class="btn btn-primary">パスワードを変更する</button>
+                </form>
+            </section>
 
-<section class="mt-5">
-    <h2 class="h4">退会</h2>
-    <p>退会すると、アカウントと紐づくデータが削除されます。確認のため現在のパスワードと <code>DELETE</code> を入力してください。</p>
+            <section class="mt-5">
+                <h2 class="h4">退会</h2>
+                <p>退会すると、アカウントと紐づくデータが削除されます。確認のため現在のパスワードと <code>DELETE</code> を入力してください。</p>
 
-    <form method="post" action="/account/withdraw" class="auth-form">
-        <AntiforgeryToken />
+                <form method="post" action="/account/withdraw" class="auth-form">
+                    <AntiforgeryToken />
 
-        <div class="mb-3">
-            <label class="form-label" for="current-password">現在のパスワード</label>
-            <input id="current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
-        </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="current-password">現在のパスワード</label>
+                        <input id="current-password" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+                    </div>
 
-        <div class="mb-3">
-            <label class="form-label" for="confirm-text">確認文字列</label>
-            <input id="confirm-text" name="confirmText" class="form-control" required />
-        </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="confirm-text">確認文字列</label>
+                        <input id="confirm-text" name="confirmText" class="form-control" required />
+                    </div>
 
-        <button type="submit" class="btn btn-danger">退会する</button>
-    </form>
-</section>
+                    <button type="submit" class="btn btn-danger">退会する</button>
+                </form>
+            </section>
+
+        }
+    </Authorized>
+</AuthorizeView>
 
 @code {
     [SupplyParameterFromQuery]
