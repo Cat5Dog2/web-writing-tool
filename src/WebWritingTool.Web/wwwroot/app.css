@@ -632,3 +632,4 @@ body:has(dialog[open]) { overflow: hidden; }
 .create-settings-group + .create-settings-group { border-top: 1px solid #e0e5ed; padding-top: 1rem; }
 
 .article-settings-page .article-panel > .d-flex > .btn { flex-shrink: 0; white-space: nowrap; }
+.notification-summary { min-width: 0; overflow-wrap: anywhere; }

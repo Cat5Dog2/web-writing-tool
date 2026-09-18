@@ -10,7 +10,8 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<ArticleResearchPanel> Logger
 
-<section class="article-panel mb-3" aria-label="検索・参考情報">
+@* Keep native disclosure changes from being lost when prerender is replaced. *@
+<section class="article-panel mb-3" aria-label="検索・参考情報" inert="@(!RendererInfo.IsInteractive)">
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
         <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
         <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>

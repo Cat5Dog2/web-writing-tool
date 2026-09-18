@@ -109,12 +109,16 @@ public sealed partial class MajorScreenFlowTests
         await LoginAsync(page);
         await page.GotoAsync("/settings");
         await WaitForInteractiveRenderAsync(page);
+        await FillAndChangeAsync(page.Locator("#discord-webhook-url"), "https://discord.com/api/webhooks/e2e-token/e2e-secret");
+        await page.Locator("#discord-enabled").SetCheckedAsync(true);
+        await page.GetByRole(AriaRole.Button, new() { Name = "保存", Exact = true }).ClickAsync();
+        await Expect(page.GetByText("Discord通知設定を保存しました。")).ToBeVisibleAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "登録", Exact = true }).ClickAsync();
         await Expect(page.Locator("#site-name-error")).ToContainTextAsync("サイト名");
         await Expect(page.Locator("#base-url-error")).ToContainTextAsync("HTTPS");
         await Expect(page.Locator("#site-name")).ToBeFocusedAsync();
         await page.SetViewportSizeAsync(390, 844);
-        Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= innerWidth"));
+        await Expect(page.Locator("html")).ToHaveJSPropertyAsync("scrollWidth", 390);
         await page.ScreenshotAsync(new() { Path = Path.Combine(fixture.TestResultsDirectory, "ux-settings-mobile.png"), FullPage = true });
     }
 

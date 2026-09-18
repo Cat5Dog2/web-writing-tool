@@ -563,6 +563,10 @@
   - 完了条件: コンポーネント終了時のキャンセル・回路切断をDebugログで記録し、SlopwatchとWebビルドが成功する。
   - 確認: 修正前にSW003の4件を再現。`./scripts/dotnet.ps1 slopwatch analyze -d . --exclude 'test-results/**' --fail-on warning`で0件、`./scripts/dotnet.ps1 build src/WebWritingTool.Web/WebWritingTool.Web.csproj '--property:RestoreLockedMode=true'`で警告・エラー0件。除外対象はCIに含まれないローカルの過去テスト成果物のみ。
 
+- [x] `T-1340` Slopwatch通過後のE2Eで判明した検索パネル初期化と設定画面の幅検証を修正する。
+  - 完了条件: 対話描画前の検索パネル操作を防ぎ、通知先表示を折り返す。設定のE2Eは通知先の登録とリサイズ後の幅を明示的に検証し、関連E2E・Slopwatchを確認する。
+  - 確認: CIトレースで初期描画による検索パネルの閉鎖と設定画面の幅検証失敗を確認。修正後の関連E2E2件とSlopwatch、`git diff --check`が成功。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
