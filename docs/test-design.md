@@ -361,6 +361,7 @@ tests/
 | `IT-JOB-040` | TitleGeneration | ResultJsonに候補が保存される |
 | `IT-JOB-041` | OutlineGeneration | ArticleHeadingsが保存される |
 | `IT-JOB-042` | BodyGeneration | Heading.Bodyが保存される |
+| `IT-JOB-DUMMY-001` | ダミーモード | APIキーなしでタイトル・構成・本文を生成し、PostgreSQLへ保存して記事がCompletedになる。画面にモードが表示される |
 | `IT-JOB-043` | Rewrite | 本文履歴を作らず元本文が置き換わる |
 | `IT-JOB-044` | WordpressPost | WordpressPostsとArticles.Statusが更新される |
 | `IT-JOB-045` | Notification | NotificationLogsが保存される |
@@ -383,7 +384,7 @@ tests/
 | `IT-JOB-065` | WordPress投稿失敗 | ArticleはCompleted維持 |
 | `IT-JOB-066` | AI成功後保存失敗 | UsageLedgersを二重記録しない |
 | `IT-JOB-067` | WebSearchキャッシュ | 有効キャッシュがある場合はTavilyを呼ばない |
-| `IT-JOB-068` | X投稿重複 | 同じPostIdは再保存しない |
+| `IT-JOB-068` | X投稿重複 | 同じ所有者・記事・見出し・モード・検索条件・PostIdは更新し、別の記事では同じPostIdを保存できる |
 | `IT-JOB-069` | SearchCacheCleanupWorker | 環境別TTL超過の本文を削除または匿名化する |
 | `IT-JOB-070` | X引用再検証 | WordPress投稿前に引用元投稿を再hydrationする |
 | `IT-JOB-071` | 環境別TTL | dev/staging/production/strictのTTLが設定通り適用される |
@@ -421,6 +422,12 @@ tests/
 | `IT-EXT-005` | JSONパース失敗をExternalBadResponseへ変換 |
 
 ### 11.3 Tavily / X Search
+
+ダミーモードの単体テストでは、設定の有効・無効・未指定による全Clientの選択、候補数・H2/H3数の境界、本文操作、未知の操作、キャンセル、検索サンプル、投稿・通知の非送信、APIキー不要の依存ヘルスチェックを検証する。
+
+`ArticleResearchApiTests` は、検索API・所有者認可・入力上限・キャッシュの通常/ダミー分離・モード変更後ジョブの拒否・期限切れXキャッシュ更新・生成リクエストへの参考情報反映とPromptHashを検証する。`ArticleResearchFlowTests` は、実PostgreSQLとダミーClientを使い、検索→結果表示→構成生成→本文生成、検索対象のH2/H3ラベル、モバイルの横溢れをブラウザーで確認する。GeminiのHTTPテストでは、参考情報と安全指示が実際の送信JSONへ含まれることを検証する。
+
+手動資料の優先順位は、記事全体/見出し別の手動2件と自動10件による本文生成・再生成で検証する。手動0/2/10/12件、自動結果100件超、重複URL、期限切れ、別モード・見出し、不正URL・空本文、キャッシュの手動優先への変更と自動再利用も確認する。`ManualResearchMigrationTests` は専用のPostgreSQLテストDBで既存データの移行を検証し、成功した手動検索履歴に一致する資料だけが復元されることを確認する。E2Eでは記事キーワードとは異なる手動検索語を使い、手動取得バッジと生成本文への反映を確認する。
 
 | テストID | 観点 |
 | --- | --- |

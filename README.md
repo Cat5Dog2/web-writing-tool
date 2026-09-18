@@ -126,6 +126,18 @@ Copy-Item .env.example .env
 `.env` の `POSTGRES_PASSWORD`、`AdminSeed__Email`、`AdminSeed__Password` をローカル用の値へ変更する。
 Gemini、Tavily、X APIを実行する場合は、同じ `.env` の `AiProviders__Gemini__ApiKey`、`SearchProviders__Tavily__ApiKey`、`SearchProviders__X__BearerToken` も実値へ変更する。
 
+外部APIなしで記事作成を試す場合は、`.env` に次を追加してアプリを再起動する。
+
+```dotenv
+ExternalApis__UseMocks=true
+```
+
+画面上部に「ダミーモード」と表示される。通常どおり記事作成画面でキーワードを入力し、タイトル候補・見出し構成・本文を生成できる。本文操作（リライト・要約・長文化・更新）も動作確認用のサンプルを返す。DBとログインは必要だが、Gemini・Tavily・XのAPIキーは不要。記事編集画面の「検索・参考情報」からWeb検索・X検索のサンプルを取得でき、構成・本文生成へ渡される。WordPress投稿・Discord通知は送信されない。通常モードへ戻す場合は `false` に変更して再起動する。検索キャッシュは通常／ダミーで分離される。詳細は [ダミーモードの設定](docs/configuration-reference.md#612-ダミーモード) を参照。
+
+検索機能の更新では `AddResearchDataIsolation` と `PrioritizeManualResearch` マイグレーションの適用が必要。既存環境では `scripts/db-migrate.ps1` を実行してからアプリを再起動する（下記 `scripts/app-up.ps1` でも適用される）。既存の検索結果は通常モードのデータとして引き継ぐ。
+
+Web資料は手動取得を優先し、生成の採用上限10件の残りに自動検索結果を入れる。画面には「手動取得」バッジを表示する。既存資料は検索成功履歴から判別できる分を手動優先へ移行する。履歴が残っていない場合は手動検索を再実行すると優先対象になる。有効なキャッシュがあれば外部APIを呼ばずに切り替わる。詳細は [検索結果の保存設計](docs/db-design.md#67-searchresults) を参照。
+
 既に `postgres_data` volume を作成済みの場合、`POSTGRES_PASSWORD` を変更しても既存DBユーザーのパスワードは自動変更されない。
 既存DBを残す場合は、DB作成時と同じ `POSTGRES_PASSWORD` を使う。
 

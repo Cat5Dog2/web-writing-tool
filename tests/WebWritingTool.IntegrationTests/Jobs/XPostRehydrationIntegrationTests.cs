@@ -45,7 +45,7 @@ public class XPostRehydrationIntegrationTests(IntegrationTestFixture fixture)
             new SearchCachePolicyResolver(new SearchCachePolicyOptions
             {
                 Policy = SearchCachePolicies.Strict
-            }));
+            }), new SearchDataMode(false));
 
         var result = await service.RehydrateCachedPostsAsync(
             userId,
@@ -94,7 +94,7 @@ public class XPostRehydrationIntegrationTests(IntegrationTestFixture fixture)
             new SearchCachePolicyResolver(new SearchCachePolicyOptions
             {
                 Policy = SearchCachePolicies.Strict
-            }));
+            }), new SearchDataMode(false));
 
         var result = await service.RehydrateCachedPostsAsync(
             userId,

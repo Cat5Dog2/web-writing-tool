@@ -415,6 +415,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             .IsRequired();
         entity.Property(result => result.Provider)
             .HasMaxLength(40);
+        entity.Property(result => result.IsDummy).HasDefaultValue(false);
+        entity.Property(result => result.IsManual).HasDefaultValue(false);
         entity.Property(result => result.QueryHash)
             .HasMaxLength(128);
         entity.Property(result => result.CacheExpiresAt)
@@ -467,6 +469,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         entity.Property(post => post.PostId)
             .HasMaxLength(80)
             .IsRequired();
+        entity.Property(post => post.IsDummy).HasDefaultValue(false);
         entity.Property(post => post.AuthorId)
             .HasMaxLength(80);
         entity.Property(post => post.Language)
@@ -483,9 +486,10 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         entity.Property(post => post.MetadataExpiresAt)
             .HasColumnType(TimestampWithTimeZone);
 
-        entity.HasIndex(post => post.PostId)
+        entity.HasIndex(post => new { post.UserId, post.ArticleId, post.HeadingId, post.IsDummy, post.QueryHash, post.PostId })
             .IsUnique()
-            .HasDatabaseName("UX_XSearchPosts_PostId");
+            .AreNullsDistinct(false)
+            .HasDatabaseName("UX_XSearchPosts_Scope_PostId");
         entity.HasIndex(post => new { post.ArticleId, post.FetchedAt })
             .IsDescending(false, true)
             .HasDatabaseName("IX_XSearchPosts_ArticleId_FetchedAt");

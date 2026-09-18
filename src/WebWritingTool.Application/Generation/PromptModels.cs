@@ -8,7 +8,10 @@ public sealed record PromptDocument(
     string SystemInstruction,
     string UserPrompt,
     string PromptHash,
-    int PromptChars);
+    int PromptChars)
+{
+    public IReadOnlyList<AiReferenceSource> References { get; init; } = [];
+}
 
 public sealed record ArticlePromptContext(
     Guid ArticleId,

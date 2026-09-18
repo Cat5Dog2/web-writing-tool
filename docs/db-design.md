@@ -379,7 +379,13 @@ Provider別TokenCounter、公式APIまたは公式Tokenizerによるトークン
 
 ### 6.7 `SearchResults`
 
-Tavily Search APIの検索結果を保存する。同一条件の検索ではキャッシュを優先し、不要なAPI呼び出しを抑制する。
+`AddResearchDataIsolation` マイグレーションでSearchResults/XSearchPostsにIsDummyを追加し、既存行はfalseにする。Xの一意インデックスも下記のスコープへ変更する。適用時に既存本文を削除・書き換えない。適用後は同じPostIdの行が複数存在しうるため、旧一意制約へのロールバックは重複の確認と移行前バックアップを前提とし、自動的な行削除で解消しない。
+
+Tavily Search APIの検索結果を保存する。同一条件の検索ではキャッシュを優先し、不要なAPI呼び出しを抑制する。`IsDummy boolean NOT NULL DEFAULT false` で通常・ダミーを分離し、保存・読込時に必ず現在の区分を指定する。
+
+`PrioritizeManualResearch` マイグレーションで `IsManual boolean NOT NULL DEFAULT false` を追加する。記事編集画面などの明示的なWeb検索はtrue、生成内の自動検索はfalseで保存する。手動検索が有効なキャッシュに一致した場合もtrueへ更新し、自動検索ではfalseに戻さない。この区分はQueryHashに含めず、同じ検索条件のキャッシュを共有する。
+
+既存行は、所有者・記事・見出し・検索条件・通常/ダミー区分が一致し、取得日時以降に完了したWeb検索の成功履歴がある場合にtrueを復元する。履歴が残っていない資料は判別できないため、手動検索を再実行して優先対象にする。資料本文や取得日時、保持期限は変更しない。
 
 | カラム | 型 | NULL | 制約 | 説明 |
 | --- | --- | --- | --- | --- |
@@ -393,6 +399,8 @@ Tavily Search APIの検索結果を保存する。同一条件の検索ではキ
 | `Snippet` | `text` | Yes |  | スニペット |
 | `Rank` | `integer` | No |  | 順位 |
 | `Provider` | `varchar(40)` | Yes |  | 検索プロバイダー |
+| `IsDummy` | `boolean` | No | DEFAULT false | 通常キャッシュとダミーサンプルの区分 |
+| `IsManual` | `boolean` | No | DEFAULT false | 明示的なWeb検索で取得・選択した優先資料 |
 | `QueryHash` | `varchar(128)` | Yes |  | クエリ条件ハッシュ |
 | `CacheExpiresAt` | `timestamptz` | Yes |  | キャッシュ有効期限 |
 | `RawJsonExpiresAt` | `timestamptz` | Yes |  | 検索結果JSON保持期限。1から24時間目安 |
@@ -420,6 +428,7 @@ X API Full-Archive Searchで取得した投稿を保存する。キーワード�
 | `Query` | `varchar(300)` | No |  | 検索クエリ |
 | `QueryHash` | `varchar(128)` | No |  | 検索条件ハッシュ |
 | `PostId` | `varchar(80)` | No |  | X投稿ID |
+| `IsDummy` | `boolean` | No | DEFAULT false | 通常キャッシュとダミーサンプルの区分 |
 | `AuthorId` | `varchar(80)` | Yes |  | 投稿者ID |
 | `Text` | `text` | Yes |  | 投稿本文。最大24時間保持 |
 | `Url` | `text` | Yes |  | 投稿URL |
@@ -432,7 +441,7 @@ X API Full-Archive Searchで取得した投稿を保存する。キーワード�
 
 インデックス:
 
-- `UX_XSearchPosts_PostId`: `PostId`
+- `UX_XSearchPosts_Scope_PostId`: `UserId`, `ArticleId`, `HeadingId`, `IsDummy`, `QueryHash`, `PostId`（NULLS NOT DISTINCT）。同じ投稿を別の記事・検索条件へ関連付けられるようにする。
 - `IX_XSearchPosts_ArticleId_FetchedAt`
 - `IX_XSearchPosts_HeadingId`
 - `IX_XSearchPosts_QueryHash_CacheExpiresAt`
@@ -440,8 +449,8 @@ X API Full-Archive Searchで取得した投稿を保存する。キーワード�
 
 方針:
 
-- `PostId`で一意制約を設け、同じ投稿を再取得・再保存しない。
-- 検索条件は正規化し、`QueryHash`でキャッシュ判定する。
+- 所有者・記事・見出し・通常/ダミー区分・検索条件・`PostId`で一意制約を設ける。同じ組の再検索では既存の行を更新する。
+- 検索条件は正規化し、`QueryHash`でキャッシュ判定する。`IsDummy boolean NOT NULL DEFAULT false` を追加し、通常・ダミーを分離する。再取得でも異なる区分の行を更新しない。
 - X APIのレスポンス全文は保存せず、本文生成に必要な項目のみ保存する。
 - X投稿の本文、投稿者名、プロフィール情報、メディアURLは最大24時間で削除または匿名化する。
 - X Post ID、User ID、個別投稿を復元できない集計データは再取得・再検証・重複排除のため長期保持できる。

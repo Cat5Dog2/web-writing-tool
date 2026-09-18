@@ -10,7 +10,8 @@ public sealed class WebSearchJobHandler(
     ApplicationDbContext dbContext,
     IWebSearchClient webSearchClient,
     SearchCachePolicyResolver cachePolicyResolver,
-    ITopicRiskClassifier topicRiskClassifier)
+    ITopicRiskClassifier topicRiskClassifier,
+    SearchDataMode dataMode)
     : SearchJobHandlerBase(dbContext, cachePolicyResolver, topicRiskClassifier), IJobHandler
 {
     public JobType JobType => JobType.WebSearch;
@@ -20,6 +21,10 @@ public sealed class WebSearchJobHandler(
         CancellationToken cancellationToken = default)
     {
         var payload = ReadPayload<WebSearchJobPayload>(job);
+        if (payload.IsDummy.HasValue && payload.IsDummy != dataMode.IsDummy)
+        {
+            throw new JobExecutionException(JobErrorCodes.Conflict, "検索モードが変更されました。検索を再登録してください。");
+        }
         var articleId = payload.ArticleId == Guid.Empty ? job.ArticleId ?? Guid.Empty : payload.ArticleId;
         var headingId = payload.HeadingId ?? job.HeadingId;
         var (article, heading) = await GetTargetsAsync(articleId, headingId, job.UserId, cancellationToken);
@@ -36,19 +41,31 @@ public sealed class WebSearchJobHandler(
             payload.EndDate,
             SearchCacheTtl: null,
             ContentCacheTtl: null);
+        if (query.Length > 300 || request.MaxResults is < 1 or > 20)
+        {
+            throw new JobExecutionException(JobErrorCodes.ValidationError, "検索条件が上限を超えています。");
+        }
         var normalized = SearchQueryNormalizer.NormalizeWeb(request);
         var now = DateTimeOffset.UtcNow;
-        var cachedCount = await DbContext.SearchResults.CountAsync(
+        var cachedResults = DbContext.SearchResults.Where(
             result => result.UserId == job.UserId
                 && result.ArticleId == article.Id
                 && result.HeadingId == headingId
+                && result.IsDummy == dataMode.IsDummy
                 && result.QueryHash == normalized.QueryHash
                 && result.CacheExpiresAt != null
-                && result.CacheExpiresAt > now,
-            cancellationToken);
+                && result.ContentExpiresAt > now
+                && result.CacheExpiresAt > now);
+        var cachedCount = await cachedResults.CountAsync(cancellationToken);
 
         if (cachedCount > 0)
         {
+            if (payload.IsManual)
+            {
+                await cachedResults.Where(result => !result.IsManual)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(result => result.IsManual, true), cancellationToken);
+            }
+
             return new JobExecutionResult(SerializeResult(new
             {
                 articleId = article.Id,
@@ -86,6 +103,8 @@ public sealed class WebSearchJobHandler(
                     Snippet = result.Snippet,
                     Rank = rank++,
                     Provider = result.Provider,
+                    IsDummy = dataMode.IsDummy,
+                    IsManual = payload.IsManual,
                     QueryHash = normalized.QueryHash,
                     CacheExpiresAt = ttl.CacheExpiresAt,
                     RawJsonExpiresAt = ttl.RawJsonExpiresAt,
@@ -105,6 +124,10 @@ public sealed class WebSearchJobHandler(
                 cached = false,
                 resultCount = distinctResults.Length
             }));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

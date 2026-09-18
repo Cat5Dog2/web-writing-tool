@@ -47,13 +47,8 @@ public sealed record AiTextGenerationRequest(
     double? Temperature,
     IReadOnlyList<AiReferenceSource> References)
 {
-    public int PromptChars =>
-        (SystemInstruction?.Length ?? 0)
-        + (UserPrompt?.Length ?? 0)
-        + References.Sum(reference =>
-            (reference.Title?.Length ?? 0)
-            + (reference.Url?.Length ?? 0)
-            + (reference.Summary?.Length ?? 0));
+    public int PromptChars => ReferencePromptFormatter.SystemInstruction(SystemInstruction, References).Length
+        + ReferencePromptFormatter.UserPrompt(UserPrompt, References).Length;
 }
 
 public sealed record AiReferenceSource(

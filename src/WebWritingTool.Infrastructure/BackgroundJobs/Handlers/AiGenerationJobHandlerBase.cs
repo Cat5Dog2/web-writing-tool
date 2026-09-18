@@ -137,7 +137,7 @@ public abstract class AiGenerationJobHandlerBase(
                 prompt.UserPrompt,
                 null,
                 temperature,
-                []),
+                prompt.References),
             cancellationToken);
     }
 

@@ -1,5 +1,7 @@
 ﻿@inherits LayoutComponentBase
 
+@inject Microsoft.Extensions.Options.IOptions<WebWritingTool.Web.Configuration.ExternalApiOptions> ExternalApiOptions
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -22,6 +24,12 @@
         </div>
 
         <article class="content px-4">
+            @if (ExternalApiOptions.Value.UseMocks)
+            {
+                <div class="alert alert-info" role="status">
+                    <strong>ダミーモード</strong>：記事・検索結果・X投稿は動作確認用のサンプルです。外部API・WordPress投稿・Discord通知は利用しません。
+                </div>
+            }
             @Body
         </article>
     </main>

@@ -28,6 +28,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 | グループ | ベースパス | 用途 |
 | --- | --- | --- |
 | Articles | `/api/articles` | 記事CRUD、検索、一括作成、人間確認 |
+| Research | `/api/articles/{articleId}/research` | Web/X検索ジョブ登録と参考情報取得 |
 | Headings | `/api/articles/{articleId}/headings` | 見出し操作 |
 | Generation | `/api/articles/{articleId}/generation` | AI生成ジョブ登録 |
 | Jobs | `/api/jobs` | ジョブ状態取得、再実行、キャンセル |
@@ -1498,6 +1499,20 @@ Response `200 OK`:
 ```
 
 ## 16. 入力バリデーション
+
+### 記事リサーチAPI
+
+| Method | Path | 内容 |
+| --- | --- | --- |
+| POST | `/api/articles/{articleId}/research/web` | Web検索ジョブを登録 |
+| POST | `/api/articles/{articleId}/research/x` | X検索ジョブを登録 |
+| GET | `/api/articles/{articleId}/research?headingId={任意}` | 有効な参考情報を取得 |
+
+POST本文は `{ "query": "検索語", "headingId": null, "maxResults": 10 }`。queryは省略・空白時に記事キーワードを使い、上限300文字。maxResultsはWeb1〜20、X1〜100、既定10。X APIの1リクエスト最小取得件数はClient側で補正し、保存する結果は要求件数までに絞る。headingIdを指定すると対象見出しに関連付ける。API・サービスの両方で認証と所有者/管理者を確認し、他の記事の見出しは拒否する。
+
+POSTは202と既存のJobAcceptedResponseを返す。GETは `isDummy`, `webResults`（title/url/snippet/fetchedAt/isManual）, `xPosts`（postId/authorId/text/url/postedAt/fetchedAt）, `warning` を返す。記事全体＋指定見出しに属する現在のモードの有効なデータを、重複排除して各20件まで返す。Webは手動取得（isManual=true）を優先し、同じ優先度では取得日時の降順・検索順位の昇順で返す。WebのPOSTはキャッシュを再利用する場合も手動取得として扱う。Xはproduction/strictの再取得に失敗した場合は返さずwarningで案内する。
+
+エラーは未認証401、入力不正400、記事/見出し不明・他所有者404、同種ジョブ実行中409、登録頻度超過429。POSTはCSRFトークン必須。結果なしは200の空配列で返す。
 
 ### 16.1 文字列制限
 

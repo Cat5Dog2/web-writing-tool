@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Rendering;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
@@ -16,7 +17,8 @@ public sealed class BodyGenerationJobHandler(
     IOptions<GeminiOptions> geminiOptions,
     BodyGenerationPromptBuilder promptBuilder,
     IContentRenderingService contentRenderingService,
-    IWordpressPostCommandService wordpressPostCommandService)
+    IWordpressPostCommandService wordpressPostCommandService,
+    IArticleResearchService researchService)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
     public JobType JobType => JobType.BodyGeneration;
@@ -64,6 +66,12 @@ public sealed class BodyGenerationJobHandler(
 
             try
             {
+                var useWebSearch = payload.UseWebSearch || heading.UseWebSearch || article.SearchMode;
+                var query = heading.SearchQuery ?? article.Keyword;
+                var references = await researchService.GetReferencesAsync(job.UserId, article.Id, heading.Id,
+                    useWebSearch, query, cancellationToken: cancellationToken);
+                prompt = ReferencePromptFormatter.Attach(promptBuilder.Build(CreatePromptContext(article, headings),
+                    ToHeadingPromptContext(heading), payload with { UseWebSearch = useWebSearch }), references);
                 var result = await GenerateAsync(operation, model, prompt, temperature: 0.5, cancellationToken);
                 var body = EnsureGeneratedMarkdown(result.Text);
                 heading.Body = body;

@@ -14,7 +14,8 @@ public sealed class OutlineGenerationJobHandler(
     IAiTextGenerationClient aiClient,
     IOptions<GeminiOptions> geminiOptions,
     OutlineGenerationPromptBuilder promptBuilder,
-    ITopicRiskClassifier topicRiskClassifier)
+    ITopicRiskClassifier topicRiskClassifier,
+    IArticleResearchService researchService)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
     private const int MetaDescriptionMaxLength = 320;
@@ -40,6 +41,10 @@ public sealed class OutlineGenerationJobHandler(
 
         try
         {
+            var references = await researchService.GetReferencesAsync(job.UserId, article.Id, null,
+                (payload.SearchMode ?? article.SearchMode) || (payload.OutlineMethod ?? article.OutlineMethod) == "Search",
+                payload.Keyword, payload.IsDomesticOnly, cancellationToken);
+            prompt = ReferencePromptFormatter.Attach(promptBuilder.Build(CreatePromptContext(article, existingHeadings), payload), references);
             var result = await GenerateAsync(operation, model, prompt, temperature: 0.4, cancellationToken);
             var outline = OutlineGenerationParser.Parse(result.Text);
             if (outline.Headings.Count == 0)

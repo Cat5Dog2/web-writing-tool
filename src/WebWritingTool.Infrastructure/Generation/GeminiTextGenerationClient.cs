@@ -137,15 +137,15 @@ public sealed class GeminiTextGenerationClient(
     private static GeminiGenerateContentRequest CreateRequest(AiTextGenerationRequest request)
     {
         return new GeminiGenerateContentRequest(
-            string.IsNullOrWhiteSpace(request.SystemInstruction)
+            string.IsNullOrWhiteSpace(request.SystemInstruction) && request.References.Count == 0
                 ? null
                 : new GeminiContent(
                     null,
-                    [new GeminiPart(request.SystemInstruction)]),
+                    [new GeminiPart(ReferencePromptFormatter.SystemInstruction(request.SystemInstruction, request.References))]),
             [
                 new GeminiContent(
                     "user",
-                    [new GeminiPart(request.UserPrompt)])
+                    [new GeminiPart(ReferencePromptFormatter.UserPrompt(request.UserPrompt, request.References))])
             ]);
     }
 

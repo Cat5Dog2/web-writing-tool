@@ -47,6 +47,7 @@ services:
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-web_writing_tool};Username=${POSTGRES_USER:-web_writing_tool};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       AdminSeed__Email: ${AdminSeed__Email:-}
       AdminSeed__Password: ${AdminSeed__Password:-}
+      ExternalApis__UseMocks: ${ExternalApis__UseMocks:-false}
       AiProviders__Gemini__ApiKey: ${AiProviders__Gemini__ApiKey:-}
       AiProviders__Gemini__Model: ${AiProviders__Gemini__Model:-gemini-3.8-flash}
       AiProviders__Gemini__Region: ${AiProviders__Gemini__Region:-Japan}

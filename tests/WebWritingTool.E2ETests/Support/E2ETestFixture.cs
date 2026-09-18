@@ -17,8 +17,17 @@ using WebWritingTool.Infrastructure.Identity;
 
 namespace WebWritingTool.E2ETests.Support;
 
-public sealed partial class E2ETestFixture : IAsyncLifetime
+public partial class E2ETestFixture : IAsyncLifetime
 {
+    private readonly bool useDummyMode;
+
+    public E2ETestFixture() : this(false) { }
+
+    protected E2ETestFixture(bool useDummyMode)
+    {
+        this.useDummyMode = useDummyMode;
+    }
+
     public const string AdminEmail = "admin-e2e@example.test";
     public const string AdminPassword = "Change-this-e2e-password-123!";
     public const string StandardUserPassword = "Change-this-e2e-user-123!";
@@ -384,6 +393,17 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
         return new ApplicationDbContext(options);
     }
 
+    public async Task<Guid> SeedResearchArticleAsync(string keyword)
+    {
+        await using var db = CreateDbContext();
+        var owner = await GetUserIdByEmailAsync(db, AdminEmail);
+        var article = CreateArticle(owner, keyword, keyword + "の記事");
+        article.SearchMode = true;
+        db.Articles.Add(article);
+        await db.SaveChangesAsync();
+        return article.Id;
+    }
+
     private static async Task<string> GetUserIdByEmailAsync(ApplicationDbContext dbContext, string email)
     {
         return await dbContext.Users
@@ -447,7 +467,7 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
             configuration = "Debug";
         }
 
-        var logPath = Path.Combine(TestResultsDirectory, "web-app.log");
+        var logPath = Path.Combine(TestResultsDirectory, useDummyMode ? "web-app-dummy.log" : "web-app.log");
         appLogWriter = new StreamWriter(logPath, append: false)
         {
             AutoFlush = true
@@ -499,7 +519,8 @@ public sealed partial class E2ETestFixture : IAsyncLifetime
         startInfo.Environment["ASPNETCORE_URLS"] = BaseAddress.ToString();
         startInfo.Environment["ConnectionStrings__DefaultConnection"] = postgres.GetConnectionString();
         startInfo.Environment["Security__RequireHttps"] = "false";
-        startInfo.Environment["BackgroundJobs__Enabled"] = "false";
+        startInfo.Environment["BackgroundJobs__Enabled"] = useDummyMode ? "true" : "false";
+        startInfo.Environment["ExternalApis__UseMocks"] = useDummyMode ? "true" : "false";
         startInfo.Environment["AdminSeed__Email"] = AdminEmail;
         startInfo.Environment["AdminSeed__Password"] = AdminPassword;
         startInfo.Environment["AdminSeed__DisplayName"] = "E2E Admin";

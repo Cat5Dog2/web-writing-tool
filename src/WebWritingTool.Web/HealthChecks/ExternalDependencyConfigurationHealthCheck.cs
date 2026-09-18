@@ -4,16 +4,23 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Search;
+using WebWritingTool.Web.Configuration;
 
 internal sealed class ExternalDependencyConfigurationHealthCheck(
     IOptions<GeminiOptions> geminiOptions,
-    IOptions<SearchProviderOptions> searchProviderOptions)
+    IOptions<SearchProviderOptions> searchProviderOptions,
+    IOptions<ExternalApiOptions> externalApiOptions)
     : IHealthCheck
 {
     public Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        if (externalApiOptions.Value.UseMocks)
+        {
+            return Task.FromResult(HealthCheckResult.Healthy("Dummy mode is enabled; external APIs are not called."));
+        }
+
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(geminiOptions.Value.ApiKey))
         {
