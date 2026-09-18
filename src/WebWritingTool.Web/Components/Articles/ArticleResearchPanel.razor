@@ -271,7 +271,10 @@
                 status = "構成が完成しました。見出しを確認して本文を生成してください。";
             }
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            Logger.LogDebug("Initial generation monitoring canceled because the component was disposed.");
+        }
         catch (Exception exception)
         {
             error = "生成状況を確認できませんでした。記事一覧から状態を確認してください。";

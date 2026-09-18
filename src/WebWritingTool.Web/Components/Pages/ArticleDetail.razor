@@ -8,6 +8,7 @@
 @inject IServiceScopeFactory ScopeFactory
 @inject ExternalApiExecutionContext ExecutionContext
 @inject IJSRuntime JS
+@inject ILogger<ArticleDetail> Logger
 
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -942,7 +943,10 @@
                 await navigationModule.InvokeVoidAsync("stop", editorRoot);
                 await navigationModule.DisposeAsync();
             }
-            catch (JSDisconnectedException) { }
+            catch (JSDisconnectedException)
+            {
+                Logger.LogDebug("Skipped editor navigation cleanup because the circuit disconnected before disposal ran.");
+            }
         }
         navigationReference?.Dispose();
     }

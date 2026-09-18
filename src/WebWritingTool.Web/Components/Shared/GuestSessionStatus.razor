@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject ILogger<GuestSessionStatus> Logger
 
 <section class="article-panel mb-3">
     <h2 class="h5">ゲストの利用期限</h2>
@@ -25,7 +26,10 @@
                 if (now >= ExpiresAt) break;
             }
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            Logger.LogDebug("Guest session timer canceled because the component was disposed.");
+        }
     }
 
     public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }

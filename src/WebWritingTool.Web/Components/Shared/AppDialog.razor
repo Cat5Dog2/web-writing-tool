@@ -1,5 +1,6 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject ILogger<AppDialog> Logger
 
 <dialog class="article-dialog app-dialog" aria-labelledby="@titleId" @ref="element">
     <h2 id="@titleId" class="h5">@Title</h2>
@@ -41,7 +42,10 @@
                 await module.InvokeVoidAsync("close", element);
                 await module.DisposeAsync();
             }
-            catch (JSDisconnectedException) { }
+            catch (JSDisconnectedException)
+            {
+                Logger.LogDebug("Skipped app dialog cleanup because the circuit disconnected before disposal ran.");
+            }
         }
         reference?.Dispose();
     }

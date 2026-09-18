@@ -559,6 +559,10 @@
 
 確認: E2E全30件、関連単体52件（Linux SDKコンテナー）成功。PC・390×844・667×375で画像確認、`git diff --check`成功。変更記録: `artifacts/reviews/ui-ux-fixes-2026-09-18.md`。
 
+- [x] `T-1339` UI/UX改善で追加した空catch4か所によるSlopwatchのCI失敗を修正する。
+  - 完了条件: コンポーネント終了時のキャンセル・回路切断をDebugログで記録し、SlopwatchとWebビルドが成功する。
+  - 確認: 修正前にSW003の4件を再現。`./scripts/dotnet.ps1 slopwatch analyze -d . --exclude 'test-results/**' --fail-on warning`で0件、`./scripts/dotnet.ps1 build src/WebWritingTool.Web/WebWritingTool.Web.csproj '--property:RestoreLockedMode=true'`で警告・エラー0件。除外対象はCIに含まれないローカルの過去テスト成果物のみ。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
