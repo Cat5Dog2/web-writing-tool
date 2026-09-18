@@ -10,7 +10,8 @@ public sealed class XFullArchiveSearchJobHandler(
     ApplicationDbContext dbContext,
     IXFullArchiveSearchClient xClient,
     SearchCachePolicyResolver cachePolicyResolver,
-    ITopicRiskClassifier topicRiskClassifier)
+    ITopicRiskClassifier topicRiskClassifier,
+    SearchDataMode dataMode)
     : SearchJobHandlerBase(dbContext, cachePolicyResolver, topicRiskClassifier), IJobHandler
 {
     public JobType JobType => JobType.XFullArchiveSearch;
@@ -20,13 +21,17 @@ public sealed class XFullArchiveSearchJobHandler(
         CancellationToken cancellationToken = default)
     {
         var payload = ReadPayload<XFullArchiveSearchJobPayload>(job);
+        if (payload.IsDummy.HasValue && payload.IsDummy != dataMode.IsDummy)
+        {
+            throw new JobExecutionException(JobErrorCodes.Conflict, "検索モードが変更されました。検索を再登録してください。");
+        }
         var articleId = payload.ArticleId == Guid.Empty ? job.ArticleId ?? Guid.Empty : payload.ArticleId;
         var headingId = payload.HeadingId ?? job.HeadingId;
         var (article, heading) = await GetTargetsAsync(articleId, headingId, job.UserId, cancellationToken);
         var query = string.IsNullOrWhiteSpace(payload.Query)
             ? article.Keyword
             : payload.Query.Trim();
-        if (string.IsNullOrWhiteSpace(query))
+        if (string.IsNullOrWhiteSpace(query) || query.Length > 300)
         {
             throw new JobExecutionException(
                 JobErrorCodes.ValidationError,
@@ -50,8 +55,10 @@ public sealed class XFullArchiveSearchJobHandler(
             post => post.UserId == job.UserId
                 && post.ArticleId == article.Id
                 && post.HeadingId == headingId
+                && post.IsDummy == dataMode.IsDummy
                 && post.QueryHash == normalized.QueryHash
                 && post.CacheExpiresAt != null
+                && post.ContentExpiresAt > now && post.Text != null
                 && post.CacheExpiresAt > now,
             cancellationToken);
 
@@ -67,7 +74,7 @@ public sealed class XFullArchiveSearchJobHandler(
             }));
         }
 
-        var topicRisk = ClassifyAndApplyTopicRisk(article, query, heading?.Title);
+        var topicRisk = ClassifyAndApplyTopicRisk(article, "X投稿 " + query, heading?.Title);
         var ttl = CachePolicyResolver.ResolveX(now, topicRisk);
 
         try
@@ -77,19 +84,30 @@ public sealed class XFullArchiveSearchJobHandler(
                 .Where(result => !string.IsNullOrWhiteSpace(result.PostId))
                 .GroupBy(result => result.PostId, StringComparer.Ordinal)
                 .Select(group => group.First())
+                .Take(Math.Clamp(request.MaxResults, 1, request.LargeResearchMode ? 500 : 100))
                 .ToArray();
             var postIds = distinctResults.Select(result => result.PostId).ToArray();
-            var existingPostIds = await DbContext.XSearchPosts
-                .Where(post => postIds.Contains(post.PostId))
-                .Select(post => post.PostId)
+            var existingPosts = await DbContext.XSearchPosts
+                .Where(post => post.UserId == job.UserId && post.ArticleId == article.Id
+                    && post.HeadingId == headingId && post.IsDummy == dataMode.IsDummy
+                    && post.QueryHash == normalized.QueryHash && postIds.Contains(post.PostId))
                 .ToListAsync(cancellationToken);
-            var existingPostIdSet = existingPostIds.ToHashSet(StringComparer.Ordinal);
+            var existingById = existingPosts.ToDictionary(post => post.PostId, StringComparer.Ordinal);
             var addedCount = 0;
 
             foreach (var result in distinctResults)
             {
-                if (existingPostIdSet.Contains(result.PostId))
+                if (existingById.TryGetValue(result.PostId, out var existing))
                 {
+                    existing.Text = result.Text;
+                    existing.AuthorId = result.AuthorId;
+                    existing.Url = result.Url;
+                    existing.PostedAt = result.PostedAt;
+                    existing.Language = result.Language;
+                    existing.FetchedAt = now;
+                    existing.CacheExpiresAt = ttl.CacheExpiresAt;
+                    existing.ContentExpiresAt = ttl.ContentExpiresAt;
+                    existing.MetadataExpiresAt = ttl.MetadataExpiresAt;
                     continue;
                 }
 
@@ -101,6 +119,7 @@ public sealed class XFullArchiveSearchJobHandler(
                     Query = query,
                     QueryHash = normalized.QueryHash,
                     PostId = result.PostId,
+                    IsDummy = dataMode.IsDummy,
                     AuthorId = result.AuthorId,
                     Text = result.Text,
                     Url = result.Url,
@@ -125,6 +144,10 @@ public sealed class XFullArchiveSearchJobHandler(
                 postCount = distinctResults.Length,
                 addedCount
             }));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

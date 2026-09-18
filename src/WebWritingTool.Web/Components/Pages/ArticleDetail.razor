@@ -119,6 +119,10 @@
             </section>
         }
 
+        <WebWritingTool.Web.Components.Articles.ArticleResearchPanel @key="ArticleId" ArticleId="ArticleId"
+            Keyword="@article.Keyword" SearchMode="article.SearchMode" Headings="article.Headings"
+            OnGenerated="ReloadGeneratedArticleAsync" />
+
         <div class="article-editor-grid">
             <aside class="article-editor-sidebar">
                 <section class="article-panel">
@@ -263,6 +267,8 @@
 
         isLoading = false;
     }
+
+    private Task ReloadGeneratedArticleAsync() => LoadAsync();
 
     private void PopulateForm(ArticleDetailResponse detail)
     {

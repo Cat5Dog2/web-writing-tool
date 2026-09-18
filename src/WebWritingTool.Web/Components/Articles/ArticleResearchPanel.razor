@@ -1,0 +1,248 @@
+@using System.Security.Claims
+@using System.Text.Json
+@using WebWritingTool.Application.Jobs
+@using WebWritingTool.Application.Search
+@using WebWritingTool.Application.Security
+@using WebWritingTool.Domain.Jobs
+@implements IDisposable
+@inject IServiceScopeFactory ScopeFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<ArticleResearchPanel> Logger
+
+<section class="article-panel mb-3" aria-label="検索・参考情報">
+    <h2 class="h5">検索・参考情報</h2>
+    <p class="text-muted">取得した参考情報は構成・本文の生成に使います。X検索はボタンを押したときだけ実行します。有効な結果を各20件まで表示します。</p>
+    <p class="small text-muted">Web資料は手動取得を優先し、残りの枠に自動検索結果を使います。生成への採用はWeb・X各10件までです。同じ優先度では取得日時が新しい順に採用します。</p>
+    <div class="row g-2 mb-3">
+        <div class="col-md-5">
+            <label class="form-label" for="research-query">検索キーワード</label>
+            <input id="research-query" class="form-control" maxlength="300" @bind="query" disabled="@busy" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="research-heading">対象</label>
+            <select id="research-heading" class="form-select" @bind="headingValue" @bind:after="ReloadAsync" disabled="@busy">
+                <option value="">記事全体</option>
+                @foreach (var heading in Headings)
+                {
+                    <option value="@heading.Id">@($"H{heading.Level} {heading.Title}")</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="research-count">取得件数</label>
+            <input id="research-count" class="form-control" type="number" min="1" max="20" @bind="maxResults" disabled="@busy" />
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <button class="btn btn-outline-primary" disabled="@busy" @onclick='() => RunAsync("web")'>Web検索を実行</button>
+        <button class="btn btn-outline-primary" disabled="@busy" @onclick='() => RunAsync("x")'>X検索を実行</button>
+        <button class="btn btn-outline-secondary" disabled="@busy" @onclick="ReloadAsync">参考情報を更新</button>
+        <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
+        <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>
+    </div>
+    <p class="small text-muted">生成には保存済みの設定を使います。本文生成は対象の本文を置き換えます。記事全体の参考情報は各見出しでも利用されます。</p>
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger" role="alert">@error</div>
+    }
+    @if (!string.IsNullOrEmpty(status))
+    {
+        <div class="alert alert-info" role="status">@status</div>
+    }
+    @if (results is not null)
+    {
+        @if (results.IsDummy)
+        {
+            <p class="text-muted">表示中の参考情報はサンプルです。実在する検索結果・X投稿ではありません。</p>
+        }
+        @if (results.Warning is not null)
+        {
+            <div class="alert alert-warning" role="alert">@results.Warning</div>
+        }
+        <div class="row g-3">
+            <div class="col-md-6" data-testid="research-web-results">
+                <h3 class="h6">Web検索結果（@results.WebResults.Count 件）</h3>
+                <div class="research-results" tabindex="0" aria-label="Web検索結果一覧">
+                @if (results.WebResults.Count == 0)
+                {
+                    <p class="text-muted">有効な検索結果はありません。検索を実行してください。</p>
+                }
+                @foreach (var result in results.WebResults)
+                {
+                    <div class="border rounded p-2 mb-2 text-break">
+                        @if (result.IsManual)
+                        {
+                            <span class="badge text-bg-secondary me-1">手動取得</span>
+                        }
+                        @if (results.IsDummy)
+                        {
+                            <strong>@result.Title</strong>
+                        }
+                        else
+                        {
+                            <a href="@result.Url" target="_blank" rel="noopener noreferrer">@result.Title</a>
+                        }
+                        <p class="mb-1">@result.Snippet</p>
+                        <small class="text-muted">取得：@result.FetchedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</small>
+                    </div>
+                }
+                </div>
+            </div>
+            <div class="col-md-6" data-testid="research-x-results">
+                <h3 class="h6">X投稿（@results.XPosts.Count 件）</h3>
+                <div class="research-results" tabindex="0" aria-label="X投稿一覧">
+                @if (results.XPosts.Count == 0)
+                {
+                    <p class="text-muted">有効なX投稿はありません。X検索を実行してください。</p>
+                }
+                @foreach (var post in results.XPosts)
+                {
+                    <div class="border rounded p-2 mb-2 text-break">
+                        <p class="mb-1">@post.Text</p>
+                        @if (!results.IsDummy && post.Url is not null)
+                        {
+                            <a href="@post.Url" target="_blank" rel="noopener noreferrer">Xで投稿を確認</a>
+                        }
+                        <div><small class="text-muted">取得：@post.FetchedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</small></div>
+                    </div>
+                }
+                </div>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid ArticleId { get; set; }
+    [Parameter] public string Keyword { get; set; } = string.Empty;
+    [Parameter] public bool SearchMode { get; set; }
+    [Parameter] public IReadOnlyList<ArticleHeadingResponse> Headings { get; set; } = [];
+    [Parameter] public EventCallback OnGenerated { get; set; }
+
+    private readonly CancellationTokenSource lifetime = new();
+    private Guid loadedArticleId;
+    private string query = string.Empty;
+    private string headingValue = string.Empty;
+    private int maxResults = 5;
+    private bool busy;
+    private string? error;
+    private string? status;
+    private ArticleResearchResponse? results;
+    private Guid? HeadingId => Guid.TryParse(headingValue, out var id) ? id : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedArticleId != ArticleId)
+        {
+            loadedArticleId = ArticleId;
+            query = Keyword;
+            headingValue = string.Empty;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task<ArticleActor?> GetActorAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return userId is null ? null : new ArticleActor(userId, user.IsInRole(ApplicationRoles.Admin));
+    }
+
+    private async Task ReloadAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var actor = await GetActorAsync();
+            if (actor is null) return;
+            using var scope = ScopeFactory.CreateScope();
+            results = await scope.ServiceProvider.GetRequiredService<IArticleResearchService>()
+                .GetAsync(actor, ArticleId, HeadingId, lifetime.Token);
+            if (results is null) error = "記事または見出しが見つかりません。";
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            Logger.LogDebug("Research loading canceled because the component was disposed.");
+        }
+        catch (Exception exception)
+        {
+            results = null;
+            error = "参考情報を取得できませんでした。再度お試しください。";
+            Logger.LogWarning("Research loading failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RunAsync(string action)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        status = "ジョブを登録しています。";
+        try
+        {
+            var actor = await GetActorAsync();
+            if (actor is null) return;
+            using var scope = ScopeFactory.CreateScope();
+            JobServiceResult<JobAcceptedResponse> queued;
+            if (action is "web" or "x")
+            {
+                queued = await scope.ServiceProvider.GetRequiredService<IArticleResearchService>().EnqueueAsync(
+                    actor, ArticleId, action, new ArticleResearchRequest(query, HeadingId, maxResults), lifetime.Token);
+            }
+            else
+            {
+                var payload = JsonSerializer.Serialize(new { articleId = ArticleId, headingId = action == "body" ? HeadingId : null,
+                    searchMode = SearchMode, useWebSearch = SearchMode, scope = "All" });
+                queued = await scope.ServiceProvider.GetRequiredService<IJobCommandService>().EnqueueAsync(
+                    new EnqueueJobCommand(new JobActor(actor.UserId, actor.IsAdmin),
+                        action == "outline" ? JobType.OutlineGeneration : JobType.BodyGeneration,
+                        ArticleId, action == "body" ? HeadingId : null, payload, 0), lifetime.Token);
+            }
+            if (!queued.Succeeded || queued.Value is null)
+            {
+                error = queued.Error == JobServiceError.RunningJobExists ? "同じ対象のジョブが実行中です。完了を待ってください。"
+                    : queued.ValidationErrors.FirstOrDefault()?.Message ?? "ジョブを登録できませんでした。実行間隔を空けてお試しください。";
+                status = null;
+                return;
+            }
+            while (!lifetime.IsCancellationRequested)
+            {
+                var job = await scope.ServiceProvider.GetRequiredService<IJobQueryService>().GetAsync(
+                    new JobActor(actor.UserId, actor.IsAdmin), queued.Value.JobId, lifetime.Token);
+                if (job is null || job.Status is "Failed" or "Canceled")
+                {
+                    error = job?.ErrorMessage ?? "処理が中断されました。";
+                    status = null;
+                    return;
+                }
+                if (job.Status == "Succeeded") break;
+                status = job.Status == "Queued" ? "実行待ちです。" : $"処理中です（{job.Progress}%）。";
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(1000, lifetime.Token);
+            }
+            if (lifetime.IsCancellationRequested) return;
+            if (action is "outline" or "body") await OnGenerated.InvokeAsync();
+            await ReloadAsync();
+            status = "処理が完了しました。";
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            Logger.LogDebug("Research polling canceled because the component was disposed.");
+        }
+        catch (Exception exception)
+        {
+            error = "処理状況を確認できませんでした。画面を開き直してください。";
+            status = null;
+            Logger.LogWarning("Research operation failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally { busy = false; }
+    }
+
+    public void Dispose()
+    {
+        lifetime.Cancel();
+        lifetime.Dispose();
+    }
+}

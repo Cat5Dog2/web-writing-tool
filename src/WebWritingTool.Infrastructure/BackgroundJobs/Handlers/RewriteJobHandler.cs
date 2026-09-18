@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
@@ -12,7 +13,8 @@ public sealed class RewriteJobHandler(
     ApplicationDbContext dbContext,
     IAiTextGenerationClient aiClient,
     IOptions<GeminiOptions> geminiOptions,
-    RewritePromptBuilder promptBuilder)
+    RewritePromptBuilder promptBuilder,
+    IArticleResearchService researchService)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
     public JobType JobType => JobType.Rewrite;
@@ -58,6 +60,10 @@ public sealed class RewriteJobHandler(
 
         try
         {
+            var references = await researchService.GetReferencesAsync(job.UserId, article.Id, heading.Id,
+                operation == AiOperations.Refresh, heading.SearchQuery ?? article.Keyword, cancellationToken: cancellationToken);
+            prompt = ReferencePromptFormatter.Attach(promptBuilder.Build(CreatePromptContext(article, headings),
+                ToHeadingPromptContext(heading), normalizedPayload), references);
             var result = await GenerateAsync(operation, model, prompt, temperature: 0.4, cancellationToken);
             var body = EnsureGeneratedMarkdown(result.Text);
             heading.Body = body;

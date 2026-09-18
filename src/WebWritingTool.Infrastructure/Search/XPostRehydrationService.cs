@@ -8,7 +8,8 @@ namespace WebWritingTool.Infrastructure.Search;
 public sealed class XPostRehydrationService(
     ApplicationDbContext dbContext,
     IXFullArchiveSearchClient xClient,
-    SearchCachePolicyResolver cachePolicyResolver)
+    SearchCachePolicyResolver cachePolicyResolver,
+    SearchDataMode dataMode)
     : IXPostRehydrationService
 {
     private const int MaxPostIdsPerRequest = 100;
@@ -25,7 +26,7 @@ public sealed class XPostRehydrationService(
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        if (normalizedIds.Length == 0)
+        if (normalizedIds.Length == 0 || dataMode.IsDummy)
         {
             return new XPostRehydrationServiceResult(
                 RehydrationRequired: false,
@@ -47,10 +48,11 @@ public sealed class XPostRehydrationService(
         }
 
         var cachedPosts = await dbContext.XSearchPosts
-            .Where(post => post.UserId == userId && normalizedIds.Contains(post.PostId))
+            .Where(post => post.UserId == userId && !post.IsDummy && normalizedIds.Contains(post.PostId))
             .ToListAsync(cancellationToken);
+        var cachedIds = cachedPosts.Select(post => post.PostId).Distinct(StringComparer.Ordinal).ToArray();
         var freshById = new Dictionary<string, XSearchPostResult>(StringComparer.Ordinal);
-        foreach (var batch in normalizedIds.Chunk(MaxPostIdsPerRequest))
+        foreach (var batch in cachedIds.Chunk(MaxPostIdsPerRequest))
         {
             var freshPosts = await xClient.RehydrateAsync(
                 new XPostRehydrationRequest(batch),
@@ -106,7 +108,7 @@ public sealed class XPostRehydrationService(
             RehydrationRequired: true,
             RequestedCount: normalizedIds.Length,
             RefreshedCount: refreshedCount,
-            MissingCount: missingCount + Math.Max(0, normalizedIds.Length - cachedPosts.Count),
+            MissingCount: missingCount + Math.Max(0, normalizedIds.Length - cachedIds.Length),
             ChangedCount: changedCount);
     }
 

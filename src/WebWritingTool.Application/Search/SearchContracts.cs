@@ -95,7 +95,9 @@ public sealed record WebSearchJobPayload(
     string? Topic,
     string? SearchDepth,
     DateOnly? StartDate,
-    DateOnly? EndDate);
+    DateOnly? EndDate,
+    bool? IsDummy = null,
+    bool IsManual = true);
 
 public sealed record XFullArchiveSearchJobPayload(
     Guid ArticleId,
@@ -107,7 +109,8 @@ public sealed record XFullArchiveSearchJobPayload(
     int? MaxResults,
     bool LargeResearchMode,
     bool? ExcludeRetweets,
-    bool? ExcludeReplies);
+    bool? ExcludeReplies,
+    bool? IsDummy = null);
 
 public static class SearchExternalException
 {

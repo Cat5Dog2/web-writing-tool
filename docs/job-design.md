@@ -2,6 +2,8 @@
 
 ## 1. 目的
 
+記事リサーチの追加: WebSearch / XFullArchiveSearchは記事編集画面または専用APIから登録できる。Payloadの `isDummy` で登録時モードを固定し、起動設定が変わった場合はConflictで失敗させる。構成・本文生成から必要になるWeb検索は同じ生成ジョブ内で完了させ、参考情報をAIへ渡す。検索失敗時には元の本文を保持し、生成ジョブを失敗として扱う。
+
 本書は、AIライティングツールにおけるバックグラウンドジョブ処理の設計を定義する。対象は、タイトル候補生成、見出し構成生成、本文生成、リライト、Tavily Web検索、X API Full-Archive Search、WordPress投稿、通知である。画像生成はMVPのジョブ対象に含めない。
 
 ジョブ処理はASP.NET Coreの`BackgroundService`で実装し、PostgreSQL上の`ArticleGenerationJobs`テーブルを永続キューとして扱う。

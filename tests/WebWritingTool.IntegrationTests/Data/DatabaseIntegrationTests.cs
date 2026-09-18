@@ -54,7 +54,7 @@ public class DatabaseIntegrationTests(IntegrationTestFixture fixture)
 
         Assert.Contains("IX_Articles_UserId_CreatedAt", indexes.Keys);
         Assert.Contains("IX_Articles_Tags_Gin", indexes.Keys);
-        Assert.Contains("UX_XSearchPosts_PostId", indexes.Keys);
+        Assert.Contains("UX_XSearchPosts_Scope_PostId", indexes.Keys);
         Assert.Contains("UX_NotificationSettings_UserId_Provider_Active", indexes.Keys);
         Assert.Contains("USING gin", indexes["IX_Articles_Tags_Gin"], StringComparison.OrdinalIgnoreCase);
     }

@@ -85,6 +85,7 @@ app.MapHealthChecks("/health/deps", new HealthCheckOptions
 app.MapSecurityEndpoints();
 app.MapAccountEndpoints();
 app.MapArticleEndpoints();
+app.MapArticleResearchEndpoints();
 app.MapHeadingEndpoints();
 app.MapJobEndpoints();
 app.MapUsageEndpoints();

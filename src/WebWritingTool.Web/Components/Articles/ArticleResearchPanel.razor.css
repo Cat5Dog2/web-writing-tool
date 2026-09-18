@@ -1,0 +1,5 @@
+.research-results {
+    max-height: 24rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}

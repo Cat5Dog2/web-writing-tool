@@ -95,6 +95,8 @@ internal static class ServiceCollectionExtensions
             configuration.GetSection(AdminSeedOptions.SectionName));
         services.Configure<BackgroundJobOptions>(
             configuration.GetSection(BackgroundJobOptions.SectionName));
+        services.Configure<ExternalApiOptions>(configuration.GetSection(ExternalApiOptions.SectionName));
+        services.AddSingleton(provider => new SearchDataMode(UseMockExternalApis(provider)));
         services
             .AddOptions<GeminiOptions>()
             .Bind(configuration.GetSection(GeminiOptions.SectionName))
@@ -180,6 +182,8 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<INotificationTestService>(provider => provider.GetRequiredService<NotificationSettingService>());
         services.AddScoped<INotificationJobService, NotificationJobService>();
         services.AddScoped<IXPostRehydrationService, XPostRehydrationService>();
+        services.AddScoped<IArticleResearchService, ArticleResearchService>();
+        services.AddScoped<WebSearchJobHandler>();
         services.AddScoped<SearchCacheCleanupService>();
         services.AddSingleton<BackgroundWorkerHealthState>();
         services.AddSingleton<IContentRenderingService, ContentRenderingService>();
@@ -192,46 +196,50 @@ internal static class ServiceCollectionExtensions
                 provider.GetRequiredService<IOptions<SearchCachePolicyOptions>>().Value));
         services.AddSingleton(TopicRiskKeywordDictionary.Default);
         services.AddSingleton<ITopicRiskClassifier, TopicRiskClassifier>();
-        services.AddHttpClient<IAiTextGenerationClient, GeminiTextGenerationClient>((provider, client) =>
+        services.AddSingleton<DummyTextGenerationClient>();
+        services.AddSingleton<DummyExternalApiClient>();
+        services.AddSingleton<DummySearchClient>();
+        services.AddHttpClient<GeminiTextGenerationClient>((provider, client) =>
         {
             var geminiOptions = provider.GetRequiredService<IOptions<GeminiOptions>>().Value;
             client.BaseAddress = geminiOptions.EndpointBaseAddress;
             client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds);
         });
-        services.AddHttpClient<IWebSearchClient, TavilyWebSearchClient>((provider, client) =>
+        services.AddHttpClient<TavilyWebSearchClient>((provider, client) =>
         {
             var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(searchOptions.Tavily.TimeoutSeconds);
         });
-        services.AddHttpClient<IXFullArchiveSearchClient, XFullArchiveSearchClient>((provider, client) =>
+        services.AddHttpClient<XFullArchiveSearchClient>((provider, client) =>
         {
             var searchOptions = provider.GetRequiredService<IOptions<SearchProviderOptions>>().Value;
             client.Timeout = TimeSpan.FromSeconds(searchOptions.X.TimeoutSeconds);
         });
-        if (environment.IsEnvironment("Test"))
+        services.AddHttpClient<WordpressClient>((provider, client) =>
         {
-            services.AddSingleton<IWordpressClient, TestWordpressClient>();
-        }
-        else
+            var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
+        });
+        services.AddHttpClient<DiscordNotificationClient>((provider, client) =>
         {
-            services.AddHttpClient<IWordpressClient, WordpressClient>((provider, client) =>
-            {
-                var wordpressOptions = provider.GetRequiredService<IOptions<WordpressOptions>>().Value;
-                client.Timeout = TimeSpan.FromSeconds(wordpressOptions.TimeoutSeconds);
-            });
-        }
-        if (environment.IsEnvironment("Test"))
-        {
-            services.AddSingleton<IDiscordNotificationClient, TestDiscordNotificationClient>();
-        }
-        else
-        {
-            services.AddHttpClient<IDiscordNotificationClient, DiscordNotificationClient>((provider, client) =>
-            {
-                var notificationOptions = provider.GetRequiredService<IOptions<NotificationOptions>>().Value;
-                client.Timeout = TimeSpan.FromSeconds(notificationOptions.TimeoutSeconds);
-            });
-        }
+            var notificationOptions = provider.GetRequiredService<IOptions<NotificationOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(notificationOptions.TimeoutSeconds);
+        });
+        services.AddTransient<IAiTextGenerationClient>(provider => UseMockExternalApis(provider)
+            ? provider.GetRequiredService<DummyTextGenerationClient>()
+            : provider.GetRequiredService<GeminiTextGenerationClient>());
+        services.AddTransient<IWebSearchClient>(provider => UseMockExternalApis(provider)
+            ? provider.GetRequiredService<DummySearchClient>()
+            : provider.GetRequiredService<TavilyWebSearchClient>());
+        services.AddTransient<IXFullArchiveSearchClient>(provider => UseMockExternalApis(provider)
+            ? provider.GetRequiredService<DummySearchClient>()
+            : provider.GetRequiredService<XFullArchiveSearchClient>());
+        services.AddTransient<IWordpressClient>(provider => UseMockExternalApis(provider)
+            ? provider.GetRequiredService<DummyExternalApiClient>()
+            : environment.IsEnvironment("Test") ? new TestWordpressClient() : provider.GetRequiredService<WordpressClient>());
+        services.AddTransient<IDiscordNotificationClient>(provider => UseMockExternalApis(provider)
+            ? provider.GetRequiredService<DummyExternalApiClient>()
+            : environment.IsEnvironment("Test") ? new TestDiscordNotificationClient() : provider.GetRequiredService<DiscordNotificationClient>());
         services.AddSingleton<JobRetryPolicy>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
@@ -250,6 +258,11 @@ internal static class ServiceCollectionExtensions
         services.AddHostedService<SearchCacheCleanupWorker>();
 
         return services;
+    }
+
+    private static bool UseMockExternalApis(IServiceProvider provider)
+    {
+        return provider.GetRequiredService<IOptions<ExternalApiOptions>>().Value.UseMocks;
     }
 
     private static IServiceCollection AddOperationalHealthChecks(this IServiceCollection services)

@@ -16,6 +16,8 @@ public sealed class XSearchPost
 
     public string PostId { get; set; } = string.Empty;
 
+    public bool IsDummy { get; set; }
+
     public string? AuthorId { get; set; }
 
     public string? Text { get; set; }

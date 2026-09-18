@@ -51,7 +51,7 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | staging | `Staging` | 本番前確認 |
 | production | `Production` | 本番 |
 
-`Test` 環境では外部APIモックを既定とし、本番DBや本番APIキーを使用しない。
+`Test` 環境ではテスト側のClient差し替え、または `ExternalApis__UseMocks=true` を使用し、本番DBや本番APIキーを使用しない。環境名だけによる既存の差し替えはWordPressとDiscordのみである。
 
 ## 5. Optionsセクション一覧
 
@@ -59,6 +59,7 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | --- | --- | --- |
 | `App` | `AppOptions` | 公開URL、アプリ名、リンク生成 |
 | `ConnectionStrings` | なし | PostgreSQL接続文字列 |
+| `ExternalApis` | `ExternalApiOptions` | 外部APIを使わないダミーモード |
 | `AiProviders` | `AiProviderOptions` | AI Provider、モデル、APIキー、タイムアウト |
 | `SearchProviders` | `SearchProviderOptions` | Tavily、X API、検索上限 |
 | `SearchCache` | `SearchCacheOptions` | 検索キャッシュ環境ポリシー |
@@ -210,10 +211,23 @@ Data ProtectionキーはCookie認証と暗号化保存に影響する。producti
 | --- | --- | --- | --- | --- |
 | `ASPNETCORE_ENVIRONMENT=Test` | `ASPNETCORE_ENVIRONMENT` | 必須 | No | テスト環境 |
 | `ConnectionStrings__DefaultConnection` | `ConnectionStrings:DefaultConnection` | 必須 | Yes | テストDB |
-| `ExternalApis__UseMocks` | `ExternalApis:UseMocks` | 必須 | No | 外部APIモック使用 |
+| `ExternalApis__UseMocks` | `ExternalApis:UseMocks` | 任意 | No | ダミーモード使用（6.12参照） |
 | `Seed__Enabled` | `Seed:Enabled` | 必須 | No | テストデータ投入 |
 
 テストでは本番DB、本番APIキー、実WordPress、実Discordを使用しない。
+
+### 6.12 ダミーモード
+
+`ExternalApis__UseMocks=true`（設定キー `ExternalApis:UseMocks`）で有効にする。既定は `false`。環境名とは独立したアプリ全体の起動設定で、切り替えには再起動が必要である。
+
+- タイトル候補、H2/H3構成、Markdown本文、本文操作をサンプル生成Clientへ切り替える。候補数と見出し数を反映するが、文体・追加指示・文字数目安に基づくAI生成は行わない。
+- Gemini・Tavily・XのAPIキーは不要。Web検索・X検索はキーワードを含むサンプルを返し、`IsDummy=true` でDBへ保存する。サンプルX投稿の再取得では実APIを呼ばず、保存済みサンプルを維持する。
+- WordPress投稿とDiscord通知は送信せず失敗結果を返す。WordPressの接続テストも成功扱いにしない。
+- DB接続、ログイン、認可、ジョブ、保存、利用上限は通常と同じ。利用履歴にはサンプルの入出力文字数が記録され、Providerは `Dummy`、Modelは `dummy-text` となる。
+- 共通画面にダミーモードを表示する。外部依存ヘルスチェックはAPIキー不足を報告しない。
+- 検索結果の読込・キャッシュ利用・更新・X再取得は通常／ダミーを分離する。検索ジョブには登録時のモードを保存し、切り替え後の実行はConflictとして再登録を求める。
+
+ローカルではGit管理外の `.env` に設定を追加できる。開発用Composeにも同じ設定を渡す。ホスト起動では `$env:ExternalApis__UseMocks = 'true'` でも指定できる。切り戻しても作成済みの記事・利用履歴は残る。
 
 ## 7. DB保存の設定
 

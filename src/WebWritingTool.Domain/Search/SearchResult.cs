@@ -22,6 +22,10 @@ public sealed class SearchResult
 
     public string? Provider { get; set; }
 
+    public bool IsDummy { get; set; }
+
+    public bool IsManual { get; set; }
+
     public string? QueryHash { get; set; }
 
     public DateTimeOffset? CacheExpiresAt { get; set; }
