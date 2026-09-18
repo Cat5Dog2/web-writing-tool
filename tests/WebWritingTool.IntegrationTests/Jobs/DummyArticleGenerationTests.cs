@@ -1,12 +1,16 @@
 using System.Text.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.BackgroundJobs;
 using WebWritingTool.Infrastructure.Data;
+using WebWritingTool.Infrastructure.Identity;
 using WebWritingTool.IntegrationTests.Support;
 
 namespace WebWritingTool.IntegrationTests.Jobs;
@@ -14,8 +18,10 @@ namespace WebWritingTool.IntegrationTests.Jobs;
 [Collection(IntegrationTestCollection.Name)]
 public class DummyArticleGenerationTests(IntegrationTestFixture fixture)
 {
-    [Fact]
-    public async Task DummyMode_GeneratesTitlesOutlineAndBodyWithoutApiKeys()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DummyMode_GeneratesTitlesOutlineAndBodyWithoutApiKeys(bool guestMode)
     {
         var userId = Guid.NewGuid().ToString("N");
         await fixture.SeedUserAsync(userId, $"{userId}@example.test");
@@ -23,7 +29,7 @@ public class DummyArticleGenerationTests(IntegrationTestFixture fixture)
         using var factory = new TestApplicationFactory(fixture.ConnectionString, configurationOverrides:
             new Dictionary<string, string?>
             {
-                ["ExternalApis:UseMocks"] = "true",
+                ["ExternalApis:UseMocks"] = guestMode ? "false" : "true",
                 ["AiProviders:Gemini:ApiKey"] = "",
                 ["SearchProviders:Tavily:ApiKey"] = "",
                 ["SearchProviders:X:BearerToken"] = ""
@@ -31,7 +37,19 @@ public class DummyArticleGenerationTests(IntegrationTestFixture fixture)
 
         using var browser = factory.CreateClient();
         var loginHtml = await browser.GetStringAsync("/login");
-        Assert.Contains("ダミーモード", System.Net.WebUtility.HtmlDecode(loginHtml));
+        if (guestMode)
+        {
+            using var guestScope = factory.Services.CreateScope();
+            var manager = guestScope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await manager.FindByIdAsync(userId);
+            Assert.NotNull(user);
+            var result = await manager.AddClaimAsync(user, new Claim(GuestIdentity.ClaimType, GuestIdentity.ClaimValue));
+            Assert.True(result.Succeeded);
+        }
+        else
+        {
+            Assert.Contains("ダミーモード", System.Net.WebUtility.HtmlDecode(loginHtml));
+        }
 
         var titles = await ExecuteAsync(factory, userId, articleId, JobType.TitleGeneration,
             new { articleId, candidateCount = 3 });
@@ -61,6 +79,9 @@ public class DummyArticleGenerationTests(IntegrationTestFixture fixture)
         });
         Assert.Contains("## ", article.Body);
         Assert.Contains("ダミー", article.Body);
+        var sources = await db.SearchResults.Where(item => item.ArticleId == articleId).ToListAsync();
+        Assert.NotEmpty(sources);
+        Assert.All(sources, source => Assert.True(source.IsDummy));
         var logs = await db.AiGenerationLogs.Where(item => item.ArticleId == articleId).ToListAsync();
         Assert.Equal(7, logs.Count);
         Assert.All(logs, log =>

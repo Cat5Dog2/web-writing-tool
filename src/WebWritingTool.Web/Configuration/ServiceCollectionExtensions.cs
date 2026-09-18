@@ -3,6 +3,7 @@ namespace WebWritingTool.Web.Configuration;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -96,7 +97,9 @@ internal static class ServiceCollectionExtensions
         services.Configure<BackgroundJobOptions>(
             configuration.GetSection(BackgroundJobOptions.SectionName));
         services.Configure<ExternalApiOptions>(configuration.GetSection(ExternalApiOptions.SectionName));
-        services.AddSingleton(provider => new SearchDataMode(UseMockExternalApis(provider)));
+        services.AddScoped<ExternalApiExecutionContext>();
+        services.AddScoped<CircuitHandler, GuestCircuitHandler>();
+        services.AddScoped(provider => new SearchDataMode(UseMockExternalApis(provider)));
         services
             .AddOptions<GeminiOptions>()
             .Bind(configuration.GetSection(GeminiOptions.SectionName))
@@ -156,6 +159,8 @@ internal static class ServiceCollectionExtensions
         });
         services.AddSecurityRateLimiting(environment);
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
+        services.AddScoped<GuestAccountService>();
+        services.AddScoped<GuestAccountCleanupService>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddSingleton<ISecretMasker, SecretMasker>();
         services.AddSingleton<ISecurityRateLimiter, InMemorySecurityRateLimiter>();
@@ -256,13 +261,15 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IJobHandler, NotificationJobHandler>();
         services.AddHostedService<ArticleJobWorker>();
         services.AddHostedService<SearchCacheCleanupWorker>();
+        services.AddHostedService<GuestAccountCleanupWorker>();
 
         return services;
     }
 
     private static bool UseMockExternalApis(IServiceProvider provider)
     {
-        return provider.GetRequiredService<IOptions<ExternalApiOptions>>().Value.UseMocks;
+        return provider.GetRequiredService<IOptions<ExternalApiOptions>>().Value.UseMocks
+            || provider.GetRequiredService<ExternalApiExecutionContext>().IsGuest;
     }
 
     private static IServiceCollection AddOperationalHealthChecks(this IServiceCollection services)

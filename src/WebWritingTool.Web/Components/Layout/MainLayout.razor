@@ -11,7 +11,7 @@
         <div class="top-row px-4">
             <AuthorizeView>
                 <Authorized>
-                    <a href="account">@context.User.Identity?.Name</a>
+                    <a href="account">@(WebWritingTool.Application.Security.GuestIdentity.IsGuest(context.User) ? "ゲスト" : context.User.Identity?.Name)</a>
                     <form method="post" action="/logout" class="ms-3">
                         <AntiforgeryToken />
                         <button type="submit" class="btn btn-link p-0">ログアウト</button>
@@ -24,6 +24,16 @@
         </div>
 
         <article class="content px-4">
+            <AuthorizeView>
+                <Authorized>
+                    @if (WebWritingTool.Application.Security.GuestIdentity.IsGuest(context.User))
+                    {
+                        <div class="alert alert-info" role="status">
+                            <strong>ゲストモード</strong>：生成・検索はサンプルです。外部APIへの接続、WordPress投稿、Discord通知は行いません。
+                        </div>
+                    }
+                </Authorized>
+            </AuthorizeView>
             @if (ExternalApiOptions.Value.UseMocks)
             {
                 <div class="alert alert-info" role="status">

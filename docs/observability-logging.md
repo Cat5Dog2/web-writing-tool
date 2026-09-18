@@ -219,10 +219,12 @@ MVPではメトリクス専用基盤を必須にしない。将来Prometheusな�
 
 ## 15. ヘルスチェック
 
+`GuestAccountCleanupWorker` の開始・停止とheartbeatも監視する。3分以上heartbeatがない場合は異常とする。削除成功時は `deletedUsers` の件数を記録し、失敗時は例外種別とマスク済みメッセージを記録する。ゲストの記事・設定・秘密情報はログへ出さない。
+
 | Endpoint | 用途 | 確認内容 | 公開範囲 |
 | --- | --- | --- | --- |
 | `/health/live` | Liveness | プロセス生存。DBや外部APIは呼ばない | 外部監視可 |
-| `/health/ready` | Readiness | PostgreSQL接続、軽量クエリ、`ArticleJobWorker`と`SearchCacheCleanupWorker`の状態 | 内部または監視限定 |
+| `/health/ready` | Readiness | PostgreSQL接続、軽量クエリ、`ArticleJobWorker`・`SearchCacheCleanupWorker`・`GuestAccountCleanupWorker`の状態 | 内部または監視限定 |
 | `/health/deps` | 依存先確認 | Gemini、Tavily、X、WordPress、Discordの簡易疎通 | 管理者限定 |
 
 `/health/live`は外部API障害で失敗させない。`/health/ready`はデプロイ後確認、コンテナ起動判定、運用監視に使う。`/health/deps`は重くなりやすいため、タイムアウトを短くし、通常の死活監視に使わない。

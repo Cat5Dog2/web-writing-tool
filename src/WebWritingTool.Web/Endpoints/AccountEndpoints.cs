@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -17,6 +18,14 @@ public static class AccountEndpoints
             .AllowAnonymous()
             .RequireRateLimiting(SecurityRateLimitPolicyNames.Login)
             .RequireCsrfToken();
+
+        endpoints.MapPost("/login/guest", LoginGuestAsync)
+            .AllowAnonymous()
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.Login)
+            .RequireCsrfToken()
+            .WithName("GuestLogin")
+            .WithSummary("外部APIを利用しないゲストとしてログインします。")
+            .WithDescription("CSRFトークン付きフォームを受け取り、8時間有効な非永続セッションでログインします。");
 
         var api = endpoints.MapGroup("/api/account")
             .RequireAuthorization()
@@ -174,6 +183,33 @@ public static class AccountEndpoints
         return Results.Redirect(GetSafeReturnUrl(form.ReturnUrl));
     }
 
+    private static async Task<IResult> LoginGuestAsync(
+        HttpContext httpContext,
+        ClaimsPrincipal principal,
+        GuestAccountService guestAccounts,
+        SignInManager<ApplicationUser> signInManager,
+        CancellationToken cancellationToken)
+    {
+        if (!httpContext.Request.HasFormContentType)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, detail: "フォームを送信してください。");
+        }
+
+        var form = await httpContext.Request.ReadFormAsync(cancellationToken);
+        if (!GuestIdentity.IsGuest(principal))
+        {
+            var guest = await guestAccounts.CreateAsync(cancellationToken);
+            await signInManager.SignInAsync(guest, new AuthenticationProperties
+            {
+                IsPersistent = false,
+                AllowRefresh = false,
+                ExpiresUtc = guest.CreatedAt.Add(GuestIdentity.SessionLifetime)
+            });
+        }
+
+        return Results.LocalRedirect(GetSafeReturnUrl(form["returnUrl"]));
+    }
+
     private static async Task<IResult> WithdrawAccountAsync(
         [FromBody] WithdrawAccountRequest request,
         ClaimsPrincipal principal,
@@ -315,6 +351,8 @@ public static class AccountEndpoints
 
         if (!returnUrl.StartsWith("/", StringComparison.Ordinal)
             || returnUrl.StartsWith("//", StringComparison.Ordinal)
+            || returnUrl.Contains('\\')
+            || returnUrl.Any(char.IsControl)
             || returnUrl.Contains("://", StringComparison.Ordinal))
         {
             return "/";

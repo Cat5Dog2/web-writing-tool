@@ -540,6 +540,14 @@
   - 完了条件: 手動取得を永続化し、キャッシュ再利用時にも優先指定を保持する。Webの採用上限10件を維持し、手動資料の残り枠に自動結果を採用する。画面の手動取得表示、既存データ移行、再生成・上限・期限・重複・ブラウザーの回帰テストを確認する。
   - 確認: ArticleResearchApiTests 13件、ManualResearchMigrationTests 1件、ArticleResearchFlowTests 1件成功。変更C#のformat、Slopwatch、diffチェック成功。
 
+- [x] `T-1331` ゲストログイン時にユーザー単位のモックモードを適用する。
+  - 完了条件: 登録不要のゲストログイン、データ分離、CSRF保護、8時間の非永続セッションを提供する。全体モック設定がfalseでも画面・API・バックグラウンドジョブで実外部APIを呼ばず、通常ユーザーの動作を維持する。関連テストと設計書を更新する。
+  - 確認: 関連単体テスト20件、GuestLogin/Account/ArticleResearch/Jobs結合テスト40件、GuestLoginFlowTests E2E 1件成功。全体テストは未実行。
+
+- [x] `T-1332` ゲスト作成から8時間経過後に関連データを自動削除する。
+  - 完了条件: 起動時・1分ごとの清掃、Cookieと保持期限の統一、Runningジョブの完了待ち、通常ユーザー・Adminの保護、トランザクションによる関連データ一括削除、境界値・失敗系・起動時のテストと設計書更新。
+  - 確認: `dotnet test tests/WebWritingTool.IntegrationTests --filter 'FullyQualifiedName~GuestAccountCleanupTests|FullyQualifiedName~GuestLoginTests|FullyQualifiedName~HealthEndpointTests|FullyQualifiedName~DatabaseIntegrationTests' --no-restore` で24件成功。変更C#のformat、`dotnet slopwatch analyze -d . --exclude 'test-results/**' --fail-on warning`、diffチェック成功。全体テスト・E2Eは今回未実行。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

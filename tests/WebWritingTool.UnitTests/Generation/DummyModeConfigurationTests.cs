@@ -6,6 +6,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Notifications;
 using WebWritingTool.Application.Search;
+using WebWritingTool.Application.Security;
 using WebWritingTool.Application.Wordpress;
 using WebWritingTool.Infrastructure.Generation;
 using WebWritingTool.Infrastructure.Notifications;
@@ -17,6 +18,29 @@ namespace WebWritingTool.UnitTests.Generation;
 
 public class DummyModeConfigurationTests
 {
+    [Fact]
+    public void GuestMode_WithRealApisConfigured_UsesOnlyDummyClientsAndDoesNotAffectOtherScopes()
+    {
+        using var services = CreateServices("false");
+        using var guest = services.CreateScope();
+        using var regular = services.CreateScope();
+        guest.ServiceProvider.GetRequiredService<ExternalApiExecutionContext>().EnableGuestMode();
+
+        Assert.IsType<DummyTextGenerationClient>(guest.ServiceProvider.GetRequiredService<IAiTextGenerationClient>());
+        Assert.IsType<DummySearchClient>(guest.ServiceProvider.GetRequiredService<IWebSearchClient>());
+        Assert.IsType<DummySearchClient>(guest.ServiceProvider.GetRequiredService<IXFullArchiveSearchClient>());
+        Assert.IsType<DummyExternalApiClient>(guest.ServiceProvider.GetRequiredService<IWordpressClient>());
+        Assert.IsType<DummyExternalApiClient>(guest.ServiceProvider.GetRequiredService<IDiscordNotificationClient>());
+        Assert.True(guest.ServiceProvider.GetRequiredService<SearchDataMode>().IsDummy);
+
+        Assert.IsType<GeminiTextGenerationClient>(regular.ServiceProvider.GetRequiredService<IAiTextGenerationClient>());
+        Assert.IsType<TavilyWebSearchClient>(regular.ServiceProvider.GetRequiredService<IWebSearchClient>());
+        Assert.IsType<XFullArchiveSearchClient>(regular.ServiceProvider.GetRequiredService<IXFullArchiveSearchClient>());
+        Assert.IsType<WordpressClient>(regular.ServiceProvider.GetRequiredService<IWordpressClient>());
+        Assert.IsType<DiscordNotificationClient>(regular.ServiceProvider.GetRequiredService<IDiscordNotificationClient>());
+        Assert.False(regular.ServiceProvider.GetRequiredService<SearchDataMode>().IsDummy);
+    }
+
     [Theory]
     [InlineData("true", true)]
     [InlineData("false", false)]
