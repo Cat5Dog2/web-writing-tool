@@ -205,7 +205,8 @@ AI生成時に外部Providerへ送信する内容には、記事本文、追加�
 方針:
 
 - プロンプト全文はアプリログ、ジョブログ、通知、監査ログへ出さない。
-- `AiGenerationLogs`にはProvider、Model、Operation、PromptHash、文字数、応答時間、成否、ErrorCodeを保存する。
+- `AiGenerationLogs`にはProvider、Model、Operation、PromptHash、文字数、取得できた入力・回答トークン数、応答時間、成否、ErrorCodeを保存する。
+- `GeminiQuotaStates`はプロジェクト相当の共有名とモデルごとの運用状態を保持する。分単位の予約はアクセス時に期限切れを除去し、日次回数は太平洋時間0時に更新する。ユーザー・記事・APIキー・プロンプトを保存せず、退会時にも共有カウンターをリセットしない。
 - `UsageLedgers`には文字数利用履歴を保存する。
 - `ArticleGenerationJobs.PayloadJson`と`ResultJson`には秘密情報と本文全文を入れない。
 - 外部APIレスポンス全文は保存しない。

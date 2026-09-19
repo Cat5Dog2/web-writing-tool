@@ -591,6 +591,13 @@
   - 完了条件: ビルドとブラウザ表示で、新しい説明文が表示されることを確認する。
   - 検証: `dotnet build src/WebWritingTool.Web --no-restore --nologo --verbosity minimal`（警告・エラー0件）、`git -c core.safecrlf=false diff --check`成功。Edgeでゲストの一括登録からWeb/X自動検索・構成完了後の記事詳細を開き、新しい説明とWeb/X各10件の保存結果を確認した。文言のみの変更のため自動テストの追加・再実行は行っていない。
 
+- [x] `T-1345` Geminiの共有利用枠制御と制限待ちからの再開を実装する。
+  - 完了条件: PostgreSQLでモデル別RPM・入力TPM・任意RPDと429待機を共有し、設定した安全率で送信前に制御する。日時・RetryInfo・日次QuotaFailureを扱い、秘密情報を出さない。
+  - 完了条件: 待機時は試行回数を消費せず再キューし、途中まで完成した本文を再生成しない。実トークンを記録し、単体・PostgreSQL結合テストと関連設計・設定手順を更新する。
+  - 検証: 日時形式Retry-After・RetryInfoの未対応を2件の失敗テストで再現後に修正。待機の二重処理も失敗を確認して修正した。関連単体77件、PostgreSQL結合34件成功。変更C#のformat、Slopwatch（0件）、Migration差分なし、`git diff --check`成功。
+  - コマンド: `dotnet test tests/WebWritingTool.UnitTests --no-restore --filter 'FullyQualifiedName~Generation|FullyQualifiedName~JobRetryPolicyTests'`、`dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~GeminiQuota|FullyQualifiedName~JobIntegrationTests|FullyQualifiedName~DummyArticleGenerationTests|FullyQualifiedName~BulkGenerationWorkflowTests|FullyQualifiedName~DatabaseIntegrationTests|FullyQualifiedName~WebCompositionTests'`。
+  - 設定: 実モデルのAI Studio上限は未確認。既定はRPM 5・入力TPM 100000に安全率0.8を適用し、RPDのローカル制限は未設定。全ワーカーで同じDB・Scopeを使い、利用環境では追加Migrationを適用する。実API・本番反映・全体テスト・E2Eは未実施。Batch APIと課金枠の変更は運用判断として残す。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

@@ -238,7 +238,20 @@ public sealed class AiTextGenerationResult
 | レート制限レスポンス | 共通エラー変換 |
 | 使用量情報 | 取得可能なら共通DTOへ反映 |
 | Provider選択 | MVPはGemini固定。後続フェーズでGPT、Claudeなどの選択を追加 |
-| トークン事前見積もり | MVPでは実装しない。後続フェーズでProvider別TokenCounterを追加 |
+| トークン事前見積もり | Geminiでは送信テキストのUTF-8バイト数+32を保守的な推定値として使用。厳密なProvider別TokenCounterは後続候補 |
+
+#### Geminiの共有利用枠（T-1345）
+
+- `PostgresGeminiQuotaLimiter`はGoogleプロジェクトに対応する`Scope`とモデル（または`QuotaGroup`）単位でRPM・入力TPM・任意のRPDを制御する。全ユーザー・複数ワーカーの状態を同じPostgreSQLで共有する。
+- 生成ClientはHTTP送信前に短い独立トランザクションで枠を予約する。直近60秒の回数と入力トークン合計、送信開始間隔、米国太平洋時間の日次回数を確認する。安全率は既定80%。予約には参考情報を含む実送信テキストを使用し、追加の`countTokens` API呼び出しは行わない。
+- 推定値は厳密なトークン数を保証しない。成功レスポンスの`usageMetadata.promptTokenCount`で予約量を補正し、生成ログにも保存する。`candidatesTokenCount`は回答部分の出力トークンとして記録する。既存の文字数会計は維持する。
+- 枠不足は`ExternalApiDeferredException`でジョブに待機期限を返す。待機中にHTTPや長時間の`Task.Delay`を実行せず、HTTPタイムアウトやジョブロックを占有しない。1件の推定入力だけでTPM予算を超える場合は設定・資料量の見直しを求める`ValidationError`とし、無限に待機しない。
+- HTTP 429は`Retry-After`の秒数・HTTP日時、および`google.rpc.RetryInfo.retryDelay`を読む。複数の指示があれば長い待機を採用する。指示なしでは60秒から指数的に延長（基本待機の上限900秒）し、0〜5秒のjitterを加える。
+- `google.rpc.QuotaFailure`の`quotaId`が日次枠を示す場合は、最低でも次の米国太平洋時間0時まで待つ。全ケースで同じ枠の待機期限を共有し、短い後続エラーや先行リクエストの遅延成功で長い待機を解除しない。
+- 不正JSON・空の429本文でもヘッダーまたは既定バックオフを使う。プロバイダーのエラー本文、キー、プロンプトはログ・ジョブエラーへ出さない。
+- ゲスト・ダミーモードは従来どおりダミーClientを使い、実API枠を予約しない。既存の一括生成では完了済み工程を再利用し、本文の途中待機では保存済み見出し本文から再開する。
+
+設定とAI Studioでの確認手順は[設定リファレンス](configuration-reference.md#geminiの送信量制御t-1345)を参照する。このDBを使わないアプリの消費やGoogle側の混雑・追加制限は事前制御できないため、429後の待機も併用する。大量の非即時処理に対する[Batch API](https://ai.google.dev/gemini-api/docs/batch-api)への切り替えと利用階層・増枠申請は運用判断とし、自動的な切り替え・課金変更は行わない。
 
 ### 8.6 プロンプト管理
 

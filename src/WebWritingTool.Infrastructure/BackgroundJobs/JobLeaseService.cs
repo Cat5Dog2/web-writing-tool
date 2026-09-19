@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
@@ -44,12 +45,13 @@ public sealed class JobLeaseService(
             return null;
         }
 
+        var isResuming = job.StartedAt.HasValue;
         job.Status = JobStatus.Running;
         job.LockedBy = workerId;
         job.LockedAt = now;
         job.StartedAt ??= now;
         job.AttemptCount += 1;
-        job.Progress = 0;
+        if (!isResuming) job.Progress = 0;
         job.NextRunAt = null;
 
         if (job.GenerationRunId is Guid runId)
@@ -62,7 +64,7 @@ public sealed class JobLeaseService(
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return ToLeasedJob(job);
+        return ToLeasedJob(job) with { IsResuming = isResuming };
     }
 
     public async Task MarkSucceededAsync(
@@ -114,6 +116,24 @@ public sealed class JobLeaseService(
         }
         await dbContext.Entry(job).ReloadAsync(cancellationToken);
         if (job.Status == JobStatus.Succeeded) return null;
+
+        if (exception is ExternalApiDeferredException deferred)
+        {
+            if (job.Status != JobStatus.Running) return null;
+            job.Status = JobStatus.Queued;
+            job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
+            job.NextRunAt = deferred.NextRunAt;
+            job.ErrorCode = JobErrorCodes.RateLimited;
+            job.ErrorMessage = deferred.Message;
+            job.LockedBy = null;
+            job.LockedAt = null;
+            job.FinishedAt = null;
+            await UpdateRunFailureAsync(job, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new JobFailureDecision(job.Id, job.JobType, job.AttemptCount, job.MaxAttempts,
+                job.ErrorCode, job.ErrorMessage, job.Status == JobStatus.Queued, job.NextRunAt);
+        }
 
         var failure = JobFailure.FromException(exception);
         var now = DateTimeOffset.UtcNow;

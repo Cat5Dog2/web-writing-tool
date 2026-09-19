@@ -24,6 +24,10 @@ public sealed class AiGenerationLog : ICreatedAtEntity
 
     public int OutputChars { get; set; }
 
+    public int? InputTokens { get; set; }
+
+    public int? OutputTokens { get; set; }
+
     public int UsageChars { get; set; }
 
     public int? LatencyMs { get; set; }

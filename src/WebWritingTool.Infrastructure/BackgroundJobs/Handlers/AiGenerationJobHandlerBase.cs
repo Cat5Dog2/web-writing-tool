@@ -171,6 +171,8 @@ public abstract class AiGenerationJobHandlerBase(
             PromptHash = prompt.PromptHash,
             PromptChars = result.PromptChars,
             OutputChars = result.OutputChars,
+            InputTokens = result.InputTokens,
+            OutputTokens = result.OutputTokens,
             UsageChars = usageChars,
             Succeeded = true,
             CreatedAt = now

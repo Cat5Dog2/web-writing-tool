@@ -150,6 +150,100 @@ public class GeminiTextGenerationClientTests
     }
 
     [Fact]
+    public async Task GenerateAsync_ReservesActualPromptIncludingReferences_AndRecordsUsage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent("""
+                {"candidates":[{"content":{"parts":[{"text":"生成本文"}]}}],
+                 "usageMetadata":{"promptTokenCount":321,"candidatesTokenCount":123}}
+                """)
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+        var quota = new RecordingQuotaLimiter();
+        var client = new GeminiTextGenerationClient(httpClient, Options.Create(new GeminiOptions { ApiKey = "test-key" }),
+            NullLogger<GeminiTextGenerationClient>.Instance, quota, TimeProvider.System);
+        var request = CreateRequest() with
+        {
+            References = [new AiReferenceSource("source-1", "資料", "https://example.org", "日本語の参考資料")]
+        };
+        var result = await client.GenerateAsync(request);
+        using var json = JsonDocument.Parse(handler.LastRequestBody!);
+        var system = json.RootElement.GetProperty("system_instruction").GetProperty("parts")[0].GetProperty("text").GetString()!;
+        var user = json.RootElement.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString()!;
+        Assert.True(quota.ReservedTokens >= Encoding.UTF8.GetByteCount(system + user));
+        Assert.Equal(321, quota.ActualTokens);
+        Assert.Equal(321, result.InputTokens);
+        Assert.Equal(123, result.OutputTokens);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenQuotaIsUnavailable_DoesNotSendHttpRequest()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            throw new InvalidOperationException("HTTP must not run while quota is unavailable.")))
+        { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+        var next = DateTimeOffset.UtcNow.AddHours(1);
+        var client = new GeminiTextGenerationClient(httpClient, Options.Create(new GeminiOptions { ApiKey = "test-key" }),
+            NullLogger<GeminiTextGenerationClient>.Instance, new RecordingQuotaLimiter { DeferUntil = next }, TimeProvider.System);
+        var exception = await Assert.ThrowsAsync<ExternalApiDeferredException>(() => client.GenerateAsync(CreateRequest()));
+        Assert.Equal(next, exception.NextRunAt);
+    }
+
+    [Theory]
+    [InlineData("{invalid", false)]
+    [InlineData("{\"error\":{\"message\":\"private-external-body\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\"}]}]}}", true)]
+    public async Task GenerateAsync_WithRateLimitBody_RecognizesDailyQuotaWithoutExposingBody(string body, bool daily)
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        { Content = JsonContent(body) }))
+        { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+        var quota = new RecordingQuotaLimiter();
+        var client = new GeminiTextGenerationClient(httpClient, Options.Create(new GeminiOptions { ApiKey = "test-key" }),
+            NullLogger<GeminiTextGenerationClient>.Instance, quota, TimeProvider.System);
+        var exception = await Assert.ThrowsAsync<ExternalIntegrationException>(() => client.GenerateAsync(CreateRequest()));
+        Assert.Equal(daily, quota.DailyLimit);
+        Assert.Equal(ExternalIntegrationErrorCodes.RateLimited, exception.ErrorCode);
+        Assert.DoesNotContain("private-external-body", exception.ToString());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WithRetryAfterDate_PreservesServerWait()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(10));
+            return response;
+        }))
+        { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+
+        var exception = await Assert.ThrowsAsync<ExternalIntegrationException>(() =>
+            CreateClient(httpClient, "test-key").GenerateAsync(CreateRequest()));
+
+        Assert.NotNull(exception.RetryAfter);
+        Assert.InRange(exception.RetryAfter.Value.TotalSeconds, 590, 601);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WithRetryInfoBody_PreservesServerWait()
+    {
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = JsonContent("""
+                    {"error":{"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"120.5s"}]}}
+                    """)
+            }))
+        { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") };
+
+        var exception = await Assert.ThrowsAsync<ExternalIntegrationException>(() =>
+            CreateClient(httpClient, "test-key").GenerateAsync(CreateRequest()));
+
+        Assert.Equal(TimeSpan.FromSeconds(120.5), exception.RetryAfter);
+    }
+
+    [Fact]
     public async Task GenerateAsync_WithoutApiKey_ThrowsUnauthorizedException()
     {
         using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
@@ -216,7 +310,9 @@ public class GeminiTextGenerationClientTests
         return new GeminiTextGenerationClient(
             httpClient,
             Options.Create(new GeminiOptions { ApiKey = apiKey }),
-            NullLogger<GeminiTextGenerationClient>.Instance);
+            NullLogger<GeminiTextGenerationClient>.Instance,
+            new RecordingQuotaLimiter(),
+            TimeProvider.System);
     }
 
     private static HttpResponseMessage SuccessResponse()
@@ -285,6 +381,35 @@ public class GeminiTextGenerationClientTests
             }
 
             return handler(request);
+        }
+    }
+
+    private sealed class RecordingQuotaLimiter : IGeminiQuotaLimiter
+    {
+        public int ReservedTokens { get; private set; }
+        public int? ActualTokens { get; private set; }
+        public bool DailyLimit { get; private set; }
+        public DateTimeOffset? DeferUntil { get; init; }
+
+        public Task<GeminiQuotaReservation> ReserveAsync(string model, int inputTokens, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (DeferUntil.HasValue) throw new ExternalApiDeferredException(DeferUntil.Value);
+            ReservedTokens = inputTokens;
+            return Task.FromResult(new GeminiQuotaReservation(Guid.NewGuid(), model, DateTimeOffset.UtcNow));
+        }
+
+        public Task RecordSuccessAsync(GeminiQuotaReservation reservation, int? inputTokens, CancellationToken cancellationToken)
+        {
+            ActualTokens = inputTokens;
+            return Task.CompletedTask;
+        }
+
+        public Task<TimeSpan> RecordRateLimitAsync(GeminiQuotaReservation reservation, TimeSpan? retryAfter,
+            bool dailyLimit, CancellationToken cancellationToken)
+        {
+            DailyLimit = dailyLimit;
+            return Task.FromResult(retryAfter ?? TimeSpan.FromMinutes(1));
         }
     }
 }

@@ -11,6 +11,9 @@ public sealed record LeasedJob(
     string PayloadJson,
     int AttemptCount,
     int MaxAttempts,
-    Guid? GenerationRunId = null);
+    Guid? GenerationRunId = null)
+{
+    public bool IsResuming { get; init; }
+}
 
 public sealed record JobExecutionResult(string? ResultJson);

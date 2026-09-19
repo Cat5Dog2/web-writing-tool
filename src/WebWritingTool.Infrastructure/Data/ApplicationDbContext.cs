@@ -32,6 +32,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<AiGenerationLog> AiGenerationLogs => Set<AiGenerationLog>();
 
+    public DbSet<GeminiQuotaState> GeminiQuotaStates => Set<GeminiQuotaState>();
+
     public DbSet<UsageLedger> UsageLedgers => Set<UsageLedger>();
 
     public DbSet<SearchResult> SearchResults => Set<SearchResult>();
@@ -74,6 +76,14 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         ConfigureArticleGenerationJob(builder.Entity<ArticleGenerationJob>());
         ConfigureArticleGenerationRun(builder.Entity<ArticleGenerationRun>());
         ConfigureAiGenerationLog(builder.Entity<AiGenerationLog>());
+        builder.Entity<GeminiQuotaState>(entity =>
+        {
+            entity.ToTable("GeminiQuotaStates");
+            entity.HasKey(state => new { state.Scope, state.Model });
+            entity.Property(state => state.Scope).HasMaxLength(100);
+            entity.Property(state => state.Model).HasMaxLength(100);
+            entity.Property(state => state.StateJson).HasColumnType(Jsonb).IsRequired();
+        });
         ConfigureUsageLedger(builder.Entity<UsageLedger>());
         ConfigureSearchResult(builder.Entity<SearchResult>());
         ConfigureXSearchPost(builder.Entity<XSearchPost>());

@@ -625,6 +625,14 @@ WordPress投稿履歴を保存する。
 - `IX_NotificationLogs_ArticleId`
 - `IX_NotificationLogs_JobId`
 
+### 6.13.1 `GeminiQuotaStates`とトークン記録（T-1345）
+
+`GeminiQuotaStates`は`Scope`と`Model`（各`varchar(100)`）を複合主キーとし、`StateJson`（`jsonb`、必須）に直近60秒の送信予約ID・時刻・入力トークン量、次回送信時刻、日次回数・更新時刻、429待機期限・連続発生回数を保持する。`Scope`はGoogleプロジェクトに対応する非秘密の識別名、`Model`はモデルIDまたは設定した共有グループ名である。
+
+`INSERT ... ON CONFLICT DO NOTHING`と行ロックで新規作成・更新を直列化する。外部API通信をトランザクション内で行わず、予約時に生成Handlerの未保存変更を一緒にコミットしない。APIキー、ユーザーID、記事ID、プロンプト本文は保存しない。期限切れの分単位予約はアクセス時に除去し、日次カウントは米国太平洋時間0時で更新する。
+
+`AiGenerationLogs`にはnullableの`InputTokens`と`OutputTokens`（各`integer`）を追加する。前者は`promptTokenCount`、後者は`candidatesTokenCount`であり、既存行・値を返さないClientではnull。既存の`PromptChars`・`OutputChars`・`UsageChars`による会計は変更しない。
+
 ### 6.14 `AiModelSettings`
 
 利用可能AIモデル設定を保存する。
