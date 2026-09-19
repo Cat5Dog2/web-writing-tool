@@ -567,6 +567,30 @@
   - 完了条件: 対話描画前の検索パネル操作を防ぎ、通知先表示を折り返す。設定のE2Eは通知先の登録とリサイズ後の幅を明示的に検証し、関連E2E・Slopwatchを確認する。
   - 確認: CIトレースで初期描画による検索パネルの閉鎖と設定画面の幅検証失敗を確認。修正後の関連E2E2件とSlopwatch、`git diff --check`が成功。
 
+- [x] `T-1341` 一括作成の構成生成開始、見出し数引き継ぎ、不正行の入力保持を修正する。
+  - 完了条件: 記事と構成生成ジョブを同時保存し、指定したH2/H3数でゲストの構成生成が完了する。全行不正は元入力を保持、部分成功は不正行のみ残して修正再送できる。PostgreSQL結合テストとE2Eで修正前の失敗・修正後の成功を確認する。
+  - 確認: 修正前にジョブ未作成の結合テスト5件、入力保持・ゲスト一括生成のE2E3件の失敗を再現。修正後は関連結合21件とE2E7件成功。生成中の記事を一覧から開いた際の自動更新も確認。変更C#のformat、Slopwatch、diffチェック成功。全体テスト・実API連携テストは未実行。
+  - コマンド: `dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~BulkArticleCreationTests|FullyQualifiedName~ArticleApiTests|FullyQualifiedName~DummyArticleGenerationTests|FullyQualifiedName~JobIntegrationTests'`、`dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~E2E003|FullyQualifiedName~GuestLoginFlowTests'`。
+
+- [x] `T-1342` 一括登録から記事完成までの自動生成とWeb/X個別設定を実装する。
+  - 完了条件: 生成範囲・検索件数・X期間を保存し、検索→未入力タイトル→構成→本文→HTMLをジョブで連携する。API省略時は従来互換を維持する。
+  - 完了条件: 段階完了と後続登録の原子性、重複防止、未完了本文だけの再開、停止予約、所有者認可、生成中編集拒否、ゲストのサンプル完走を検証する。
+  - 完了条件: 一覧・詳細に全体件数と記事別進捗を表示し、関連設計書・PostgreSQL結合テスト・E2Eを更新する。
+  - 確認: 新規テスト10件の修正前失敗を確認後、関連単体93件・結合61件・E2E7件成功。ローカルEdgeでもゲストの本文・HTML完成と、停止後の再読み込み・構成生成の再開を確認。全体テスト・実API連携・本番反映は未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.UnitTests --no-restore --filter 'FullyQualifiedName~Generation|FullyQualifiedName~Jobs|FullyQualifiedName~Search|FullyQualifiedName~Rendering'`、`dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~BulkGenerationWorkflowTests|FullyQualifiedName~BulkArticleCreationTests|FullyQualifiedName~JobIntegrationTests|FullyQualifiedName~DummyArticleGenerationTests|FullyQualifiedName~ArticleResearchApiTests|FullyQualifiedName~ArticleApiTests|FullyQualifiedName~GuestAccountCleanupTests|FullyQualifiedName~WordpressPostJobHandlerIntegrationTests'`、`dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~E2E003|FullyQualifiedName~GuestLoginFlowTests'`。
+
+- [x] `T-1343` 一括生成のUI/UXレビュー8件を修正する。
+  - 対象: プレビュー目次、入力エラー、バッチ履歴・未完了記事の追跡、完成記事詳細、状態表現、設定の分類、タッチ領域、H2/H3の説明。
+  - 完了条件: 誤遷移・エラー位置・停止記事の回帰テストを修正前に失敗させ、関連テストとPC/モバイルのブラウザ確認を通す。
+  - 検証: 新規E2E 3件の失敗を先に確認し、修正後は関連E2E 19件・結合30件成功。Webビルド、Slopwatch、差分チェック成功。EdgeでPC・390px・320pxのフォーム、エラー、履歴、停止記事、完成詳細、目次を確認した。本番反映・実外部API・全テスト一式は未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~BulkUx_|FullyQualifiedName~E2E003|FullyQualifiedName~GuestLoginFlowTests|FullyQualifiedName~UxReview_|FullyQualifiedName~E2E006And007'`（16件）、同プロジェクトの`--filter 'FullyQualifiedName~E2E005C|FullyQualifiedName~E2E010|FullyQualifiedName~E2E011'`（3件）、`dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~BulkGenerationWorkflowTests|FullyQualifiedName~BulkArticleCreationTests|FullyQualifiedName~ArticleApiTests'`（30件）。
+  - 詳細: `artifacts/reviews/bulk-generation-ui-ux-fixes-2026-09-19.md`。
+
+- [x] `T-1344` 記事詳細の検索説明を一括作成の自動検索と整合させる。
+  - 対象: `ArticleResearchPanel.razor`の説明文。詳細画面の検索ボタンによる追加取得と、登録設定に応じた自動検索を区別する。
+  - 完了条件: ビルドとブラウザ表示で、新しい説明文が表示されることを確認する。
+  - 検証: `dotnet build src/WebWritingTool.Web --no-restore --nologo --verbosity minimal`（警告・エラー0件）、`git -c core.safecrlf=false diff --check`成功。Edgeでゲストの一括登録からWeb/X自動検索・構成完了後の記事詳細を開き、新しい説明とWeb/X各10件の保存結果を確認した。文言のみの変更のため自動テストの追加・再実行は行っていない。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

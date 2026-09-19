@@ -37,7 +37,8 @@ public sealed record ArticleListItemResponse(
     string? GenerationModel,
     bool CanPostToWordpress,
     bool HasRunningJob,
-    bool HasQueuedJob);
+    bool HasQueuedJob,
+    string? AutomaticGenerationStatus = null);
 
 public sealed record ArticleDetailResponse(
     Guid Id,
@@ -163,13 +164,15 @@ public sealed record BulkCreateArticlesCommand(
     Guid? WritingProfileWordpressSiteId,
     bool AutoPostToWordpress,
     Guid? AutoPostWordpressSiteId,
-    int? AutoPostWordpressCategoryId);
+    int? AutoPostWordpressCategoryId,
+    BulkGenerationOptions? Generation = null);
 
 public sealed record BulkCreateArticlesResponse(
     int CreatedArticleCount,
     bool AutoPostToWordpress,
     IReadOnlyList<BulkArticleJobResponse> Jobs,
-    IReadOnlyList<BulkArticleRejectedLine> RejectedLines);
+    IReadOnlyList<BulkArticleRejectedLine> RejectedLines,
+    Guid? BatchId = null);
 
 public sealed record BulkArticleJobResponse(Guid JobId, Guid ArticleId, string JobType, string Status, string StatusUrl);
 

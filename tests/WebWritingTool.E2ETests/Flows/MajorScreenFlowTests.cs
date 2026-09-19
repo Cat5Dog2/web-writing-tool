@@ -75,18 +75,17 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await page.GetByRole(AriaRole.Button, new() { Name = "一括作成" }).ClickAsync();
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "一括作成" })).ToBeVisibleAsync();
             await FillAndChangeAsync(page.Locator("#bulk-lines"), $"{keywordOnly}\n{titledKeyword}|{title}");
-            await page.Locator("summary").Filter(new() { HasText = "構成・生成・自動投稿の設定" }).ClickAsync();
-            await page.Locator("#bulk-outline-method").SelectOptionAsync("Keyword");
+            await page.Locator("summary").Filter(new() { HasText = "記事の構成と生成設定" }).ClickAsync();
             await page.Locator("#bulk-search").SetCheckedAsync(false);
             await page.Locator("#bulk-submit").ClickAsync();
 
             await Expect(page.GetByText("2件の記事を登録しました。")).ToBeVisibleAsync();
 
             await SearchArticleAsync(page, title);
-            await Expect(page.GetByText(title)).ToBeVisibleAsync();
+            await Expect(page.Locator(".article-table").GetByText(title)).ToBeVisibleAsync();
 
             await SearchArticleAsync(page, keywordOnly);
-            await Expect(page.GetByText(keywordOnly)).ToBeVisibleAsync();
+            await Expect(page.Locator(".article-table").GetByText(keywordOnly)).ToBeVisibleAsync();
         }
         catch
         {
@@ -238,7 +237,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await page.Locator("#search-mode").SetCheckedAsync(false);
             await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" }).ClickAsync();
 
-            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            await Expect(page.Locator(".article-editor-page h1")).ToHaveTextAsync(title);
             var match = ArticleUrlPattern().Match(page.Url);
             Assert.True(match.Success, $"Article detail URL was expected but current URL was {page.Url}.");
             Assert.Equal(draftArticleId!.Value, Guid.Parse(match.Groups["id"].Value));
@@ -697,7 +696,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await Expect(page.GetByText(scenario.ArticleTitle)).ToHaveCountAsync(0);
 
             await page.GotoAsync($"/articles/{scenario.ArticleId}");
-            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            await Expect(page.Locator(".article-editor-page h1")).ToHaveTextAsync("生成結果編集");
             await Expect(page.GetByText("記事が見つかりません。")).ToBeVisibleAsync();
         }
         catch
@@ -744,7 +743,7 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
             await page.Locator("#search-mode").SetCheckedAsync(false);
             await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" }).ClickAsync();
 
-            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+            await Expect(page.Locator(".article-editor-page h1")).ToHaveTextAsync(title);
             var match = ArticleUrlPattern().Match(page.Url);
             Assert.True(match.Success, $"Article detail URL was expected but current URL was {page.Url}.");
 
@@ -885,7 +884,8 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         await page.Locator("#search-mode").SetCheckedAsync(false);
         await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成" }).ClickAsync();
 
-        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+        await Expect(page.Locator(".article-editor-page h1")).ToBeVisibleAsync();
+        await Expect(page.Locator(".article-editor-page h1")).ToHaveTextAsync(title);
         await WaitForInteractiveRenderAsync(page);
 
         var match = ArticleUrlPattern().Match(page.Url);

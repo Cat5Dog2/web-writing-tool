@@ -26,6 +26,9 @@ public sealed partial class ArticleContentService(
             return ArticleServiceResult<ConvertArticleHtmlResponse>.Failure(ArticleServiceError.NotFound);
         }
 
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult<ConvertArticleHtmlResponse>.Failure(ArticleServiceError.ConflictRunningJob);
+
         var headings = await dbContext.ArticleHeadings
             .AsNoTracking()
             .Where(heading => heading.ArticleId == article.Id)

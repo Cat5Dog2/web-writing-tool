@@ -1,0 +1,9 @@
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <p id="@($"{FieldId}-error")" class="text-danger small mb-0 mt-1">@Message</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public string FieldId { get; set; } = string.Empty;
+    [Parameter] public string? Message { get; set; }
+}

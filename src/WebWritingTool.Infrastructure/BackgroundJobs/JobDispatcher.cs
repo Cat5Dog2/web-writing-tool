@@ -16,6 +16,12 @@ public sealed class JobDispatcher(IServiceScopeFactory scopeFactory)
         await using var scope = scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var dbContext = services.GetRequiredService<ApplicationDbContext>();
+        if (job.GenerationRunId is null)
+            job = job with
+            {
+                GenerationRunId = await dbContext.ArticleGenerationJobs
+                .Where(item => item.Id == job.Id).Select(item => item.GenerationRunId).FirstOrDefaultAsync(cancellationToken)
+            };
         if (await dbContext.UserClaims.AnyAsync(claim => claim.UserId == job.UserId
             && claim.ClaimType == GuestIdentity.ClaimType && claim.ClaimValue == GuestIdentity.ClaimValue,
             cancellationToken))

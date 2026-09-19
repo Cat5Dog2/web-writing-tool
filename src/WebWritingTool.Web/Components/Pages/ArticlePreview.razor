@@ -47,7 +47,7 @@
                 @foreach (var item in toc)
                 {
                     <li class="@($"level-{item.Level}")">
-                        <a href="@($"#{item.Id}")">@item.Title</a>
+                        <a href="@($"/articles/{ArticleId}/preview#{item.Id}")">@item.Title</a>
                         @if (item.HeadingId is Guid headingId)
                         { <a class="preview-edit-link" href="@($"/articles/{ArticleId}?heading={headingId}")" aria-label="@($"{item.Title}を編集")">この見出しを編集</a> }
                     </li>

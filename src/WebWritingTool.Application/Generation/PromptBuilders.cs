@@ -50,7 +50,8 @@ public sealed class OutlineGenerationPromptBuilder
             .AppendOptional("事前学習テキスト", payload.LearningText ?? article.LearningText)
             .AppendOptional("追加指示", payload.AdditionalPrompt ?? article.AdditionalPrompt)
             .AppendLine("出力形式:")
-            .AppendLine("""{"headings":[{"level":2,"title":"H2","targetLength":800,"children":[{"level":3,"title":"H3","targetLength":400}]}]}""")
+            .AppendLine("メタディスクリプションは記事を要約した320文字以内の説明にしてください。")
+            .AppendLine("""{"metaDescription":"記事の説明","headings":[{"level":2,"title":"H2","targetLength":800,"children":[{"level":3,"title":"H3","targetLength":400}]}]}""")
             .ToString();
 
         return CreateDocument(system, user);

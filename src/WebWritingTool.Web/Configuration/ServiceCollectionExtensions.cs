@@ -246,6 +246,8 @@ internal static class ServiceCollectionExtensions
             ? provider.GetRequiredService<DummyExternalApiClient>()
             : environment.IsEnvironment("Test") ? new TestDiscordNotificationClient() : provider.GetRequiredService<DiscordNotificationClient>());
         services.AddSingleton<JobRetryPolicy>();
+        services.AddScoped<BulkGenerationWorkflow>();
+        services.AddScoped<IBulkGenerationService, BulkGenerationService>();
         services.AddScoped<JobLeaseService>();
         services.AddScoped<JobDispatcher>();
         services.AddScoped<JobService>();

@@ -25,7 +25,7 @@ public sealed partial class MajorScreenFlowTests
         Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(fixture.TestResultsDirectory, "ux-create-mobile.png"), FullPage = true });
         await page.GetByRole(AriaRole.Button, new() { Name = "構成を作成", Exact = true }).ClickAsync();
-        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "生成結果編集" })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "構成を一度で作成" })).ToBeVisibleAsync();
         var id = Guid.Parse(ArticleUrlPattern().Match(page.Url).Groups["id"].Value);
         var jobId = await fixture.GetLatestJobIdAsync(id, JobType.OutlineGeneration);
         Assert.NotNull(jobId);

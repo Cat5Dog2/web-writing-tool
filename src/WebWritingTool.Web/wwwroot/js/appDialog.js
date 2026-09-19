@@ -44,3 +44,12 @@ export function focus(id) {
 export async function copy(text) {
     await navigator.clipboard.writeText(text);
 }
+
+export function focusInvalidField(id) {
+    const element = document.getElementById(id);
+    for (let parent = element?.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName === "DETAILS") parent.open = true;
+    }
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView({ block: "center", behavior: "instant" });
+}

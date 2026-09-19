@@ -10,6 +10,7 @@ public sealed record LeasedJob(
     JobType JobType,
     string PayloadJson,
     int AttemptCount,
-    int MaxAttempts);
+    int MaxAttempts,
+    Guid? GenerationRunId = null);
 
 public sealed record JobExecutionResult(string? ResultJson);

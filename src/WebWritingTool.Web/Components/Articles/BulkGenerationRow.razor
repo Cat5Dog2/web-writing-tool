@@ -1,0 +1,54 @@
+<div class="bulk-progress-row" data-article-id="@Item.ArticleId">
+    <div class="bulk-row-main">
+        @if (ShowTitle)
+        {
+            <a href="@($"/articles/{Item.ArticleId}")" class="fw-semibold text-break">@(Item.Title ?? Item.Keyword)</a>
+            @if (Item.Title is not null) { <small class="text-muted">キーワード：@Item.Keyword</small> }
+        }
+        <span class="bulk-badge @StatusClass">@StatusText</span>
+        @if (Item.IsActive)
+        {
+            <small>@Stage(Item.Stage) · @ScopeLabel</small>
+        }
+        @if (Item.Stage == "BodyGeneration")
+        {
+            <span class="small">本文 @Item.CompletedHeadings / @Item.TotalHeadings 見出し</span>
+            @if (Item.IsActive && Item.TotalHeadings > 0)
+            { <progress value="@Item.CompletedHeadings" max="@Item.TotalHeadings" aria-label="本文生成の進捗"></progress> }
+        }
+        <small class="text-muted">Web検索：@(Item.Options.UseWebSearch ? "あり" : "なし")／X検索：@(Item.Options.UseXSearch ? "あり" : "なし")</small>
+    </div>
+    <div class="bulk-row-actions">
+        @if (Item.Status is "Failed" or "Canceled")
+        { <button class="btn btn-outline-primary" disabled="@Acting" @onclick="() => OnRetry.InvokeAsync(Item.ArticleId)">未完了部分から再開</button> }
+        @if (Item.IsActive)
+        { <button class="btn btn-outline-secondary" disabled="@(Acting || Item.StopRequested)" @onclick="() => OnStop.InvokeAsync(Item.ArticleId)">停止</button> }
+        @if (Item.Status == "Succeeded" && ShowTitle)
+        { <a class="btn btn-outline-primary" href="@(Item.Options.Scope == "FullArticle" ? $"/articles/{Item.ArticleId}/preview" : $"/articles/{Item.ArticleId}")">@(Item.Options.Scope == "FullArticle" ? "記事を確認" : "構成を確認")</a> }
+    </div>
+    @if (Item.StopRequested && Item.IsActive) { <p class="small mb-0 bulk-row-note">現在の段階が終了したら停止します。生成済みの内容は保存されます。</p> }
+    @if (Item.Error is not null) { <p class="text-danger small mb-0 bulk-row-note">@Item.Error</p> }
+    @if (Item.Warning is not null) { <p class="bulk-warning small mb-0 bulk-row-note">注意：@Item.Warning</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BulkGenerationProgress Item { get; set; } = default!;
+    [Parameter] public bool Acting { get; set; }
+    [Parameter] public bool ShowTitle { get; set; } = true;
+    [Parameter] public EventCallback<Guid> OnRetry { get; set; }
+    [Parameter] public EventCallback<Guid> OnStop { get; set; }
+    private string ScopeLabel => Item.Options.Scope == "FullArticle" ? "記事全体を生成" : "構成のみ生成";
+    private string StatusClass => Item.Status switch { "Succeeded" => "bulk-succeeded", "Failed" => "bulk-failed", "Canceled" => "bulk-stopped", _ => "bulk-running" };
+    private string StatusText => Item.Status switch
+    {
+        "Succeeded" => Item.Options.Scope == "FullArticle" ? "✓ 記事完成" : "✓ 構成完了",
+        "Canceled" => "Ⅱ 手動停止", "Failed" => $"! {Stage(Item.Stage)}で失敗",
+        _ when Item.StopRequested => "Ⅱ 停止予約中",
+        "Queued" => $"◷ {Stage(Item.Stage)}待機中", _ => $"◷ {Stage(Item.Stage)}中"
+    };
+    private static string Stage(string stage) => stage switch
+    {
+        "WebSearch" => "Web検索", "XFullArchiveSearch" => "X検索", "TitleGeneration" => "タイトル生成",
+        "OutlineGeneration" => "構成生成", "BodyGeneration" => "本文生成", _ => "生成"
+    };
+}

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Rendering;
@@ -34,7 +35,9 @@ public sealed class BodyGenerationJobHandler(
         var article = await GetArticleAsync(articleId, job.UserId, cancellationToken);
         var headings = await GetHeadingsAsync(article.Id, cancellationToken);
         var targets = SelectTargets(job, payload, headings);
-        if (targets.Count == 0)
+        if (job.GenerationRunId.HasValue || job.AttemptCount > 1)
+            targets = targets.Where(h => h.Status != HeadingStatus.Generated || string.IsNullOrWhiteSpace(h.Body)).ToList();
+        if (headings.Count == 0 || targets.Count == 0 && !job.GenerationRunId.HasValue && job.AttemptCount <= 1)
         {
             throw new JobExecutionException(
                 JobErrorCodes.ValidationError,
@@ -55,6 +58,7 @@ public sealed class BodyGenerationJobHandler(
         await DbContext.SaveChangesAsync(cancellationToken);
 
         var model = ResolveModel(payload.GenerationModel, article);
+        var sources = await GetWorkflowSourcesAsync(job, cancellationToken);
         var generatedCount = 0;
         foreach (var heading in targets)
         {
@@ -68,7 +72,9 @@ public sealed class BodyGenerationJobHandler(
             {
                 var useWebSearch = payload.UseWebSearch || heading.UseWebSearch || article.SearchMode;
                 var query = heading.SearchQuery ?? article.Keyword;
-                var references = await researchService.GetReferencesAsync(job.UserId, article.Id, heading.Id,
+                var references = sources is not null
+                    ? await researchService.GetSelectedReferencesAsync(job.UserId, article.Id, sources, cancellationToken)
+                    : await researchService.GetReferencesAsync(job.UserId, article.Id, heading.Id,
                     useWebSearch, query, cancellationToken: cancellationToken);
                 prompt = ReferencePromptFormatter.Attach(promptBuilder.Build(CreatePromptContext(article, headings),
                     ToHeadingPromptContext(heading), payload with { UseWebSearch = useWebSearch }), references);
@@ -81,6 +87,9 @@ public sealed class BodyGenerationJobHandler(
                 AddSuccessAccounting(job, article, operation, prompt, result);
                 generatedCount++;
                 await DbContext.SaveChangesAsync(cancellationToken);
+                var progress = headings.Count(h => h.Status == HeadingStatus.Generated) * 100 / headings.Count;
+                await DbContext.ArticleGenerationJobs.Where(j => j.Id == job.Id)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(j => j.Progress, Math.Min(99, progress)), cancellationToken);
             }
             catch (ExternalIntegrationException ex)
             {
@@ -113,7 +122,7 @@ public sealed class BodyGenerationJobHandler(
         {
             article.Status = ArticleStatus.Completed;
             article.CompletedAt ??= DateTimeOffset.UtcNow;
-            if (article.AutoPostToWordpress && !string.IsNullOrWhiteSpace(article.Body))
+            if (!string.IsNullOrWhiteSpace(article.Body))
             {
                 article.HtmlBody = contentRenderingService.ConvertMarkdownToHtml(
                     article.Body,

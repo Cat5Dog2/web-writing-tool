@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Domain.Ai;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Usage;
@@ -22,6 +23,14 @@ public abstract class AiGenerationJobHandlerBase(
     protected IAiTextGenerationClient AiClient { get; } = aiClient;
 
     protected GeminiOptions GeminiOptions { get; } = geminiOptions.Value;
+
+    protected async Task<ResearchSourceSelection?> GetWorkflowSourcesAsync(LeasedJob job, CancellationToken cancellationToken)
+    {
+        if (job.GenerationRunId is not Guid runId) return null;
+        var run = await DbContext.ArticleGenerationRuns.AsNoTracking().SingleAsync(r => r.Id == runId, cancellationToken);
+        var options = BulkGenerationWorkflow.Settings(run).Options;
+        return new ResearchSourceSelection(options.UseWebSearch, options.UseXSearch);
+    }
 
     protected TPayload ReadPayload<TPayload>(LeasedJob job)
     {

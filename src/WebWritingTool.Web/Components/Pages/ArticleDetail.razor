@@ -4,6 +4,8 @@
 @implements IAsyncDisposable
 
 @using System.Security.Claims
+@using WebWritingTool.Web.Components.Articles
+@using WebWritingTool.Application.Jobs
 @using WebWritingTool.Application.Security
 @inject IServiceScopeFactory ScopeFactory
 @inject ExternalApiExecutionContext ExecutionContext
@@ -13,21 +15,21 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
-<PageTitle>生成結果編集</PageTitle>
+<PageTitle>@(article?.Title ?? "生成結果編集")</PageTitle>
 <NavigationLock OnBeforeInternalNavigation="BeforeNavigationAsync" />
 
 <div class="article-page article-editor-page" @ref="editorRoot">
     <header class="article-page-header">
         <div>
-            <h1>生成結果編集</h1>
+            <h1>@(article?.Title ?? article?.Keyword ?? "生成結果編集")</h1>
             @if (article is not null)
             {
-                <div class="text-muted">@GetArticleStatusLabel(article.Status)</div>
+                <div class="text-muted">@GetArticleStatusLabel(article.Status) · キーワード：@article.Keyword</div>
             }
         </div>
         <div class="article-actions">
             <a class="btn btn-outline-secondary" href="/articles">一覧へ戻る</a>
-            <a class="btn btn-outline-primary @(article?.HtmlBody is null ? "disabled" : string.Empty)"
+            <a class="btn @(article?.Status == "Completed" ? "btn-primary" : "btn-outline-primary") @(article?.HtmlBody is null ? "disabled" : string.Empty)"
                href="@($"/articles/{ArticleId}/preview")"
                aria-disabled="@(article?.HtmlBody is null)">プレビュー</a>
         </div>
@@ -53,11 +55,12 @@
     }
     else
     {
+        <BulkGenerationPanel ArticleId="ArticleId" OnProgressChanged="ReloadWorkflowAsync" OnActiveChanged="value => automaticGenerationActive = value" />
         <section class="article-panel article-editor-toolbar">
             <div class="article-editor-actions">
-                <button type="button" class="btn btn-primary" disabled="@(isSubmitting || isGenerating)" @onclick="SaveAllAsync">変更をまとめて保存</button>
+                <button type="button" class="btn @(HasUnsavedChanges ? "btn-primary" : "btn-outline-primary")" disabled="@(isSubmitting || isGenerating)" @onclick="SaveAllAsync">変更をまとめて保存</button>
                 <span class="editor-save-state" role="status">@(HasUnsavedChanges ? "未保存の変更があります" : "保存済み")</span>
-                <button type="button" class="btn btn-outline-primary" disabled="@isSubmitting" @onclick="() => GuardAsync(ConvertHtmlAsync)">HTML変換</button>
+                <button type="button" class="btn btn-outline-primary" disabled="@(isSubmitting || isGenerating)" @onclick="() => GuardAsync(ConvertHtmlAsync)">HTML変換</button>
                 <label class="form-check article-period-break">
                     <input class="form-check-input" type="checkbox" @bind="insertLineBreakAfterPeriod" />
                     <span class="form-check-label">句点改行</span>
@@ -127,7 +130,7 @@
 
         <WebWritingTool.Web.Components.Articles.ArticleResearchPanel @key="ArticleId" ArticleId="ArticleId"
             Keyword="@article.Keyword" SearchMode="article.SearchMode" Headings="article.Headings"
-            InitialJobId="InitialJobId" BeforeGenerate="ConfirmUnsavedAsync" OnBusyChanged="value => isGenerating = value" OnGenerated="ReloadGeneratedArticleAsync" />
+            InitialJobId="monitoredOutlineJobId" Disabled="automaticGenerationActive" BeforeGenerate="ConfirmUnsavedAsync" OnBusyChanged="value => manualGenerationActive = value" OnGenerated="ReloadGeneratedArticleAsync" />
 
         <div class="editor-mobile-switch" role="group" aria-label="編集表示">
             <button class="btn @(showOutline ? "btn-outline-primary" : "btn-primary")" aria-pressed="@(!showOutline)" @onclick="() => showOutline = false">本文</button>
@@ -275,7 +278,10 @@
     private TaskCompletionSource<bool>? unsavedChoice;
     private bool showDeleteDialog;
     private bool showOutline;
-    private bool isGenerating;
+    private bool manualGenerationActive;
+    private bool automaticGenerationActive;
+    private bool isGenerating => manualGenerationActive || automaticGenerationActive;
+    private Guid? monitoredOutlineJobId;
     private bool focusMeta;
     private bool focusEditor;
     private ElementReference editorRoot;
@@ -316,8 +322,18 @@
 
         formOptions = await scope.ServiceProvider.GetRequiredService<IArticleQueryService>().GetFormOptionsAsync(actor.UserId);
         article = await scope.ServiceProvider.GetRequiredService<IArticleQueryService>().GetAsync(actor, ArticleId);
+        var workflow = await scope.ServiceProvider.GetRequiredService<IBulkGenerationService>().GetProgressAsync(actor, articleId: ArticleId);
+        automaticGenerationActive = workflow.Any(item => item.IsActive);
+        monitoredOutlineJobId = InitialJobId;
         if (article is not null)
         {
+            if (workflow.Count > 0) monitoredOutlineJobId = null;
+            if (workflow.Count == 0 && !monitoredOutlineJobId.HasValue && article.Status is "OutlineQueued" or "OutlineGenerating")
+            {
+                var jobs = await scope.ServiceProvider.GetRequiredService<IJobQueryService>().ListForArticleAsync(
+                    new JobActor(actor.UserId, actor.IsAdmin), new ArticleJobListQuery(ArticleId, null, "OutlineGeneration"));
+                monitoredOutlineJobId = jobs?.Items.FirstOrDefault()?.Id;
+            }
             PopulateForm(article);
             SelectHeading(preferredHeadingId ?? selectedHeading?.Id ?? article.Headings.FirstOrDefault()?.Id);
         }
@@ -330,6 +346,11 @@
         await LoadAsync();
         if (InitialJobId.HasValue)
             NavigationManager.NavigateTo(NavigationManager.GetUriWithQueryParameter("job", (string?)null), replace: true);
+    }
+
+    private async Task ReloadWorkflowAsync()
+    {
+        if (!HasUnsavedChanges && !isSubmitting) await LoadAsync();
     }
 
     private void PopulateForm(ArticleDetailResponse detail)

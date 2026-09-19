@@ -1,0 +1,194 @@
+@using System.Security.Claims
+@using WebWritingTool.Application.Security
+@implements IAsyncDisposable
+@inject IServiceScopeFactory ScopeFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<BulkGenerationPanel> Logger
+
+@if (error is not null) { <p class="alert alert-danger" role="alert">@error</p> }
+@if (items.Count > 0)
+{
+    <section class="article-panel bulk-progress mb-3" aria-label="一括生成の進捗" data-testid="bulk-generation-progress">
+        <span class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">@announcement</span>
+        @if (ArticleId.HasValue && items.All(i => i.Status == "Succeeded"))
+        {
+            <div class="bulk-complete-heading"><span aria-hidden="true">✓</span> @(items[0].Options.Scope == "FullArticle" ? "記事完成" : "構成完了")・保存済み</div>
+            <details class="bulk-completed"><summary>生成の詳細</summary>
+                <BulkGenerationRow Item="items[0]" ShowTitle="false" />
+            </details>
+        }
+        else
+        {
+            <div class="bulk-progress-header">
+                <div><h2 class="h5 mb-1">@(ArticleId.HasValue ? "自動生成の状況" : "一括生成の状況")</h2>
+                    @if (!ArticleId.HasValue) { <p class="small text-muted mb-0">処理中・要対応の記事は、すべての登録から表示します。</p> }
+                </div>
+                <button type="button" class="btn btn-outline-secondary" @onclick="RefreshAsync">状況を更新</button>
+            </div>
+            @if (!ArticleId.HasValue && batches.Count > 0)
+            {
+                <div class="bulk-batch-picker">
+                    <label for="bulk-batch" class="form-label">登録履歴</label>
+                    <select id="bulk-batch" class="form-select" value="@selectedBatchId" @onchange="SelectBatchAsync">
+                        @foreach (var batch in batches)
+                        { <option value="@batch.BatchId">@batch.CreatedAt.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy/MM/dd HH:mm:ss") · @batch.ArticleCount 件</option> }
+                    </select>
+                </div>
+            }
+            <div class="bulk-counts" aria-label="処理中・要対応の記事数">
+                <span class="bulk-badge bulk-running">◷ 処理中 @items.Count(i => i.IsActive) 件</span>
+                <span class="bulk-badge bulk-failed">! 失敗 @items.Count(i => i.Status == "Failed") 件</span>
+                <span class="bulk-badge bulk-stopped">Ⅱ 手動停止 @items.Count(i => i.Status == "Canceled") 件</span>
+            </div>
+            @foreach (var item in items.Where(i => i.Status != "Succeeded").OrderBy(i => i.IsActive))
+            {
+                <BulkGenerationRow @key="item.RunId" Item="item" Acting="acting" OnRetry="RetryAsync" OnStop="StopAsync" />
+            }
+            @if (items.Any(i => i.Status == "Succeeded"))
+            {
+                <details class="bulk-completed">
+                    <summary>選択した登録：完了 @items.Count(i => i.Status == "Succeeded") 件の記事</summary>
+                    @foreach (var item in items.Where(i => i.Status == "Succeeded"))
+                    { <BulkGenerationRow @key="item.RunId" Item="item" /> }
+                </details>
+            }
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid? BatchId { get; set; }
+    [Parameter] public Guid? ArticleId { get; set; }
+    [Parameter] public EventCallback OnProgressChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnActiveChanged { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private IReadOnlyList<BulkGenerationProgress> items = [];
+    private IReadOnlyList<BulkGenerationBatch> batches = [];
+    private Guid? lastBatchParameter;
+    private Guid? lastArticleParameter;
+    private bool initialized;
+    private Guid? selectedBatchId;
+    private string? signature;
+    private string? error;
+    private string announcement = string.Empty;
+    private bool acting;
+    private Task? polling;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (initialized && BatchId == lastBatchParameter && ArticleId == lastArticleParameter) return;
+        initialized = true;
+        lastArticleParameter = ArticleId;
+        if (BatchId != lastBatchParameter) { selectedBatchId = BatchId; lastBatchParameter = BatchId; }
+        await ReadAsync(false);
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) polling = PollAsync();
+        return Task.CompletedTask;
+    }
+
+    private async Task SelectBatchAsync(ChangeEventArgs args)
+    {
+        selectedBatchId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+        await ReadAsync(true);
+    }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+                await InvokeAsync(() => ReadAsync(true));
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        { Logger.LogDebug("Bulk progress polling stopped because the component was disposed."); }
+    }
+
+    public Task RefreshAsync() => ReadAsync(true);
+
+    private async Task ReadAsync(bool notify)
+    {
+        try
+        {
+            var actor = await ActorAsync();
+            if (actor is null) return;
+            using var scope = ScopeFactory.CreateScope();
+            var service = scope.ServiceProvider.GetRequiredService<IBulkGenerationService>();
+            if (!ArticleId.HasValue)
+            {
+                batches = await service.GetBatchesAsync(actor, lifetime.Token);
+                selectedBatchId ??= batches.FirstOrDefault()?.BatchId;
+            }
+            var requestedBatch = selectedBatchId;
+            var loaded = ArticleId.HasValue
+                ? await service.GetProgressAsync(actor, articleId: ArticleId, cancellationToken: lifetime.Token)
+                : await service.GetOverviewAsync(actor, requestedBatch, lifetime.Token);
+            if (requestedBatch != selectedBatchId) return;
+            items = loaded;
+            error = null;
+            var next = string.Join('|', items.Select(i => $"{i.RunId}:{i.Status}:{i.Stage}:{i.CompletedHeadings}:{i.StopRequested}:{i.Title}:{i.Error}:{i.Warning}"));
+            var changed = next != signature;
+            signature = next;
+            if (changed)
+                announcement = $"処理中 {items.Count(i => i.IsActive)} 件、失敗 {items.Count(i => i.Status == "Failed")} 件、手動停止 {items.Count(i => i.Status == "Canceled")} 件。選択した登録の完了 {items.Count(i => i.Status == "Succeeded")} 件。";
+            if (notify && changed)
+            {
+                await OnActiveChanged.InvokeAsync(items.Any(i => i.IsActive));
+                await OnProgressChanged.InvokeAsync();
+            }
+            if (notify) StateHasChanged();
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        { Logger.LogDebug("Bulk progress loading canceled because the component was disposed."); }
+        catch (Exception exception)
+        {
+            error = "生成状況を取得できませんでした。状況を更新してください。";
+            Logger.LogWarning("Bulk generation progress failed. exceptionType={ExceptionType}", exception.GetType().Name);
+            if (notify) StateHasChanged();
+        }
+    }
+
+    private Task RetryAsync(Guid articleId) => ActAsync(articleId, true);
+    private Task StopAsync(Guid articleId) => ActAsync(articleId, false);
+
+    private async Task ActAsync(Guid articleId, bool retry)
+    {
+        acting = true;
+        error = null;
+        try
+        {
+            var actor = await ActorAsync();
+            if (actor is null) return;
+            using var scope = ScopeFactory.CreateScope();
+            var service = scope.ServiceProvider.GetRequiredService<IBulkGenerationService>();
+            var result = retry ? await service.RetryAsync(actor, articleId, lifetime.Token)
+                : await service.StopAsync(actor, articleId, lifetime.Token);
+            await ReadAsync(true);
+            if (!result.Succeeded) error = "処理状況が変更されました。状況を確認してください。";
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        { Logger.LogDebug("Bulk generation action canceled because the component was disposed."); }
+        catch (Exception exception)
+        {
+            error = "操作に失敗しました。状況を更新してから再度お試しください。";
+            Logger.LogWarning("Bulk generation action failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally { acting = false; }
+    }
+
+    private async Task<ArticleActor?> ActorAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        return principal.FindFirstValue(ClaimTypes.NameIdentifier) is { } id ? new(id, principal.IsInRole(ApplicationRoles.Admin)) : null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        if (polling is not null) await polling;
+        lifetime.Dispose();
+    }
+}

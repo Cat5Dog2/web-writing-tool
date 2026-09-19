@@ -11,7 +11,7 @@
 @inject ILogger<ArticleResearchPanel> Logger
 
 @* Keep native disclosure changes from being lost when prerender is replaced. *@
-<section class="article-panel mb-3" aria-label="検索・参考情報" inert="@(!RendererInfo.IsInteractive)">
+<section class="article-panel mb-3" aria-label="検索・参考情報" inert="@(!RendererInfo.IsInteractive || Disabled)">
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
         <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
         <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>
@@ -22,7 +22,7 @@
     @if (!string.IsNullOrEmpty(status)) { <div class="generation-status" role="status">@status</div> }
     <details class="research-disclosure">
     <summary>検索・参考情報</summary>
-    <p class="text-muted">取得した参考情報は構成・本文の生成に使います。X検索はボタンを押したときだけ実行します。有効な結果を各20件まで表示します。</p>
+    <p class="text-muted">取得した参考情報は構成・本文の生成に使います。この画面ではWeb・Xの検索ボタンで参考情報を追加取得できます。一括作成では登録時の設定に応じて自動検索します。有効な結果を各20件まで表示します。</p>
     <p class="small text-muted">Web資料は手動取得を優先し、残りの枠に自動検索結果を使います。生成への採用はWeb・X各10件までです。同じ優先度では取得日時が新しい順に採用します。</p>
     <div class="row g-2 mb-3">
         <div class="col-md-5">
@@ -115,6 +115,7 @@
 
 @code {
     [Parameter] public Guid? InitialJobId { get; set; }
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public Func<Task<bool>>? BeforeGenerate { get; set; }
     [Parameter] public EventCallback<bool> OnBusyChanged { get; set; }
     [Parameter] public Guid ArticleId { get; set; }
@@ -186,7 +187,7 @@
 
     private async Task RunAsync(string action)
     {
-        if (busy) return;
+        if (busy || Disabled) return;
         if (action is "outline" or "body" && BeforeGenerate is not null && !await BeforeGenerate()) return;
         busy = true;
         if (action is "outline" or "body") await OnBusyChanged.InvokeAsync(true);
