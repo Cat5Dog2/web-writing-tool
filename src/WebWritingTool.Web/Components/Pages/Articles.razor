@@ -5,6 +5,7 @@
 @implements IAsyncDisposable
 
 @using System.Security.Claims
+@using WebWritingTool.Web.Components.Articles
 
 @inject IArticleQueryService ArticleQueryService
 @inject IArticleCommandService ArticleCommandService
@@ -16,6 +17,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<Articles> Logger
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>記事一覧</PageTitle>
 
@@ -46,123 +48,120 @@
 
     @if (showBulkForm)
     {
-        <section class="article-panel mb-4">
+        <section class="article-panel bulk-form mb-4">
             <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
                 <h2 class="h5 mb-0">一括作成</h2>
                 <button type="button" class="btn-close" aria-label="閉じる" @onclick="ToggleBulkForm"></button>
             </div>
+            <label class="form-label" for="bulk-lines">キーワード一覧</label>
+            <textarea id="bulk-lines" class="form-control" rows="5" placeholder="@BulkLinesPlaceholder" @bind="bulkLines" @bind:event="oninput" aria-invalid="@BulkInvalid("bulk-lines")" aria-describedby="bulk-lines-help bulk-lines-error"></textarea>
+            <p id="bulk-lines-help" class="form-text">1行に1件。「キーワード|タイトル」でタイトルも指定できます。未入力のタイトルは自動生成します。</p>
+            <BulkFieldError FieldId="bulk-lines" Message="@BulkError("bulk-lines")" />
 
-            <div class="row g-3">
-                <div class="col-12">
-                    <label class="form-label" for="bulk-lines">キーワード一覧</label>
-                    <textarea id="bulk-lines" class="form-control" rows="6" placeholder="@BulkLinesPlaceholder" @bind="bulkLines" @bind:event="oninput"></textarea>
-                    <div class="form-text">1行に1件、「キーワード」または「キーワード|タイトル」の形式で入力します。</div>
-                </div>
+            <div class="bulk-settings-group">
+                <label class="form-label" for="bulk-generation-scope">生成する内容</label>
+                <select id="bulk-generation-scope" class="form-select" @bind="bulkGenerationScope" aria-invalid="@BulkInvalid("bulk-generation-scope")" aria-describedby="bulk-generation-scope-error">
+                    <option value="FullArticle">記事全体を生成（本文・HTMLまで）</option>
+                    <option value="OutlineOnly">構成のみ生成</option>
+                </select>
+                <BulkFieldError FieldId="bulk-generation-scope" Message="@BulkError("bulk-generation-scope")" />
+                <details id="bulk-outline-settings" class="mt-2">
+                    <summary>記事の構成と生成設定</summary>
+                    <p id="bulk-heading-help" class="form-text">H3は記事全体の合計です。見出し数は目安のため、生成結果によって多少前後します。</p>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="bulk-h2">大見出し（H2）の目安</label>
+                            <input id="bulk-h2" class="form-control" type="number" min="1" max="20" @bind="bulkH2Count" aria-invalid="@BulkInvalid("bulk-h2")" aria-describedby="bulk-h2-error bulk-heading-help" />
+                            <BulkFieldError FieldId="bulk-h2" Message="@BulkError("bulk-h2")" />
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="bulk-h3">小見出し（H3）の目安・合計</label>
+                            <input id="bulk-h3" class="form-control" type="number" min="0" max="60" @bind="bulkH3Count" aria-invalid="@BulkInvalid("bulk-h3")" aria-describedby="bulk-h3-error bulk-heading-help" />
+                            <BulkFieldError FieldId="bulk-h3" Message="@BulkError("bulk-h3")" />
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="bulk-model">生成モデル</label>
+                            <select id="bulk-model" class="form-select" @bind="bulkGenerationModel" aria-invalid="@BulkInvalid("bulk-model")" aria-describedby="bulk-model-error">
+                                @foreach (var model in formOptions.GenerationModels)
+                                { <option value="@model.Model">@model.DisplayName</option> }
+                            </select>
+                            <BulkFieldError FieldId="bulk-model" Message="@BulkError("bulk-model")" />
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="bulk-writing-profile">サイト別ライティング設定</label>
+                            <select id="bulk-writing-profile" class="form-select" @bind="bulkWritingProfileId">
+                                <option value="">使用しない</option>
+                                @foreach (var profile in formOptions.WritingProfiles)
+                                { <option value="@profile.Id">@profile.SiteName</option> }
+                            </select>
+                        </div>
+                    </div>
+                </details>
             </div>
-            <details class="mt-3"><summary>構成・生成・自動投稿の設定</summary><div class="row g-3">
-                <div class="col-md-2">
-                    <label class="form-label" for="bulk-h2">H2の個数</label>
-                    <input id="bulk-h2" class="form-control" type="number" min="1" max="20" @bind="bulkH2Count" />
+
+            <fieldset class="bulk-settings-group">
+                <legend class="h6">参考情報の検索</legend>
+                <p class="form-text">選択した検索資料をタイトル・構成・本文で共有します。</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-check"><input id="bulk-search" class="form-check-input" type="checkbox" @bind="bulkSearchMode" /> Web検索を利用する</label>
+                        <details id="bulk-web-settings" class="mt-1"><summary>Web検索の条件</summary>
+                            <label class="form-label" for="bulk-web-count">Web検索件数</label>
+                            <input id="bulk-web-count" class="form-control" type="number" min="1" max="20" disabled="@(!bulkSearchMode)" @bind="bulkWebCount" aria-invalid="@BulkInvalid("bulk-web-count")" aria-describedby="bulk-web-count-error" />
+                            <BulkFieldError FieldId="bulk-web-count" Message="@BulkError("bulk-web-count")" />
+                            <label class="form-check mt-2"><input id="bulk-domestic" class="form-check-input" type="checkbox" disabled="@(!bulkSearchMode)" @bind="bulkIsDomesticOnly" /> 国内情報に限定する</label>
+                        </details>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-check"><input id="bulk-x-search" class="form-check-input" type="checkbox" @bind="bulkXSearch" /> X検索を利用する</label>
+                        <details id="bulk-x-settings" class="mt-1"><summary>X検索の条件</summary>
+                            <label class="form-label" for="bulk-x-count">X検索件数</label>
+                            <input id="bulk-x-count" class="form-control" type="number" min="1" max="100" disabled="@(!bulkXSearch)" @bind="bulkXCount" aria-invalid="@BulkInvalid("bulk-x-count")" aria-describedby="bulk-x-count-error" />
+                            <BulkFieldError FieldId="bulk-x-count" Message="@BulkError("bulk-x-count")" />
+                            <label class="form-label mt-2" for="bulk-x-days">X検索期間（過去の日数）</label>
+                            <input id="bulk-x-days" class="form-control" type="number" min="1" max="365" disabled="@(!bulkXSearch)" @bind="bulkXDays" aria-invalid="@BulkInvalid("bulk-x-days")" aria-describedby="bulk-x-days-error" />
+                            <BulkFieldError FieldId="bulk-x-days" Message="@BulkError("bulk-x-days")" />
+                        </details>
+                    </div>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label" for="bulk-h3">H3の個数</label>
-                    <input id="bulk-h3" class="form-control" type="number" min="0" max="60" @bind="bulkH3Count" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="bulk-title-method">タイトル構築方法</label>
-                    <select id="bulk-title-method" class="form-select" @bind="bulkTitleMethod">
-                        <option value="Ai">AIで構築</option>
-                        <option value="Keyword">キーワードを使用</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="bulk-outline-method">見出し構築方法</label>
-                    <select id="bulk-outline-method" class="form-select" @bind="bulkOutlineMethod">
-                        <option value="Search">検索エンジンの結果を参考にAIで構築</option>
-                        <option value="Keyword">キーワード</option>
-                        <option value="Ai">AI</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="bulk-model">生成モデル</label>
-                    <select id="bulk-model" class="form-select" @bind="bulkGenerationModel">
-                        @foreach (var model in formOptions.GenerationModels)
-                        {
-                            <option value="@model.Model">@model.DisplayName</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="bulk-writing-profile">サイト別ライティング設定</label>
-                    <select id="bulk-writing-profile" class="form-select" @bind="bulkWritingProfileId">
-                        <option value="">使用しない</option>
-                        @foreach (var profile in formOptions.WritingProfiles)
-                        {
-                            <option value="@profile.Id">@profile.SiteName</option>
-                        }
-                    </select>
-                </div>
+            </fieldset>
+
+            <details id="bulk-post-settings" class="bulk-settings-group"><summary>投稿先（任意）</summary>
+                <label class="form-check"><input id="bulk-auto-post" class="form-check-input" type="checkbox" @bind="bulkAutoPostToWordpress" disabled="@ExecutionContext.IsGuest" /> WordPressへ下書きとして自動投稿する</label>
+                @if (ExecutionContext.IsGuest) { <p class="form-text">ゲストはWordPress自動投稿を利用できません。</p> }
                 @if (bulkAutoPostToWordpress && !ExecutionContext.IsGuest)
                 {
-                <div class="col-md-4">
                     <label class="form-label" for="bulk-auto-post-site">自動投稿先サイト</label>
-                    <select id="bulk-auto-post-site" class="form-select" @bind="bulkAutoPostSiteId" disabled="@(!bulkAutoPostToWordpress)">
+                    <select id="bulk-auto-post-site" class="form-select" @bind="bulkAutoPostSiteId" aria-invalid="@BulkInvalid("bulk-auto-post-site")" aria-describedby="bulk-auto-post-site-error">
                         <option value="">未選択</option>
                         @foreach (var profile in formOptions.WritingProfiles)
-                        {
-                            <option value="@profile.Id">@profile.SiteName</option>
-                        }
+                        { <option value="@profile.Id">@profile.SiteName</option> }
                     </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="bulk-category">自動投稿カテゴリ</label>
-                    <input id="bulk-category" class="form-control" type="number" @bind="bulkAutoPostCategoryId" disabled="@(!bulkAutoPostToWordpress)" />
-                </div>
+                    <BulkFieldError FieldId="bulk-auto-post-site" Message="@BulkError("bulk-auto-post-site")" />
+                    <label class="form-label mt-2" for="bulk-category">自動投稿カテゴリ</label>
+                    <input id="bulk-category" class="form-control" type="number" @bind="bulkAutoPostCategoryId" />
+                    @if (bulkGenerationScope == "OutlineOnly") { <p class="form-text">構成のみ生成する場合、自動投稿は後で本文を生成し、HTMLが保存された時点で行います。</p> }
                 }
-                <div class="col-md-3 d-flex align-items-end">
-                    <div class="form-check">
-                        <input id="bulk-domestic" class="form-check-input" type="checkbox" @bind="bulkIsDomesticOnly" />
-                        <label class="form-check-label" for="bulk-domestic">情報は日本国内のものに限定</label>
-                    </div>
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <div class="form-check">
-                        <input id="bulk-search" class="form-check-input" type="checkbox" @bind="bulkSearchMode" />
-                        <label class="form-check-label" for="bulk-search">検索モード</label>
-                    </div>
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <div class="form-check">
-                        <input id="bulk-auto-post" class="form-check-input" type="checkbox" @bind="bulkAutoPostToWordpress" disabled="@ExecutionContext.IsGuest" />
-                        <label class="form-check-label" for="bulk-auto-post">WordPress自動投稿</label>
-                    </div>
-                </div>
-            </div>
-
             </details>
-            @if (ExecutionContext.IsGuest) { <p class="form-text">ゲストはWordPress自動投稿を利用できません。</p> }
             @if (bulkRejectedLines.Count > 0)
             {
                 <div class="alert alert-warning mt-3" role="alert">
                     @foreach (var rejectedLine in bulkRejectedLines)
                     {
-                        @if (rejectedLine.LineNumber > 0)
-                        {
-                            <div>@rejectedLine.LineNumber 行目: @rejectedLine.Reason</div>
-                        }
-                        else
-                        {
-                            <div>@rejectedLine.Reason</div>
-                        }
+                        @if (rejectedLine.LineNumber > 0) { <div>@rejectedLine.LineNumber 行目: @rejectedLine.Reason</div> }
+                        else { <div>@rejectedLine.Reason</div> }
                     }
                 </div>
+                @if (successMessage is not null)
+                { <p class="form-text">登録済みの行を除き、未登録の行だけを残しました。エラーの行番号は登録前の入力位置です。</p> }
             }
-
-            <div class="mt-3">
-                <button id="bulk-submit" type="button" class="btn btn-primary" @onclick="SubmitBulkAsync" disabled="@(isBulkSubmitting || string.IsNullOrWhiteSpace(bulkLines))">@((bulkLines ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries).Count(line => !string.IsNullOrWhiteSpace(line)))件の記事を作成</button>
+            <div class="bulk-start">
+                <div><strong>作成する内容</strong><p class="small mb-0" data-testid="bulk-settings-summary">@BulkSummary</p></div>
+                <button id="bulk-submit" type="button" class="btn btn-primary" @onclick="SubmitBulkAsync" disabled="@(isBulkSubmitting || string.IsNullOrWhiteSpace(bulkLines))">@(isBulkSubmitting ? "登録中…" : $"{BulkLineCount}件の記事を作成")</button>
             </div>
         </section>
     }
+    <BulkGenerationPanel @ref="bulkProgressPanel" BatchId="activeBatchId" OnProgressChanged="RefreshGenerationAsync" />
 
     <section class="article-panel mb-3 article-search-disclosure">
         <button type="button" class="btn btn-link search-toggle" aria-expanded="@showSearch" @onclick="() => showSearch = !showSearch">記事を検索・絞り込み</button>
@@ -231,7 +230,7 @@
                         <tr>
                             <td class="article-col-compact" data-label="作成日">@ToDisplayDate(article.CreatedAt)</td>
                             <td class="article-col-compact" data-label="見出し取得"><span class="badge text-bg-light">@GetHeadlineSourceLabel(article.HeadlineSource)</span></td>
-                            <td class="article-col-compact" data-label="ステータス"><span class="badge @GetStatusBadgeClass(article.Status)">@article.StatusLabel</span></td>
+                            <td class="article-col-compact" data-label="ステータス"><span class="badge @GetStatusBadgeClass(article.Status)">@(article.AutomaticGenerationStatus == "Canceled" ? "自動生成を停止中" : article.StatusLabel)</span></td>
                             <td data-label="記事タイトル">
                                 <a href="@($"articles/{article.Id}")" class="fw-semibold">@GetArticleTitle(article)</a>
                             </td>
@@ -246,6 +245,8 @@
                             <td class="article-col-actions" data-label="操作">
                                 <div class="d-flex justify-content-end gap-2">
                                     <a class="btn btn-sm btn-outline-primary" href="@($"articles/{article.Id}")">表示</a>
+                                    @if (article.AutomaticGenerationStatus is "Canceled" or "Failed")
+                                    { <button class="btn btn-sm btn-outline-primary bulk-resume" disabled="@resumingArticle" @onclick="() => ResumeArticleAsync(article.Id)">再開</button> }
                                     <button id="@($"post-{article.Id}")" class="btn btn-sm btn-outline-success" type="button" disabled="@(!article.CanPostToWordpress || ExecutionContext.IsGuest)" title="@(ExecutionContext.IsGuest ? "ゲストはWordPressへ投稿できません" : "WordPressへ投稿")" @onclick="() => OpenPostDialogAsync(article)">投稿</button>
                                     <button class="btn btn-sm btn-outline-danger" type="button" disabled="@article.HasRunningJob" @onclick="() => ConfirmDelete(article)">削除</button>
                                 </div>
@@ -390,8 +391,24 @@
     private int? bulkH2Count = 5;
     private int? bulkH3Count = 12;
     private bool bulkIsDomesticOnly = true;
-    private string bulkTitleMethod = "Ai";
-    private string bulkOutlineMethod = "Search";
+    private string bulkGenerationScope = "FullArticle";
+    private bool bulkXSearch;
+    private int bulkWebCount = 10;
+    private int bulkXCount = 10;
+    private int bulkXDays = 30;
+    private Guid? activeBatchId;
+    private BulkGenerationPanel? bulkProgressPanel;
+    private bool resumingArticle;
+    private readonly Dictionary<string, string> bulkFieldErrors = new(StringComparer.OrdinalIgnoreCase);
+    private string? pendingBulkFocus;
+    private string? BulkError(string id) => bulkFieldErrors.GetValueOrDefault(id);
+    private string? BulkInvalid(string id) => bulkFieldErrors.ContainsKey(id) ? "true" : null;
+    private int BulkLineCount => (bulkLines ?? string.Empty).Split('\n').Count(line => !string.IsNullOrWhiteSpace(line));
+    private string BulkSummary => $"{BulkLineCount}記事 · {(bulkGenerationScope == "FullArticle" ? "本文・HTMLまで" : "構成のみ")} · "
+        + $"H2目安 {bulkH2Count ?? 5} / H3合計目安 {bulkH3Count ?? 12} · "
+        + (bulkSearchMode ? $"Web {bulkWebCount}件{(bulkIsDomesticOnly ? "（国内）" : "")}" : "Webなし") + " · "
+        + (bulkXSearch ? $"X {bulkXCount}件（過去{bulkXDays}日）" : "Xなし") + " · "
+        + (bulkAutoPostToWordpress ? "WordPress下書き投稿あり" : "投稿なし");
     private string bulkGenerationModel = string.Empty;
     private bool bulkSearchMode = true;
     private string? bulkWritingProfileId;
@@ -441,6 +458,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (pendingBulkFocus is { } fieldId)
+        {
+            pendingBulkFocus = null;
+            await using var module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/appDialog.js");
+            await module.InvokeVoidAsync("focusInvalidField", fieldId);
+        }
         if (deleteTarget is not null && !deleteDialogFocusActive)
         {
             // Captured so a stale invocation can tell it has been superseded by a newer one (see
@@ -573,7 +596,8 @@
 
         try
         {
-            articleList = await ArticleQueryService.SearchAsync(
+            using var scope = ScopeFactory.CreateScope();
+            articleList = await scope.ServiceProvider.GetRequiredService<IArticleQueryService>().SearchAsync(
                 actor,
                 new ArticleListQuery(
                     page,
@@ -598,6 +622,11 @@
 
     private bool HasActiveSearchFilter =>
         !string.IsNullOrWhiteSpace(searchQuery) || !string.IsNullOrWhiteSpace(searchTags);
+
+    private async Task RefreshGenerationAsync()
+    {
+        if (!disposed && !isLoading && !isBulkSubmitting) await LoadArticlesAsync(articleList.Page);
+    }
 
     private Task SearchAsync()
     {
@@ -643,6 +672,7 @@
     {
         showBulkForm = !showBulkForm;
         bulkRejectedLines = [];
+        bulkFieldErrors.Clear();
     }
 
     private async Task SubmitBulkAsync()
@@ -654,6 +684,7 @@
         }
 
         isBulkSubmitting = true;
+        bulkFieldErrors.Clear();
         errorMessage = null;
         successMessage = null;
         bulkRejectedLines = [];
@@ -669,26 +700,49 @@
                 bulkH2Count,
                 bulkH3Count,
                 bulkIsDomesticOnly,
-                bulkTitleMethod,
-                bulkOutlineMethod,
+                "Ai",
+                "Ai",
                 bulkGenerationModel,
                 bulkSearchMode,
                 ParseGuid(bulkWritingProfileId),
                 bulkAutoPostToWordpress,
                 ParseGuid(bulkAutoPostSiteId),
-                bulkAutoPostCategoryId));
+                bulkAutoPostCategoryId,
+                new BulkGenerationOptions(bulkGenerationScope, bulkSearchMode, bulkXSearch,
+                    bulkSearchMode ? bulkWebCount : 10, bulkXSearch ? bulkXCount : 10, bulkXSearch ? bulkXDays : 30)));
 
         isBulkSubmitting = false;
 
         if (!result.Succeeded || result.Value is null)
         {
             errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
+            foreach (var validation in result.ValidationErrors)
+            {
+                var (id, label) = validation.Field.ToLowerInvariant() switch
+                {
+                    "h2count" => ("bulk-h2", "H2見出し数"),
+                    "h3count" => ("bulk-h3", "H3見出し数"),
+                    "generation.webresultcount" => ("bulk-web-count", "Web検索件数"),
+                    "generation.xresultcount" => ("bulk-x-count", "X検索件数"),
+                    "generation.xsearchdays" => ("bulk-x-days", "X検索期間"),
+                    "generation.scope" => ("bulk-generation-scope", "生成する内容"),
+                    "generationmodel" => ("bulk-model", "生成モデル"),
+                    "autopostwordpresssiteid" => ("bulk-auto-post-site", "自動投稿先サイト"),
+                    _ => ("bulk-lines", "入力内容")
+                };
+                bulkFieldErrors[id] = $"{label}：{validation.Message}";
+            }
+            pendingBulkFocus = bulkFieldErrors.Keys.FirstOrDefault();
             return;
         }
 
         bulkRejectedLines = result.Value.RejectedLines;
-        bulkLines = null;
         showBulkForm = result.Value.RejectedLines.Count > 0;
+        if (showBulkForm)
+        {
+            bulkFieldErrors["bulk-lines"] = "未登録の行があります。「キーワード」または「キーワード|タイトル」の形式を確認してください。";
+            pendingBulkFocus = "bulk-lines";
+        }
 
         if (result.Value.CreatedArticleCount == 0)
         {
@@ -696,8 +750,33 @@
             return;
         }
 
-        successMessage = $"{result.Value.CreatedArticleCount}件の記事を登録しました。";
+        bulkLines = showBulkForm
+            ? string.Join('\n', bulkRejectedLines.Where(line => line.LineNumber > 0).Select(line => line.Line))
+            : null;
+        activeBatchId = result.Value.BatchId;
+        successMessage = $"{result.Value.CreatedArticleCount}件の記事を登録しました。自動生成を開始しました。";
         await LoadArticlesAsync(1);
+    }
+
+    private async Task ResumeArticleAsync(Guid articleId)
+    {
+        var actor = await GetActorAsync();
+        if (actor is null) return;
+        resumingArticle = true;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var result = await scope.ServiceProvider.GetRequiredService<IBulkGenerationService>().RetryAsync(actor, articleId);
+            if (!result.Succeeded) errorMessage = "再開できませんでした。生成状況を更新して確認してください。";
+            await LoadArticlesAsync(articleList.Page);
+            if (bulkProgressPanel is not null) await bulkProgressPanel.RefreshAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = "再開できませんでした。状況を更新してから再度お試しください。";
+            Logger.LogWarning("Bulk generation resume failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally { resumingArticle = false; }
     }
 
     private void ConfirmDelete(ArticleListItemResponse article)

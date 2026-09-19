@@ -381,6 +381,12 @@ Worker分離の判断条件:
 
 ### 11.2 `OutlineGeneration`
 
+一括自動生成は`ArticleGenerationRun`に設定と段階を保存し、既存ジョブを順に連携する。選択済みのWeb検索→X検索→未入力タイトルの生成・採用→構成→本文の順とし、構成のみの場合はそこで終了する。各段階の成功記録と後続ジョブの追加は同じDBトランザクションで確定する。`GenerationRunId + JobType`の一意制約と成功済みジョブの再確定防止で重複連携を防ぐ。
+
+検索は記事単位で行い、構成・本文では選択されたソースの有効な資料を共有する。見出しごとの追加検索は行わない。検索0件は警告付きで続行し、検索障害は再試行上限後にその記事を停止する。他記事の処理は継続する。
+
+失敗・停止の再開は同じ段階のジョブを再利用する。停止予約は実行中の段階終了後に適用する。本文は各見出しの保存をチェックポイントとし、自動生成の再試行で保存済み本文を上書きしない。成功保存後にプロセスが停止した場合も、タイトル・構成・本文の保存結果を再利用して後続へ進む。外部APIの呼び出し自体を厳密に1回に保証するものではない。
+
 処理:
 
 1. `Articles.Status`を`OutlineGenerating`へ更新する。
@@ -408,7 +414,7 @@ Worker分離の判断条件:
 4. 生成本文を`ArticleHeadings.Body`へ保存する。MVPでは本文履歴を作成せず、現在値を上書きする。
 5. `ActualLength`を更新する。
 6. 対象見出しを`Generated`へ更新する。
-7. 記事内の全対象見出しが生成済みなら、結合済み本文とHTML本文を更新し、`Articles.Status`を`Completed`へ更新する。
+7. 記事内の全見出しが生成済みなら、結合済み本文とHTML本文を更新し、`Articles.Status`を`Completed`へ更新する。自動投稿なしでもHTMLを保存する。
 8. `Articles.AutoPostToWordpress = true`かつ`AutoPostQueuedAt`が未設定の場合、投稿先サイトの所有者と有効状態を確認し、`WordpressPost`ジョブを`Draft`で登録する。
 9. 自動投稿ジョブを登録した場合は`Articles.AutoPostQueuedAt`を設定する。
 10. `AiGenerationLogs`と`UsageLedgers`を記録する。

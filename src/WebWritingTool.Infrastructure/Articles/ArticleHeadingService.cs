@@ -47,6 +47,8 @@ public sealed class ArticleHeadingService(ApplicationDbContext dbContext) : IArt
         }
 
         var headings = await LoadHeadingsAsync(command.ArticleId, cancellationToken);
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult<ArticleHeadingResponse>.Failure(ArticleServiceError.ConflictRunningJob);
         var errors = ValidateCreate(command, headings);
         if (errors.Count > 0)
         {
@@ -101,6 +103,8 @@ public sealed class ArticleHeadingService(ApplicationDbContext dbContext) : IArt
             return ArticleServiceResult<ArticleHeadingResponse>.Failure(ArticleServiceError.NotFound);
         }
 
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult<ArticleHeadingResponse>.Failure(ArticleServiceError.ConflictRunningJob);
         var errors = ValidateUpdate(command);
         if (errors.Count > 0)
         {
@@ -159,6 +163,8 @@ public sealed class ArticleHeadingService(ApplicationDbContext dbContext) : IArt
             return ArticleServiceResult.Failure(ArticleServiceError.NotFound);
         }
 
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult.Failure(ArticleServiceError.ConflictRunningJob);
         var headings = await LoadHeadingsAsync(articleId, cancellationToken);
         var heading = headings.FirstOrDefault(item => item.Id == headingId);
         if (heading is null)
@@ -207,6 +213,8 @@ public sealed class ArticleHeadingService(ApplicationDbContext dbContext) : IArt
         }
 
         var headings = await LoadHeadingsAsync(command.ArticleId, cancellationToken);
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult.Failure(ArticleServiceError.ConflictRunningJob);
         var errors = ValidateOrder(command.Items, headings);
         if (errors.Count > 0)
         {

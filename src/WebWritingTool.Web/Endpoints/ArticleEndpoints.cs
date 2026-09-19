@@ -186,7 +186,8 @@ public static class ArticleEndpoints
                 request.WritingProfileWordpressSiteId,
                 request.AutoPostToWordpress,
                 request.AutoPostWordpressSiteId,
-                request.AutoPostWordpressCategoryId),
+                request.AutoPostWordpressCategoryId,
+                request.Generation),
             cancellationToken);
 
         if (!result.Succeeded || result.Value is null)
@@ -645,7 +646,8 @@ public static class ArticleEndpoints
         Guid? WritingProfileWordpressSiteId,
         bool AutoPostToWordpress,
         Guid? AutoPostWordpressSiteId,
-        int? AutoPostWordpressCategoryId);
+        int? AutoPostWordpressCategoryId,
+        BulkGenerationOptions? Generation = null);
 
     private sealed record UpdateArticleRequest(
         string Keyword,

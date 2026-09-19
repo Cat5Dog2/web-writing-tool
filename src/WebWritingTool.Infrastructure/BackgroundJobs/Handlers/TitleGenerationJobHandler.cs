@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using WebWritingTool.Application.Generation;
+using WebWritingTool.Application.Search;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Infrastructure.Data;
 using WebWritingTool.Infrastructure.Generation;
@@ -11,7 +12,8 @@ public sealed class TitleGenerationJobHandler(
     ApplicationDbContext dbContext,
     IAiTextGenerationClient aiClient,
     IOptions<GeminiOptions> geminiOptions,
-    TitleGenerationPromptBuilder promptBuilder)
+    TitleGenerationPromptBuilder promptBuilder,
+    IArticleResearchService researchService)
     : AiGenerationJobHandlerBase(dbContext, aiClient, geminiOptions), IJobHandler
 {
     public JobType JobType => JobType.TitleGeneration;
@@ -25,12 +27,17 @@ public sealed class TitleGenerationJobHandler(
             ? job.ArticleId ?? Guid.Empty
             : payload.ArticleId;
         var article = await GetArticleAsync(articleId, job.UserId, cancellationToken);
+        if (job.GenerationRunId.HasValue && !string.IsNullOrWhiteSpace(article.Title))
+            return new JobExecutionResult(SerializeResult(new { articleId, title = article.Title }));
         var model = ResolveModel(payload.GenerationModel, article);
         var prompt = promptBuilder.Build(CreatePromptContext(article, []), payload);
         var operation = AiOperations.TitleGeneration;
 
         try
         {
+            var sources = await GetWorkflowSourcesAsync(job, cancellationToken);
+            if (sources is not null)
+                prompt = ReferencePromptFormatter.Attach(prompt, await researchService.GetSelectedReferencesAsync(job.UserId, article.Id, sources, cancellationToken));
             var result = await GenerateAsync(operation, model, prompt, temperature: 0.7, cancellationToken);
             var candidates = TitleCandidateParser.Parse(result.Text, payload.CandidateCount ?? 5);
             if (candidates.Count == 0)
@@ -38,6 +45,11 @@ public sealed class TitleGenerationJobHandler(
                 throw new JsonException("No title candidates returned.");
             }
 
+            if (job.GenerationRunId.HasValue)
+            {
+                article.Title = candidates[0].Title;
+                article.InvalidateHumanReview();
+            }
             AddSuccessAccounting(job, article, operation, prompt, result);
             await DbContext.SaveChangesAsync(cancellationToken);
 

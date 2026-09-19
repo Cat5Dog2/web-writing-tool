@@ -77,6 +77,14 @@ public class GuestAccountCleanupTests(IntegrationTestFixture fixture)
             Status = JobStatus.Queued,
             QueuedAt = now
         });
+        db.ArticleGenerationRuns.Add(new ArticleGenerationRun
+        {
+            UserId = guestId,
+            ArticleId = guestArticle,
+            BatchId = Guid.NewGuid(),
+            Stage = JobType.BodyGeneration,
+            CreatedAt = now
+        });
         db.WordpressSites.Add(new WordpressSite
         {
             UserId = guestId,
@@ -107,6 +115,7 @@ public class GuestAccountCleanupTests(IntegrationTestFixture fixture)
         Assert.False(await db.ArticleHeadings.IgnoreQueryFilters().AnyAsync(heading => heading.ArticleId == guestArticle));
         Assert.False(await db.SearchResults.AnyAsync(result => result.UserId == guestId));
         Assert.False(await db.ArticleGenerationJobs.AnyAsync(job => job.UserId == guestId));
+        Assert.False(await db.ArticleGenerationRuns.AnyAsync(run => run.UserId == guestId));
         Assert.False(await db.WordpressSites.IgnoreQueryFilters().AnyAsync(site => site.UserId == guestId));
         Assert.False(await db.NotificationSettings.IgnoreQueryFilters().AnyAsync(setting => setting.UserId == guestId));
         Assert.True(await db.Users.AnyAsync(user => user.Id == normalId));

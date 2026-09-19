@@ -633,3 +633,35 @@ body:has(dialog[open]) { overflow: hidden; }
 
 .article-settings-page .article-panel > .d-flex > .btn { flex-shrink: 0; white-space: nowrap; }
 .notification-summary { min-width: 0; overflow-wrap: anywhere; }
+
+/* Bulk creation: keep configuration, actionable work, and completed history distinct. */
+.bulk-form .bulk-settings-group { margin: 1.1rem 0 0; padding: 1rem 0 0; border: 0; border-top: 1px solid #e0e5ed; min-width: 0; }
+.bulk-form fieldset legend { float: none; width: auto; margin-bottom: .35rem; }
+.bulk-form [aria-invalid="true"] { border-color: #b42318; }
+.bulk-start { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; padding: 1rem; background: #f3f5fb; border-radius: 8px; }
+.bulk-start .btn { flex-shrink: 0; }
+.bulk-start p { color: #49566a; overflow-wrap: anywhere; }
+.bulk-progress-header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .75rem; }
+.bulk-batch-picker { max-width: 28rem; margin-top: 1rem; }
+.bulk-counts { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem; }
+.bulk-badge { display: inline-block; width: fit-content; padding: .25rem .65rem; border-radius: 5px; font-size: .85rem; font-weight: 600; }
+.bulk-running { background: #e8edff; color: #3349a2; }
+.bulk-failed { background: #fce9e7; color: #9d2018; }
+.bulk-stopped { background: #fff1d6; color: #805214; }
+.bulk-succeeded { background: #e4f2e9; color: #24643d; }
+.bulk-progress-row { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: .65rem 1rem; padding-block: .9rem; border-top: 1px solid #e0e5ed; }
+.bulk-row-main { display: flex; flex-direction: column; gap: .35rem; min-width: 0; flex: 1 1 14rem; }
+.bulk-row-main progress { width: min(100%, 20rem); accent-color: #5945c6; }
+.bulk-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.bulk-row-note { flex-basis: 100%; overflow-wrap: anywhere; }
+.bulk-warning { color: #805214; }
+.bulk-complete-heading { color: #24643d; font-weight: 600; }
+.bulk-completed { margin-top: .5rem; }
+.bulk-completed summary { color: #49566a; }
+@media (max-width: 768px) {
+    .bulk-progress .btn, .bulk-resume, .bulk-form .btn, .bulk-form summary { min-height: 44px; }
+    .bulk-form .btn-close { min-width: 44px; }
+    .bulk-start { flex-direction: column; align-items: stretch; padding: .8rem; }
+    .bulk-row-actions { width: 100%; }
+    .bulk-progress-header .btn { font-size: .9rem; }
+}

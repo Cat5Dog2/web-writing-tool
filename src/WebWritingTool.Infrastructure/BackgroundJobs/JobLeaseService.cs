@@ -11,7 +11,8 @@ public sealed class JobLeaseService(
     ApplicationDbContext dbContext,
     IOptions<BackgroundJobOptions> options,
     JobRetryPolicy retryPolicy,
-    ISecretMasker secretMasker)
+    ISecretMasker secretMasker,
+    BulkGenerationWorkflow bulkWorkflow)
 {
     public async Task<LeasedJob?> TryAcquireAsync(
         string workerId,
@@ -51,6 +52,13 @@ public sealed class JobLeaseService(
         job.Progress = 0;
         job.NextRunAt = null;
 
+        if (job.GenerationRunId is Guid runId)
+        {
+            var run = await dbContext.ArticleGenerationRuns.SingleAsync(r => r.Id == runId, cancellationToken);
+            await dbContext.Entry(run).ReloadAsync(cancellationToken);
+            run.Status = JobStatus.Running;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -62,14 +70,18 @@ public sealed class JobLeaseService(
         string? resultJson,
         CancellationToken cancellationToken = default)
     {
-        var job = await dbContext.ArticleGenerationJobs.FirstOrDefaultAsync(
-            item => item.Id == jobId,
-            cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var job = await dbContext.ArticleGenerationJobs
+            .FromSqlInterpolated($"SELECT * FROM \"ArticleGenerationJobs\" WHERE \"Id\" = {jobId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
 
         if (job is null)
         {
             return;
         }
+
+        await dbContext.Entry(job).ReloadAsync(cancellationToken);
+        if (job.Status == JobStatus.Succeeded) return;
 
         var now = DateTimeOffset.UtcNow;
         job.Status = JobStatus.Succeeded;
@@ -81,7 +93,9 @@ public sealed class JobLeaseService(
         job.LockedAt = null;
         job.FinishedAt = now;
 
+        await bulkWorkflow.AdvanceAsync(job, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<JobFailureDecision?> MarkFailureOrRetryAsync(
@@ -89,14 +103,17 @@ public sealed class JobLeaseService(
         Exception exception,
         CancellationToken cancellationToken = default)
     {
-        var job = await dbContext.ArticleGenerationJobs.FirstOrDefaultAsync(
-            item => item.Id == jobId,
-            cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var job = await dbContext.ArticleGenerationJobs
+            .FromSqlInterpolated($"SELECT * FROM \"ArticleGenerationJobs\" WHERE \"Id\" = {jobId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
 
         if (job is null)
         {
             return null;
         }
+        await dbContext.Entry(job).ReloadAsync(cancellationToken);
+        if (job.Status == JobStatus.Succeeded) return null;
 
         var failure = JobFailure.FromException(exception);
         var now = DateTimeOffset.UtcNow;
@@ -120,7 +137,9 @@ public sealed class JobLeaseService(
             job.NextRunAt = null;
         }
 
+        await UpdateRunFailureAsync(job, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return new JobFailureDecision(
             job.Id,
@@ -129,7 +148,7 @@ public sealed class JobLeaseService(
             job.MaxAttempts,
             failure.ErrorCode,
             job.ErrorMessage,
-            shouldRetry,
+            job.Status == JobStatus.Queued,
             job.NextRunAt);
     }
 
@@ -137,14 +156,19 @@ public sealed class JobLeaseService(
     {
         var now = DateTimeOffset.UtcNow;
         var expiresBefore = now.Subtract(options.Value.LockTimeout);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var runningStatus = JobStatus.Running.ToString();
         var expiredJobs = await dbContext.ArticleGenerationJobs
-            .Where(job => job.Status == JobStatus.Running
-                && job.LockedAt != null
-                && job.LockedAt < expiresBefore)
+            .FromSqlInterpolated($"""
+                SELECT * FROM "ArticleGenerationJobs"
+                WHERE "Status" = {runningStatus} AND "LockedAt" < {expiresBefore}
+                FOR UPDATE SKIP LOCKED
+                """)
             .ToListAsync(cancellationToken);
 
         foreach (var job in expiredJobs)
         {
+            await dbContext.Entry(job).ReloadAsync(cancellationToken);
             job.ErrorCode = JobErrorCodes.Timeout;
             job.ErrorMessage = "ジョブのロック期限が切れました。";
             job.LockedBy = null;
@@ -162,14 +186,39 @@ public sealed class JobLeaseService(
                 job.NextRunAt = null;
                 job.FinishedAt = now;
             }
+            await UpdateRunFailureAsync(job, cancellationToken);
         }
 
         if (expiredJobs.Count > 0)
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+        await transaction.CommitAsync(cancellationToken);
 
         return expiredJobs.Count;
+    }
+
+    private async Task UpdateRunFailureAsync(ArticleGenerationJob job, CancellationToken cancellationToken)
+    {
+        if (job.GenerationRunId is not Guid runId) return;
+        var run = await dbContext.ArticleGenerationRuns.SingleAsync(r => r.Id == runId, cancellationToken);
+        await dbContext.Entry(run).ReloadAsync(cancellationToken);
+        if (run.StopRequested)
+        {
+            job.Status = JobStatus.Canceled;
+            job.CanceledAt = DateTimeOffset.UtcNow;
+            job.FinishedAt = job.CanceledAt;
+            job.NextRunAt = null;
+        }
+        run.Status = job.Status;
+        run.FinishedAt = job.FinishedAt;
+        if (job.Status == JobStatus.Failed)
+        {
+            var article = await dbContext.Articles.SingleAsync(a => a.Id == run.ArticleId, cancellationToken);
+            article.Status = WebWritingTool.Domain.Articles.ArticleStatus.Failed;
+        }
+        else if (job.Status == JobStatus.Canceled)
+            await bulkWorkflow.SetStoppedArticleStateAsync(run.ArticleId, cancellationToken);
     }
 
     private static LeasedJob ToLeasedJob(ArticleGenerationJob job)
@@ -182,7 +231,8 @@ public sealed class JobLeaseService(
             job.JobType,
             job.PayloadJson,
             job.AttemptCount,
-            job.MaxAttempts);
+            job.MaxAttempts,
+            job.GenerationRunId);
     }
 
     private string SanitizeMessage(string message)

@@ -32,6 +32,8 @@ public sealed class OutlineGenerationJobHandler(
             : payload.ArticleId;
         var article = await GetArticleAsync(articleId, job.UserId, cancellationToken);
         var existingHeadings = await GetHeadingsAsync(article.Id, cancellationToken);
+        if (job.GenerationRunId.HasValue && existingHeadings.Count > 0)
+            return new JobExecutionResult(SerializeResult(new { articleId, headingCount = existingHeadings.Count }));
         var model = ResolveModel(payload.GenerationModel, article);
         var prompt = promptBuilder.Build(CreatePromptContext(article, existingHeadings), payload);
         var operation = AiOperations.OutlineGeneration;
@@ -41,7 +43,10 @@ public sealed class OutlineGenerationJobHandler(
 
         try
         {
-            var references = await researchService.GetReferencesAsync(job.UserId, article.Id, null,
+            var sources = await GetWorkflowSourcesAsync(job, cancellationToken);
+            var references = sources is not null
+                ? await researchService.GetSelectedReferencesAsync(job.UserId, article.Id, sources, cancellationToken)
+                : await researchService.GetReferencesAsync(job.UserId, article.Id, null,
                 (payload.SearchMode ?? article.SearchMode) || (payload.OutlineMethod ?? article.OutlineMethod) == "Search",
                 payload.Keyword, payload.IsDomesticOnly, cancellationToken);
             prompt = ReferencePromptFormatter.Attach(promptBuilder.Build(CreatePromptContext(article, existingHeadings), payload), references);
@@ -51,6 +56,8 @@ public sealed class OutlineGenerationJobHandler(
             {
                 throw new JsonException("No outline headings returned.");
             }
+            if (job.GenerationRunId.HasValue && string.IsNullOrWhiteSpace(outline.MetaDescription))
+                throw new JsonException("No meta description returned.");
 
             var now = DateTimeOffset.UtcNow;
             foreach (var heading in existingHeadings)

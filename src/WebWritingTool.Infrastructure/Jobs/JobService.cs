@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Jobs;
+using WebWritingTool.Application.Articles;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
@@ -12,7 +13,8 @@ namespace WebWritingTool.Infrastructure.Jobs;
 public sealed class JobService(
     ApplicationDbContext dbContext,
     JobRetryPolicy retryPolicy,
-    ISecurityRateLimiter securityRateLimiter)
+    ISecurityRateLimiter securityRateLimiter,
+    IBulkGenerationService bulkGenerationService)
     : IJobCommandService, IJobQueryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -44,6 +46,9 @@ public sealed class JobService(
         }
 
         var hasDuplicate = await HasDuplicateJobAsync(command, cancellationToken);
+        if (target.Article is not null && await dbContext.ArticleGenerationRuns.AnyAsync(
+            r => r.ArticleId == target.Article.Id && (r.Status == JobStatus.Queued || r.Status == JobStatus.Running), cancellationToken))
+            return JobServiceResult<JobAcceptedResponse>.Failure(JobServiceError.RunningJobExists);
         if (hasDuplicate)
         {
             return JobServiceResult<JobAcceptedResponse>.Failure(JobServiceError.RunningJobExists);
@@ -171,6 +176,13 @@ public sealed class JobService(
             return JobServiceResult<JobCancelResponse>.Failure(JobServiceError.JobNotCancelable);
         }
 
+        if (job.GenerationRunId.HasValue && job.ArticleId is Guid articleId)
+        {
+            var stopped = await bulkGenerationService.StopAsync(new ArticleActor(actor.UserId, actor.IsAdmin), articleId, cancellationToken);
+            return stopped.Succeeded ? JobServiceResult<JobCancelResponse>.Success(new JobCancelResponse(job.Id, "Canceled"))
+                : JobServiceResult<JobCancelResponse>.Failure(JobServiceError.JobNotCancelable);
+        }
+
         var now = DateTimeOffset.UtcNow;
         job.Status = JobStatus.Canceled;
         job.CanceledAt = now;
@@ -197,6 +209,14 @@ public sealed class JobService(
         if (original is null || !CanAccess(actor, original.UserId))
         {
             return JobServiceResult<JobAcceptedResponse>.Failure(JobServiceError.NotFound);
+        }
+
+        if (original.GenerationRunId.HasValue && original.ArticleId is Guid articleId)
+        {
+            var retried = await bulkGenerationService.RetryAsync(new ArticleActor(actor.UserId, actor.IsAdmin), articleId, cancellationToken);
+            if (!retried.Succeeded) return JobServiceResult<JobAcceptedResponse>.Failure(JobServiceError.JobNotRetryable);
+            var current = await dbContext.ArticleGenerationJobs.AsNoTracking().SingleAsync(j => j.Id == jobId, cancellationToken);
+            return JobServiceResult<JobAcceptedResponse>.Success(ToAcceptedResponse(current));
         }
 
         if (original.Status != JobStatus.Failed

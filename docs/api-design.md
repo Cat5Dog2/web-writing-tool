@@ -367,6 +367,30 @@ Request `BulkCreateArticlesRequest`:
 | `autoPostWordpressSiteId` | uuid? | 条件付き | `autoPostToWordpress`がtrueの場合は必須。投稿先WordPressサイト |
 | `autoPostWordpressCategoryId` | int? | 任意 | 投稿カテゴリ。未指定時は投稿先サイトの既定カテゴリ |
 
+`generation`は任意の追加オブジェクト。省略時は従来の構成生成のみを維持する。一括登録画面は次の設定を明示して送る。
+
+| `generation`内の項目 | 型・既定値 | 検証・動作 |
+| --- | --- | --- |
+| `scope` | string / `OutlineOnly` | `OutlineOnly`または`FullArticle`。画面既定は`FullArticle` |
+| `useWebSearch` | bool / true | Web検索・Web資料の生成利用を許可 |
+| `useXSearch` | bool / false | X検索・X資料の生成利用を許可 |
+| `webResultCount` | int / 10 | 1〜20 |
+| `xResultCount` | int / 10 | 1〜100。生成への採用は既存どおり最大10件 |
+| `xSearchDays` | int / 30 | 1〜365。登録日時を基準とした過去日数 |
+
+`generation`指定時はこの検索設定を優先し、従来の`searchMode`・`outlineMethod`で追加検索を発生させない。指定済みタイトルは保持し、空欄のみ自動生成・採用する。`titleMethod`は互換性のため受け付けるが、自動生成では空欄のAI補完を使用する。
+
+例: `"generation": { "scope": "FullArticle", "useWebSearch": true, "useXSearch": true, "webResultCount": 10, "xResultCount": 10, "xSearchDays": 30 }`
+
+登録と自動生成:
+
+- `generation`省略時は有効行ごとに記事と`OutlineGeneration`ジョブを作り、同じ保存トランザクションで確定する。
+- `generation`指定時は記事・自動生成履歴・最初の段階のジョブを同時保存する。選択されたWeb検索→X検索→未入力タイトル生成→構成生成→本文生成の順に進む。`OutlineOnly`は構成で終了する。
+- H2/H3数と自動生成設定は履歴に保存する。本文は見出しごとに保存し、再試行では生成済み本文を保持する。完了時はMarkdown・HTMLを保存する。
+- レスポンスの`jobs`は各記事の最初のジョブを表す。`generation`指定時は`batchId`も返す。記事生成の完了を表すレスポンスではない。
+- 不正行には記事・ジョブを作らず、`rejectedLines`に送信時の行番号と元の行を返す。全行不正の場合は記事件数0、`jobs`は空とする。
+- ゲストのジョブも同じ経路を使い、Workerが保存済みのゲスト属性からサンプル生成へ切り替える。
+
 自動投稿の扱い:
 
 - `autoPostToWordpress`がtrueの場合、`autoPostWordpressSiteId`はログインユーザーが所有する有効なWordPressサイトでなければならない。
@@ -393,6 +417,18 @@ Response `202 Accepted`:
   "rejectedLines": []
 }
 ```
+
+### 6.3.1 一括自動生成の進捗・再開API
+
+- `GET /api/bulk-generations/?batchId={id}`: 指定一括登録の全記事の進捗。未指定なら参照可能な最新バッチ。`articleId={id}`指定時はその記事に限定する。
+- `GET /api/bulk-generations/batches`: 参照可能な登録履歴を新しい順に返す。項目は`batchId`、`createdAt`、`articleCount`。削除済み記事は件数から除外する。
+- `GET /api/bulk-generations/overview?batchId={id}`: 選択した登録（省略時は最新）の記事に、他の登録の未完了記事を加えて返す。完了以外の待機・実行・失敗・手動停止を継続して追跡する。従来の進捗GETの絞り込み動作は変更しない。
+- 進捗には`runId`、`batchId`、`articleId`、`keyword`、`status`、`stage`、`completedHeadings`、`totalHeadings`、`error`、`warning`、`stopRequested`、`options`を返す。
+- 進捗には補助表示用の`title`も返す。記事一覧の各項目には`automaticGenerationStatus`を追加し、停止・失敗時の再開操作に使う。
+- `POST /api/bulk-generations/{articleId}/retry`: 失敗・停止から未完了段階を再開。同じ段階のジョブを再利用する。
+- `POST /api/bulk-generations/{articleId}/stop`: 待機中は停止、実行中は現在の段階終了後に停止する。
+- 全経路で認証・所有者または管理者の認可を検証する。POSTはCSRF必須。成功204、対象なし404、状態競合409。進捗GETは参照できない記事を返さない。
+- 自動生成が待機・実行中の記事は、記事情報・見出し・HTMLの編集と手動ジョブ追加を409で拒否する。
 
 ### 6.4 記事詳細取得
 

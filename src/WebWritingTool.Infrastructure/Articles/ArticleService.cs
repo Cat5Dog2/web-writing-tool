@@ -1,12 +1,14 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebWritingTool.Application.Articles;
+using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Rendering;
 using WebWritingTool.Application.Search;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Articles;
 using WebWritingTool.Domain.Jobs;
 using WebWritingTool.Domain.Wordpress;
+using WebWritingTool.Infrastructure.BackgroundJobs;
 using WebWritingTool.Infrastructure.Data;
 
 namespace WebWritingTool.Infrastructure.Articles;
@@ -16,7 +18,9 @@ public sealed class ArticleService(
     IContentRenderingService contentRenderingService,
     IUrlSafetyValidator urlSafetyValidator,
     ISecurityRateLimiter securityRateLimiter,
-    ITopicRiskClassifier topicRiskClassifier)
+    ITopicRiskClassifier topicRiskClassifier,
+    JobRetryPolicy jobRetryPolicy,
+    BulkGenerationWorkflow bulkWorkflow)
     : IArticleCommandService, IArticleQueryService
 {
     private const int DefaultPage = 1;
@@ -24,7 +28,7 @@ public sealed class ArticleService(
     private const int MaxPageSize = 100;
     private const string DefaultNotificationMode = "None";
 
-    private static readonly JsonSerializerOptions SnapshotJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<ArticleListResponse> SearchAsync(
         ArticleActor actor,
@@ -97,6 +101,11 @@ public sealed class ArticleService(
             pageArticles.Select(article => article.Id).ToArray(),
             cancellationToken);
 
+        var pageIds = pageArticles.Select(a => a.Id).ToArray();
+        var generationStates = await dbContext.ArticleGenerationRuns.AsNoTracking()
+            .Where(r => pageIds.Contains(r.ArticleId))
+            .ToDictionaryAsync(r => r.ArticleId, r => r.Status.ToString(), cancellationToken);
+
         var items = pageArticles
             .Select(article =>
             {
@@ -114,7 +123,8 @@ public sealed class ArticleService(
                     article.GenerationModel,
                     article.Status.CanPostToWordpress(),
                     jobState?.HasRunningJob ?? false,
-                    jobState?.HasQueuedJob ?? false);
+                    jobState?.HasQueuedJob ?? false,
+                    generationStates.GetValueOrDefault(article.Id));
             })
             .ToArray();
 
@@ -307,10 +317,10 @@ public sealed class ArticleService(
                 UserId = command.UserId,
                 Keyword = line.Keyword.Trim(),
                 Title = ArticleInputNormalizer.NormalizeOptionalText(line.Title),
-                Status = ArticleStatus.Draft,
+                Status = ArticleStatus.OutlineQueued,
                 GenerationModel = command.GenerationModel.Trim(),
                 OutlineMethod = command.OutlineMethod.Trim(),
-                SearchMode = command.SearchMode,
+                SearchMode = command.Generation?.UseWebSearch ?? command.SearchMode,
                 IsDomesticOnly = command.IsDomesticOnly,
                 NotificationMode = DefaultNotificationMode,
                 WritingProfileWordpressSiteId = writingProfile?.Id,
@@ -326,11 +336,46 @@ public sealed class ArticleService(
             ApplyTopicRisk(article);
         }
 
+        var queuedAt = DateTimeOffset.UtcNow;
+        var batchId = command.Generation is null ? (Guid?)null : Guid.NewGuid();
+        var jobs = articles.Select(article => command.Generation is not null
+            ? bulkWorkflow.Start(article, command, batchId!.Value)
+            : new ArticleGenerationJob
+            {
+                UserId = article.UserId,
+                ArticleId = article.Id,
+                JobType = JobType.OutlineGeneration,
+                Status = JobStatus.Queued,
+                QueuedAt = queuedAt,
+                MaxAttempts = jobRetryPolicy.GetMaxAttempts(JobType.OutlineGeneration),
+                PayloadJson = JsonSerializer.Serialize(new OutlineGenerationPayload(
+                article.Id,
+                article.Keyword,
+                article.Title,
+                command.H2Count,
+                command.H3Count,
+                article.OutlineMethod,
+                article.GenerationModel,
+                article.SearchMode,
+                article.IsDomesticOnly,
+                article.Tone,
+                article.SuggestedKeywords,
+                article.RelatedKeywords,
+                article.LearningType,
+                article.LearningText,
+                article.AdditionalPrompt), JsonOptions)
+            }).ToArray();
+
+        // 記事だけが残らないよう、構成生成ジョブと同じSaveChangesで確定する。
         dbContext.Articles.AddRange(articles);
+        dbContext.ArticleGenerationJobs.AddRange(jobs);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return ArticleServiceResult<BulkCreateArticlesResponse>.Success(
-            new BulkCreateArticlesResponse(articles.Length, command.AutoPostToWordpress, [], rejectedLines));
+            new BulkCreateArticlesResponse(articles.Length, command.AutoPostToWordpress,
+                jobs.Select(job => new BulkArticleJobResponse(
+                    job.Id, job.ArticleId!.Value, job.JobType.ToString(), job.Status.ToString(),
+                    $"/api/jobs/{job.Id}")).ToArray(), rejectedLines, batchId));
     }
 
     public async Task<ArticleServiceResult<ArticleDetailResponse>> UpdateAsync(
@@ -344,6 +389,9 @@ public sealed class ArticleService(
         {
             return ArticleServiceResult<ArticleDetailResponse>.Failure(ArticleServiceError.NotFound);
         }
+
+        if (await GenerationEditingGuard.IsActiveAsync(dbContext, article.Id, cancellationToken))
+            return ArticleServiceResult<ArticleDetailResponse>.Failure(ArticleServiceError.ConflictRunningJob);
 
         var validationErrors = await ValidateUpdateAsync(command, cancellationToken);
         if (validationErrors.Count > 0)
@@ -464,6 +512,10 @@ public sealed class ArticleService(
             job.FinishedAt ??= now;
         }
 
+        await dbContext.ArticleGenerationRuns.Where(r => r.ArticleId == articleId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, JobStatus.Canceled)
+                .SetProperty(r => r.StopRequested, true).SetProperty(r => r.FinishedAt, now), cancellationToken);
+
         article.DeletedAt = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -513,6 +565,14 @@ public sealed class ArticleService(
 
         ValidateCount(nameof(command.H2Count), command.H2Count, 1, 20, errors);
         ValidateCount(nameof(command.H3Count), command.H3Count, 0, 60, errors);
+
+        if (command.Generation is { } generation)
+        {
+            ValidateRequiredOption("generation.scope", generation.Scope, ["OutlineOnly", "FullArticle"], errors);
+            ValidateCount("generation.webResultCount", generation.WebResultCount, 1, 20, errors);
+            ValidateCount("generation.xResultCount", generation.XResultCount, 1, 100, errors);
+            ValidateCount("generation.xSearchDays", generation.XSearchDays, 1, 365, errors);
+        }
 
         if (string.IsNullOrWhiteSpace(command.TitleMethod))
         {
@@ -919,7 +979,7 @@ public sealed class ArticleService(
             site.WritingCharacter,
             site.ReaderPersona);
 
-        return JsonSerializer.Serialize(snapshot, SnapshotJsonOptions);
+        return JsonSerializer.Serialize(snapshot, JsonOptions);
     }
 
     private static bool CanAccess(ArticleActor actor, string ownerUserId)

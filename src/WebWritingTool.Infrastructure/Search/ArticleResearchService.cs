@@ -82,6 +82,19 @@ public sealed class ArticleResearchService(
         }
 
         var results = await ReadResultsAsync(article, headingId, cancellationToken);
+        return ToReferences(results);
+    }
+
+    public async Task<IReadOnlyList<AiReferenceSource>> GetSelectedReferencesAsync(
+        string userId, Guid articleId, ResearchSourceSelection sources, CancellationToken cancellationToken = default)
+    {
+        var article = await GetArticleAsync(new ArticleActor(userId, false), articleId, null, cancellationToken)
+            ?? throw new JobExecutionException(JobErrorCodes.NotFound, "記事が見つかりません。");
+        return ToReferences(await ReadResultsAsync(article, null, cancellationToken, sources));
+    }
+
+    private IReadOnlyList<AiReferenceSource> ToReferences(ArticleResearchResponse results)
+    {
         return results.WebResults.Where(result => !string.IsNullOrWhiteSpace(result.Snippet))
             .Take(10).Select((result, index) => new AiReferenceSource($"web-{index + 1}",
                 result.Title, result.Url, $"取得日時: {result.FetchedAt:O}\n{Excerpt(result.Snippet!)}"))
@@ -105,18 +118,18 @@ public sealed class ArticleResearchService(
     }
 
     private async Task<ArticleResearchResponse> ReadResultsAsync(
-        Article article, Guid? headingId, CancellationToken cancellationToken)
+        Article article, Guid? headingId, CancellationToken cancellationToken, ResearchSourceSelection? sources = null)
     {
         var now = DateTimeOffset.UtcNow;
         var web = await dbContext.SearchResults.AsNoTracking()
-            .Where(result => result.UserId == article.UserId && result.ArticleId == article.Id
+            .Where(result => (sources == null || sources.UseWeb) && result.UserId == article.UserId && result.ArticleId == article.Id
                 && (result.HeadingId == null || result.HeadingId == headingId) && result.IsDummy == dataMode.IsDummy
                 && result.CacheExpiresAt > now && result.ContentExpiresAt > now)
             .OrderByDescending(result => result.IsManual)
             .ThenByDescending(result => result.FetchedAt).ThenBy(result => result.Rank).ThenBy(result => result.Id)
             .Take(100).ToListAsync(cancellationToken);
         var xQuery = dbContext.XSearchPosts.AsNoTracking()
-            .Where(post => post.UserId == article.UserId && post.ArticleId == article.Id
+            .Where(post => (sources == null || sources.UseX) && post.UserId == article.UserId && post.ArticleId == article.Id
                 && (post.HeadingId == null || post.HeadingId == headingId) && post.IsDummy == dataMode.IsDummy
                 && post.CacheExpiresAt > now && post.ContentExpiresAt > now && post.Text != null);
         var posts = await xQuery.OrderByDescending(post => post.FetchedAt).Take(100).ToListAsync(cancellationToken);
@@ -133,6 +146,7 @@ public sealed class ArticleResearchService(
             }
             catch (ExternalIntegrationException)
             {
+                if (sources?.UseX == true) throw;
                 posts.Clear();
                 warning = "X投稿を再取得できなかったため、表示・生成への利用を保留しました。時間をおいて再度取得してください。";
             }

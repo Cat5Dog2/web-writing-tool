@@ -171,6 +171,7 @@ Adminは他ユーザーを削除できるが、管理者自身と最後のAdmin�
 - Articles
 - ArticleHeadings
 - AiGenerationJobs
+- ArticleGenerationRuns
 - UsageLedgers
 - SearchResults
 - XSearchPosts
@@ -181,6 +182,8 @@ Adminは他ユーザーを削除できるが、管理者自身と最後のAdmin�
 
 API、画面、BackgroundServiceのすべてで所有者整合性を確認する。
 BackgroundServiceではジョブ登録時のUserIdだけを信頼せず、処理直前に関連リソースのUserIdを再確認する。
+
+一括自動生成の進捗参照・停止・再開は所有者またはAdminのみ許可する。生成待ち・実行中は、記事・見出し編集、HTML変換、追加の手動生成をApplication/Infrastructureサービスでも拒否する。停止・再開APIにはCSRF検証、再開APIにはジョブ登録レート制限を適用する。
 
 ### 7.3 認可ポリシー
 

@@ -10,6 +10,8 @@ public sealed class ArticleGenerationJob
 
     public Guid? HeadingId { get; set; }
 
+    public Guid? GenerationRunId { get; set; }
+
     public JobType JobType { get; set; }
 
     public JobStatus Status { get; set; } = JobStatus.Queued;

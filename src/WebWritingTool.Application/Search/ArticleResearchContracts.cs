@@ -6,6 +6,8 @@ namespace WebWritingTool.Application.Search;
 
 public sealed record SearchDataMode(bool IsDummy);
 
+public sealed record ResearchSourceSelection(bool UseWeb, bool UseX);
+
 public sealed record ArticleResearchRequest(string? Query, Guid? HeadingId = null, int? MaxResults = null);
 
 public sealed record ResearchWebResult(
@@ -21,6 +23,9 @@ public sealed record ArticleResearchResponse(
 
 public interface IArticleResearchService
 {
+    Task<IReadOnlyList<AiReferenceSource>> GetSelectedReferencesAsync(
+        string userId, Guid articleId, ResearchSourceSelection sources, CancellationToken cancellationToken = default);
+
     Task<JobServiceResult<JobAcceptedResponse>> EnqueueAsync(
         ArticleActor actor, Guid articleId, string source, ArticleResearchRequest request,
         CancellationToken cancellationToken = default);

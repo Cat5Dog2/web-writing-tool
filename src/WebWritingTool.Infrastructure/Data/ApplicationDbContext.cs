@@ -28,6 +28,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<ArticleGenerationJob> ArticleGenerationJobs => Set<ArticleGenerationJob>();
 
+    public DbSet<ArticleGenerationRun> ArticleGenerationRuns => Set<ArticleGenerationRun>();
+
     public DbSet<AiGenerationLog> AiGenerationLogs => Set<AiGenerationLog>();
 
     public DbSet<UsageLedger> UsageLedgers => Set<UsageLedger>();
@@ -70,6 +72,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         ConfigureArticle(builder.Entity<Article>());
         ConfigureArticleHeading(builder.Entity<ArticleHeading>());
         ConfigureArticleGenerationJob(builder.Entity<ArticleGenerationJob>());
+        ConfigureArticleGenerationRun(builder.Entity<ArticleGenerationRun>());
         ConfigureAiGenerationLog(builder.Entity<AiGenerationLog>());
         ConfigureUsageLedger(builder.Entity<UsageLedger>());
         ConfigureSearchResult(builder.Entity<SearchResult>());
@@ -303,6 +306,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             .HasDatabaseName("IX_ArticleGenerationJobs_ArticleId_JobType");
         entity.HasIndex(job => job.HeadingId)
             .HasDatabaseName("IX_ArticleGenerationJobs_HeadingId");
+        entity.HasIndex(job => new { job.GenerationRunId, job.JobType }).IsUnique();
+        entity.HasOne<ArticleGenerationRun>().WithMany().HasForeignKey(job => job.GenerationRunId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         entity.HasOne<ApplicationUser>()
             .WithMany()
@@ -316,6 +322,19 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             .WithMany()
             .HasForeignKey(job => job.HeadingId)
             .OnDelete(DeleteBehavior.SetNull);
+    }
+
+    private static void ConfigureArticleGenerationRun(EntityTypeBuilder<ArticleGenerationRun> entity)
+    {
+        entity.ToTable("ArticleGenerationRuns");
+        entity.HasKey(run => run.Id);
+        entity.Property(run => run.SettingsJson).HasColumnType(Jsonb).IsRequired();
+        entity.Property(run => run.Status).HasConversion<string>().HasMaxLength(40);
+        entity.Property(run => run.Stage).HasConversion<string>().HasMaxLength(40);
+        entity.HasIndex(run => run.ArticleId).IsUnique();
+        entity.HasIndex(run => new { run.UserId, run.BatchId });
+        entity.HasOne<Article>().WithMany().HasForeignKey(run => run.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(run => run.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ConfigureAiGenerationLog(EntityTypeBuilder<AiGenerationLog> entity)

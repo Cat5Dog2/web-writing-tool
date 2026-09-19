@@ -264,6 +264,23 @@ H2/H3の階層と本文を保存する。MVPでは見出し本文も現在値の
 
 ### 6.4 `ArticleGenerationJobs`
 
+一括自動生成用にnullableの`GenerationRunId`（uuid、`ArticleGenerationRuns.Id`へのFK、削除時SetNull）を追加する。`GenerationRunId + JobType`に一意制約を設ける。従来ジョブはnullのまま使用できる。
+
+関連テーブル`ArticleGenerationRuns`:
+
+| 項目 | 型・制約 | 用途 |
+| --- | --- | --- |
+| Id / BatchId | uuid | 記事単位の実行ID／一括登録ID |
+| ArticleId | uuid、記事FK、unique、Cascade | 1記事1履歴。記事物理削除時に削除 |
+| UserId | text、ユーザーFK、Restrict | 所有者認可とゲスト判定 |
+| SettingsJson | jsonb | 生成範囲、Web/X設定、検索件数・期間、H2/H3数 |
+| Status / Stage | varchar(40) | 全体状態／現在のジョブ種別 |
+| StopRequested | boolean | 現在の段階完了後の停止予約 |
+| Warning | text nullable | 検索0件などの注意事項 |
+| CreatedAt / FinishedAt | timestamptz / nullable | 開始・終了日時 |
+
+`UserId + BatchId`に索引を設ける。追加マイグレーションは`20260919062904_AddBulkGenerationWorkflow`。既存記事・ジョブを作り直さず追加する。
+
 AI生成、Tavily検索、X投稿検索、WordPress投稿、通知などのバックグラウンドジョブを保存する。画像生成ジョブはMVPでは登録しない。
 
 | カラム | 型 | NULL | 制約 | 説明 |
