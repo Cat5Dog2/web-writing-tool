@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,9 @@ namespace WebWritingTool.Infrastructure.Generation;
 public sealed class GeminiTextGenerationClient(
     HttpClient httpClient,
     IOptions<GeminiOptions> options,
-    ILogger<GeminiTextGenerationClient> logger)
+    ILogger<GeminiTextGenerationClient> logger,
+    IGeminiQuotaLimiter quotaLimiter,
+    TimeProvider timeProvider)
     : IAiTextGenerationClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -53,7 +56,14 @@ public sealed class GeminiTextGenerationClient(
                 model);
         }
 
-        message.Content = JsonContent.Create(CreateRequest(request), options: JsonOptions);
+        var content = CreateRequest(request);
+        message.Content = JsonContent.Create(content, options: JsonOptions);
+
+        // 日本語と参考資料のJSONエスケープを含む実際の送信テキストを保守的に見積もる。
+        // トークナイザーの厳密値ではないため、成功レスポンスのusageMetadataで補正する。
+        var inputTokens = checked(32 + Encoding.UTF8.GetByteCount(content.SystemInstruction?.Parts[0].Text ?? "")
+            + Encoding.UTF8.GetByteCount(content.Contents[0].Parts[0].Text));
+        var reservation = await quotaLimiter.ReserveAsync(model, inputTokens, cancellationToken);
 
         var stopwatch = Stopwatch.StartNew();
         try
@@ -63,12 +73,24 @@ public sealed class GeminiTextGenerationClient(
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    var rateLimit = await GeminiRateLimitResponse.ReadAsync(response, timeProvider.GetUtcNow(), cancellationToken);
+                    var retryAfter = await quotaLimiter.RecordRateLimitAsync(reservation, rateLimit.RetryAfter,
+                        rateLimit.DailyLimit, cancellationToken);
+                    throw new ExternalIntegrationException(ExternalIntegrationErrorCodes.RateLimited,
+                        "Gemini APIの利用枠が空くまで待機します。", retryAfter: retryAfter);
+                }
                 throw CreateException(response);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<GeminiGenerateContentResponse>(
                 JsonOptions,
                 cancellationToken);
+
+            var actualInputTokens = payload?.UsageMetadata?.PromptTokenCount;
+            var actualOutputTokens = payload?.UsageMetadata?.CandidatesTokenCount;
+            await quotaLimiter.RecordSuccessAsync(reservation, actualInputTokens, cancellationToken);
 
             var text = ExtractText(payload);
             if (string.IsNullOrWhiteSpace(text))
@@ -79,10 +101,12 @@ public sealed class GeminiTextGenerationClient(
             }
 
             logger.LogInformation(
-                "Gemini generation succeeded. operation={Operation} model={Model} elapsedMs={ElapsedMs}",
+                "Gemini generation succeeded. operation={Operation} model={Model} elapsedMs={ElapsedMs} inputTokens={InputTokens} outputTokens={OutputTokens}",
                 request.Operation,
                 model,
-                stopwatch.ElapsedMilliseconds);
+                stopwatch.ElapsedMilliseconds,
+                actualInputTokens,
+                actualOutputTokens);
 
             return new AiTextGenerationResult(
                 text,
@@ -90,7 +114,11 @@ public sealed class GeminiTextGenerationClient(
                 model,
                 request.PromptChars,
                 text.Length,
-                payload?.ResponseId);
+                payload?.ResponseId)
+            {
+                InputTokens = actualInputTokens,
+                OutputTokens = actualOutputTokens
+            };
         }
         catch (ExternalIntegrationException)
         {
@@ -203,7 +231,10 @@ public sealed class GeminiTextGenerationClient(
 
     private sealed record GeminiGenerateContentResponse(
         IReadOnlyList<GeminiCandidate>? Candidates,
-        string? ResponseId);
+        string? ResponseId,
+        GeminiUsageMetadata? UsageMetadata);
+
+    private sealed record GeminiUsageMetadata(int? PromptTokenCount, int? CandidatesTokenCount);
 
     private sealed record GeminiCandidate(GeminiContentResponse? Content);
 

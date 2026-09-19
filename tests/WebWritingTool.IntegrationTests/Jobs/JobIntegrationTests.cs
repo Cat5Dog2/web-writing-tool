@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using WebWritingTool.Application.Generation;
 using WebWritingTool.Application.Jobs;
 using WebWritingTool.Application.Security;
 using WebWritingTool.Domain.Jobs;
@@ -12,6 +13,39 @@ namespace WebWritingTool.IntegrationTests.Jobs;
 [Collection(IntegrationTestCollection.Name)]
 public class JobIntegrationTests(IntegrationTestFixture fixture)
 {
+    [Fact]
+    public async Task QuotaDeferral_PreservesAttemptsAndProgress_AndResumesAfterWait()
+    {
+        var context = await CreateJobContextAsync(JobStatus.Running, attemptCount: 3, priority: 9000);
+        using var scope = fixture.Factory.Services.CreateScope();
+        var leases = scope.ServiceProvider.GetRequiredService<JobLeaseService>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var job = await db.ArticleGenerationJobs.SingleAsync(j => j.Id == context.JobId);
+        job.Progress = 50;
+        await db.SaveChangesAsync();
+        var next = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.AddHours(3).ToUnixTimeMilliseconds());
+        var decision = await leases.MarkFailureOrRetryAsync(job.Id, new ExternalApiDeferredException(next));
+        Assert.True(decision!.Retried);
+        Assert.Equal(2, job.AttemptCount);
+        Assert.Equal(50, job.Progress);
+        Assert.Equal(next, job.NextRunAt);
+        Assert.Equal(JobStatus.Queued, job.Status);
+        Assert.Null(job.LockedBy);
+
+        Assert.Null(await leases.MarkFailureOrRetryAsync(job.Id, new ExternalApiDeferredException(next.AddHours(1))));
+        Assert.Equal(2, job.AttemptCount);
+        Assert.Equal(next, job.NextRunAt);
+
+        job.NextRunAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        await db.SaveChangesAsync();
+        var resumed = await leases.TryAcquireAsync("worker-resume");
+        Assert.Equal(job.Id, resumed!.Id);
+        Assert.True(resumed.IsResuming);
+        Assert.Equal(3, resumed.AttemptCount);
+        Assert.Equal(50, job.Progress);
+        await leases.MarkSucceededAsync(job.Id, null);
+    }
+
     [Fact]
     public async Task TryAcquireAsync_LocksQueuedJobAndMovesItToRunning()
     {

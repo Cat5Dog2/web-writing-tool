@@ -175,6 +175,8 @@ API完了ログには以下を含める。
 
 Authorizationヘッダー、APIキー、Bearer Token、Application Password、Webhook URL、外部APIレスポンス全文、プロンプト全文、記事本文全文は出力しない。必要な場合は、件数、文字数、ハッシュ、Providerのエラー分類、HTTPステータスだけを記録する。
 
+Gemini生成成功時は`inputTokens`（`promptTokenCount`）と`outputTokens`（`candidatesTokenCount`）も構造化ログに記録する。値がないレスポンスではnullとし、文字数から実測値を捏造しない。送信前の制限待ちは`RateLimited`と`nextRunAt`で確認でき、`attemptCount`は消費しない。実際の429による再試行と送信前待機は例外種別で区別できる。
+
 ## 13. 監査ログ
 
 監査ログはDBへ保存し、以下の操作を対象にする。

@@ -107,7 +107,8 @@ internal static class ServiceCollectionExtensions
             .Validate(
                 options => string.Equals(options.Region, GeminiOptions.DefaultRegion, StringComparison.OrdinalIgnoreCase),
                 "Gemini region must be Japan for MVP.")
-            .Validate(options => options.TimeoutSeconds > 0, "Gemini timeout must be greater than zero.");
+            .Validate(options => options.TimeoutSeconds > 0, "Gemini timeout must be greater than zero.")
+            .Validate(options => options.RateLimits.IsValid(), "Gemini rate limits must have positive limits, a safety ratio in (0, 1], and valid scope/model groups.");
         services
             .AddOptions<SearchProviderOptions>()
             .Bind(configuration.GetSection(SearchProviderOptions.SectionName))
@@ -202,6 +203,8 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton(TopicRiskKeywordDictionary.Default);
         services.AddSingleton<ITopicRiskClassifier, TopicRiskClassifier>();
         services.AddSingleton<DummyTextGenerationClient>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IGeminiQuotaLimiter, PostgresGeminiQuotaLimiter>();
         services.AddSingleton<DummyExternalApiClient>();
         services.AddSingleton<DummySearchClient>();
         services.AddHttpClient<GeminiTextGenerationClient>((provider, client) =>

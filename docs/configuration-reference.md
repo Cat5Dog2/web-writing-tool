@@ -117,6 +117,33 @@ Gemini以外のAI ProviderはMVP対象外である。後続フェーズで追加
 
 記事作成画面の初期選択値は`AiModelSettings`のうち`Enabled`かつ`SortOrder`が先頭の行である。したがって`AiProviders__Gemini__Model`は1と2が空の場合のフォールバックであり、この値だけを変更しても新規記事が使うモデルは変わらない。既定モデルを変更する場合は`AiModelSettings`のシードを更新する。
 
+#### Geminiの送信量制御（T-1345）
+
+設定の接頭辞は `AiProviders:Gemini:RateLimits`（環境変数では `AiProviders__Gemini__RateLimits`）。実APIへの生成呼び出しに適用し、ゲスト・ダミーモードでは枠を消費しない。
+
+| 接頭辞に続く設定キー | 既定値 | 説明 |
+| --- | --- | --- |
+| `Scope` | `default` | 同じGoogleプロジェクトのワーカー間で共有する名前。APIキーを入れない |
+| `SafetyRatio` | `0.8` | 上限に掛ける安全率。0より大きく1以下。小数点以下を切り捨て、最低1とする |
+| `Default:RequestsPerMinute` | `5` | モデル未指定時のRPM設定値 |
+| `Default:InputTokensPerMinute` | `100000` | モデル未指定時の入力TPM設定値 |
+| `Default:RequestsPerDay` | 未設定 | RPD。未設定ならローカルで日次回数を制限しない |
+| `Models:{モデルID}:RequestsPerMinute` | `5` | モデル別RPM |
+| `Models:{モデルID}:InputTokensPerMinute` | `100000` | モデル別入力TPM |
+| `Models:{モデルID}:RequestsPerDay` | 未設定 | モデル別RPD |
+| `Models:{モデルID}:QuotaGroup` | モデルID | 同じ割当枠を使うモデルエイリアスに共通名を指定 |
+
+これらの既定値はGoogleの割当枠を保証するものではなく、未確認時のアプリ側初期値である。既定では4回/分、入力80000推定トークン/分に抑え、送信開始を最低15秒間隔にする。`Models`に登録したモデルはその設定オブジェクトを使い、未登録モデルだけが`Default`を使う。同じ`QuotaGroup`には同じ上限を設定する。
+
+確認手順:
+
+1. [Google AI Studioのレート制限](https://aistudio.google.com/rate-limit)でAPIキーを発行したプロジェクトを選ぶ。
+2. 「すべてのモデル」を表示し、記事で利用するモデルのRPM・TPM・RPDの上限側の数値を確認する。Antigravityなど別の行の値を流用しない。
+3. その上限値を上記設定へ入力する。既に80%へ減らした値を設定すると安全率が二重に掛かる。
+4. `Gemini generation succeeded`ログの`inputTokens`と429の発生を確認して余裕を調整する。同じGoogleプロジェクトを使う別アプリの消費はこのDBに含まれない。
+
+全ワーカーで同じDB・`Scope`・モデル別設定を使用する。状態はPostgreSQLに保存されるため、プロセス再起動やAPIキーの更新でリセットされない。既存DBには`AddGeminiQuotaControl`の追加Migrationを通常の適用手順で反映する。Migrationは共有枠テーブルと生成ログのnullableトークン列を追加し、既存データを変更しない。
+
 ### 6.4 検索Provider
 
 | 環境変数 | 設定キー | local | production | 秘密情報 | 既定値 / 方針 |

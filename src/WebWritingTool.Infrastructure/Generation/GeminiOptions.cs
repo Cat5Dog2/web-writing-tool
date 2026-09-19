@@ -17,5 +17,7 @@ public sealed class GeminiOptions
 
     public int? MaxInputChars { get; init; }
 
+    public GeminiRateLimitOptions RateLimits { get; init; } = new();
+
     public Uri EndpointBaseAddress { get; init; } = new("https://generativelanguage.googleapis.com/");
 }

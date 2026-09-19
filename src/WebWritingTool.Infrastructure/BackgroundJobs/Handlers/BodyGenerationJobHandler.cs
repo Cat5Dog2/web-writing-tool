@@ -35,9 +35,9 @@ public sealed class BodyGenerationJobHandler(
         var article = await GetArticleAsync(articleId, job.UserId, cancellationToken);
         var headings = await GetHeadingsAsync(article.Id, cancellationToken);
         var targets = SelectTargets(job, payload, headings);
-        if (job.GenerationRunId.HasValue || job.AttemptCount > 1)
+        if (job.GenerationRunId.HasValue || job.AttemptCount > 1 || job.IsResuming)
             targets = targets.Where(h => h.Status != HeadingStatus.Generated || string.IsNullOrWhiteSpace(h.Body)).ToList();
-        if (headings.Count == 0 || targets.Count == 0 && !job.GenerationRunId.HasValue && job.AttemptCount <= 1)
+        if (headings.Count == 0 || targets.Count == 0 && !job.GenerationRunId.HasValue && job.AttemptCount <= 1 && !job.IsResuming)
         {
             throw new JobExecutionException(
                 JobErrorCodes.ValidationError,

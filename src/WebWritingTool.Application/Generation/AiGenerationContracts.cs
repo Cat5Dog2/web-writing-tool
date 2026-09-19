@@ -63,7 +63,12 @@ public sealed record AiTextGenerationResult(
     string Model,
     int PromptChars,
     int OutputChars,
-    string? RawResponseId);
+    string? RawResponseId)
+{
+    public int? InputTokens { get; init; }
+
+    public int? OutputTokens { get; init; }
+}
 
 public sealed class ExternalIntegrationException : Exception
 {
