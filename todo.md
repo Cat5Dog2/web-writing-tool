@@ -598,6 +598,11 @@
   - コマンド: `dotnet test tests/WebWritingTool.UnitTests --no-restore --filter 'FullyQualifiedName~Generation|FullyQualifiedName~JobRetryPolicyTests'`、`dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~GeminiQuota|FullyQualifiedName~JobIntegrationTests|FullyQualifiedName~DummyArticleGenerationTests|FullyQualifiedName~BulkGenerationWorkflowTests|FullyQualifiedName~DatabaseIntegrationTests|FullyQualifiedName~WebCompositionTests'`。
   - 設定: 実モデルのAI Studio上限は未確認。既定はRPM 5・入力TPM 100000に安全率0.8を適用し、RPDのローカル制限は未設定。全ワーカーで同じDB・Scopeを使い、利用環境では追加Migrationを適用する。実API・本番反映・全体テスト・E2Eは未実施。Batch APIと課金枠の変更は運用判断として残す。
 
+- [x] `T-1346` Cookie認証で未認証APIがログイン画面へリダイレクトされる問題を修正する。
+  - 完了条件: `/api` 配下は未認証401・権限不足403のProblemDetailsを返し、画面のログイン・権限不足時の遷移を維持する。実Cookie認証の結合テストで修正前の失敗と修正後の成功を確認する。
+  - 検証: 修正前に回帰テスト10件の失敗を再現。修正後は回帰12件と、それを含む関連結合44件が成功。変更C#のformat、Slopwatch（0件）、diffチェック成功。本番反映・実API・全体テスト・E2Eは未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~CookieAuthenticationTests'`、同プロジェクトの`--no-build --filter 'FullyQualifiedName~CookieAuthenticationTests|FullyQualifiedName~GuestLoginTests|FullyQualifiedName~AccountApiTests|FullyQualifiedName~ArticleApiTests|FullyQualifiedName~AdminApiTests|FullyQualifiedName~SecurityIntegrationTests|FullyQualifiedName~SecurityHeadersTests|FullyQualifiedName~HealthEndpointTests'`。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

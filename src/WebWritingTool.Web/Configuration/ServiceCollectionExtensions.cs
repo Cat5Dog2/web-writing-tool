@@ -90,6 +90,19 @@ internal static class ServiceCollectionExtensions
             options.SlidingExpiration = true;
             options.LoginPath = "/login";
             options.AccessDeniedPath = "/forbidden";
+
+            // API判定の自動メタデータに依存せず、ステータスコードページへの再実行も防ぐ。
+            var redirectToLogin = options.Events.OnRedirectToLogin;
+            options.Events.OnRedirectToLogin = context => context.Request.Path.StartsWithSegments("/api")
+                ? Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized")
+                    .ExecuteAsync(context.HttpContext)
+                : redirectToLogin(context);
+
+            var redirectToAccessDenied = options.Events.OnRedirectToAccessDenied;
+            options.Events.OnRedirectToAccessDenied = context => context.Request.Path.StartsWithSegments("/api")
+                ? Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Forbidden")
+                    .ExecuteAsync(context.HttpContext)
+                : redirectToAccessDenied(context);
         });
 
         services.Configure<AdminSeedOptions>(

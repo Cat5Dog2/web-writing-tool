@@ -55,6 +55,8 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 
 所有者または管理者が操作できるAPIでは、Applicationサービス内でも所有者検証を行う。APIルートだけで権限を完結させない。
 
+`/api`配下のCookie認証エラーは、未認証なら`401 Unauthorized`、認証済みで権限不足なら`403 Forbidden`のProblemDetails（`application/problem+json`）を返す。`Location`ヘッダーやログイン画面のHTMLは返さず、エラーページへ再実行しない。XHRヘッダーやエンドポイントの自動API判定に依存させない。Blazor画面は従来どおり`/login`または`/forbidden`へリダイレクトする。
+
 ### 4.2 CSRFとレート制限
 
 `POST`、`PUT`、`DELETE`など状態変更APIはAntiforgery Tokenを必須とする。

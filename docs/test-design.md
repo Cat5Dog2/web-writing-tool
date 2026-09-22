@@ -568,6 +568,8 @@ Issue単位でmainから作業ブランチを切り、PR作成時にCIを実行�
 | `SEC-022` | スキャン済みイメージの固定起動 | Composeスコープを後から変える引数を拒否し、`up`対象の全サービスをimage IDで照合し、早期失敗でも古いmanifestを残さない |
 | `SEC-023` | Migrationスキャンreceipt | migrateだけを記録し、期限切れ、別digest、不正image ID、scanner/DB metadata欠落を拒否して単回使用する |
 
+`SEC-001`と`SEC-003`は、認証スタブによるAPIテストに加え、`CookieAuthenticationTests`で実際のIdentity Cookie認証を検証する。未認証GET（大文字パス・末尾スラッシュ・クエリ付きも含む）とPOST/PUT/DELETEは401、一般ユーザーの管理者APIアクセスは403のProblemDetailsを返し、`Location`ヘッダーを付けない。フォームログイン後の所有記事取得とログアウト後の401、画面の`/login`・`/forbidden`への302遷移も確認する。PostgreSQLはテスト用コンテナを使用し、実外部APIは呼び出さない。
+
 `SEC-016`から`SEC-019`は`SecurityHeadersTests`で検証する。ヘッダーの実際の値は
 [セキュリティ設計](security-design.md)18.2、18.3を正とする。
 
