@@ -320,6 +320,25 @@ h1:focus {
     flex-wrap: wrap;
 }
 
+.editor-save-buttons { display: flex; gap: .5rem; }
+.editor-save-feedback { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.editor-save-feedback .btn { font-size: .8rem; padding-block: 0; }
+.heading-navigation { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.heading-position { font-size: .85rem; color: #45566b; white-space: nowrap; }
+.heading-tools { display: flex; flex-wrap: wrap; gap: .5rem; padding-bottom: .75rem; }
+.editor-focus-title, .editor-focus-guest { display: none; }
+
+.editor-status { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.article-editor-options { display: flex; flex-wrap: wrap; align-items: start; gap: .5rem 1rem; margin-bottom: .75rem; }
+.article-editor-options > .btn { padding-left: 0; }
+.article-editor-options > .bulk-progress { flex-basis: 100%; }
+.article-editor-options > .bulk-progress-compact { flex: 0 1 auto; border: 0; padding: 0; background: transparent; margin-bottom: 0 !important; }
+.article-editor-options .bulk-completed > summary { color: #45566b; font-weight: 400; padding: .5rem 0; }
+.preview-options > summary { padding: .5rem 0; color: #45566b; font-weight: 400; }
+.preview-options .form-check { margin-block: .5rem; }
+.article-generation-tools { margin-top: 1rem; }
+.article-generation-tools > summary { color: #45566b; }
+
 .article-section-header {
     justify-content: space-between;
     margin-bottom: 0.9rem;
@@ -546,13 +565,7 @@ h1:focus {
 }
 
 @media (max-width: 640.98px), (max-height: 430px) {
-    /* The editor toolbar wraps onto three rows at narrow widths; sticky there permanently
-       covers ~23% of an SE-height viewport (mobile-ui-review-2026-09-16 report, finding #3)
-       and strands the "記事情報を編集" panel off-screen when it expands (finding #4). Letting
-       it scroll with the page fixes both: the trigger and the panel it reveals stay together.
-       The max-height arm covers landscape phones (e.g. SE 667x375): width alone stays above
-       641px there, which would otherwise leave both the sticky toolbar and the PC-style sidebar
-       layout active on a viewport too short for either (mobile-ui-followup-2026-09-16 review). */
+    /* Keep article status and disclosures in flow; save actions and feedback are fixed below. */
     .article-editor-toolbar {
         position: static;
     }
@@ -601,21 +614,52 @@ body:has(dialog[open]) { overflow: hidden; }
 .article-heading-editor-footer { padding: .65rem 0; background: #fff; border-top: 1px solid #e0e5ed; }
 .generation-status { padding: .4rem .65rem; background: #edf5fd; border-radius: 6px; margin-bottom: .5rem; font-size: .875rem; }
 .preview-toc { margin-bottom: 1.5rem; }
-.preview-toc ol { padding-left: 1.4rem; }
-.preview-toc li { padding-block: .3rem; }
-.preview-toc .level-3 { margin-left: 1.2rem; }
-.preview-edit-link { font-size: .8rem; margin-left: .75rem; white-space: nowrap; }
+.preview-toc ol { padding-left: 1.4rem; margin-bottom: 0; }
+.preview-toc > ol > li { padding-block: .35rem; font-weight: 600; }
+.preview-toc ol ol { margin-top: .2rem; padding-left: 1.25rem; border-left: 2px solid #e0e5ed; }
+.preview-toc .level-3 { font-size: .925rem; font-weight: 400; }
+.preview-toc-entry { display: flex; align-items: baseline; gap: .75rem; }
+.preview-toc-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-decoration: none; }
+.preview-toc-title:hover { text-decoration: underline; }
+.preview-edit-link { flex-shrink: 0; font-size: .8rem; font-weight: 400; color: #536172; padding: .35rem .5rem; text-underline-offset: .2em; }
+.article-preview-body { background: #fff; border: 1px solid #e0e5ed; border-radius: 12px; padding: clamp(1rem, 4vw, 2.5rem); }
+.article-preview-body > :first-child { margin-top: 0; }
 .article-preview-body h2, .article-preview-body h3, #article-meta, #heading-editor { scroll-margin-top: 11rem; }
 @media (max-width: 768px), (max-height: 430px) {
     .content { padding-inline: 1rem !important; }
-    .article-editor-toolbar { position: static; padding: .7rem; }
-    .article-editor-actions { gap: .5rem; }
-    .editor-mobile-switch { display: flex; gap: .5rem; margin-bottom: .75rem; }
+    .article-editor-toolbar { position: static; padding: 0; border: 0; box-shadow: none; background: transparent; margin-bottom: .5rem; }
+    .article-editor-page { padding-bottom: calc(var(--editor-action-height, 7rem) + var(--editor-keyboard-inset, 0px) + 1rem); }
+    .article-editor-page .article-page-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; margin-bottom: .75rem; }
+    .article-editor-page h1 { font-size: 1.1rem; margin-bottom: 0; }
+    .article-editor-page .article-actions > .btn { padding-inline: 0; border: 0; }
+    .article-editor-actions {
+        position: fixed;
+        inset: auto 0 0;
+        bottom: var(--editor-keyboard-inset, 0px);
+        z-index: 10;
+        display: grid;
+        gap: .25rem;
+        padding: .35rem max(1rem, env(safe-area-inset-right)) calc(.5rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        border-top: 1px solid #d7dee8;
+        background: #fff;
+        box-shadow: 0 -3px 12px #2432440c;
+    }
+    .article-editor-actions .btn { min-height: 44px; padding-inline: .35rem; white-space: nowrap; }
+    .editor-save-buttons { display: grid; grid-template-columns: minmax(4.5rem, 1fr) minmax(0, 2fr); }
+    .editor-save-feedback { min-height: 1.25rem; }
+    html:has(.article-editor-page) { scroll-padding-bottom: 1rem; }
+    .article-editor-page :is(input, textarea, button, summary, #article-meta, #heading-editor) { scroll-margin-bottom: calc(var(--editor-action-height, 7rem) + 1rem); }
+    .article-editor-page :is(input, textarea, select) { font-size: 16px; }
+    .article-editor-options { margin-bottom: .5rem; }
+    .article-editor-options .btn, .article-editor-options summary { min-height: 44px; }
+    .editor-mobile-switch { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .5rem; }
+    .editor-mobile-switch .btn, .heading-navigation .btn, #heading-tools-toggle, .heading-tools .btn { min-height: 44px; padding-inline: .5rem; font-size: .875rem; }
     .article-editor-grid { grid-template-columns: 1fr; }
     .article-editor-grid.show-body .article-editor-sidebar,
     .article-editor-grid.show-outline .article-editor-main { display: none; }
     .article-outline-tree { max-height: none; }
     .article-body-editor { min-height: 16rem; height: clamp(16rem, 45dvh, 24rem); }
+    .article-editor-page.editor-keyboard-open .article-body-editor { min-height: 5rem; height: max(5rem, calc(var(--editor-visible-height, 100dvh) - var(--editor-action-height, 7rem) - 2rem)); }
     .article-heading-editor-footer { position: static; }
     .article-heading-settings { grid-template-columns: auto minmax(4rem, 6rem); }
     .article-heading-settings .form-check { grid-column: 1 / -1; }
@@ -625,6 +669,24 @@ body:has(dialog[open]) { overflow: hidden; }
     .auth-page { padding-top: 1rem; }
     .article-page-header { gap: .6rem; }
     .article-preview-body h2, .article-preview-body h3, #article-meta, #heading-editor { scroll-margin-top: 1rem; }
+    .preview-edit-link { min-height: 44px; display: inline-flex; align-items: center; }
+    .preview-toc-entry { align-items: center; }
+
+    .page:has(.editor-focus-mode) > .sidebar,
+    main:has(.editor-focus-mode) > .top-row,
+    .content:has(.editor-focus-mode) > .guest-mode-banner,
+    .editor-focus-mode > .article-page-header,
+    .editor-focus-mode .editor-status,
+    .editor-focus-mode .article-editor-options,
+    .editor-focus-mode .heading-title-field { display: none; }
+    .content:has(.editor-focus-mode) { padding: .5rem !important; }
+    .editor-focus-mode .article-editor-toolbar { margin: 0; }
+    .editor-focus-mode .article-heading-editor { padding: 0; border: 0; box-shadow: none; }
+    .editor-focus-mode .article-section-header { margin-bottom: .25rem; }
+    .editor-focus-mode .heading-body-label { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .25rem; }
+    .editor-focus-mode .editor-focus-title { display: inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: #45566b; font-size: .85rem; }
+    .editor-focus-mode .editor-focus-guest { display: block; font-size: .75rem; color: #45566b; }
+    .editor-focus-mode .article-body-editor { min-height: 5rem; height: max(5rem, calc(100dvh - var(--editor-action-height, 7rem) - 12rem)); }
 }
 
 .article-preview-heading { max-width: 100%; }
@@ -643,6 +705,11 @@ body:has(dialog[open]) { overflow: hidden; }
 .bulk-start p { color: #49566a; overflow-wrap: anywhere; }
 .bulk-progress-header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .75rem; }
 .bulk-batch-picker { max-width: 28rem; margin-top: 1rem; }
+.bulk-history-controls { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; margin-bottom: .75rem; }
+.bulk-history-controls .bulk-batch-picker { flex: 1 1 14rem; margin-top: 0; }
+.bulk-progress-compact { padding: .45rem 1rem; }
+.bulk-progress-compact .bulk-completed { margin-top: 0; }
+.bulk-progress-compact summary { min-height: 44px; display: list-item; align-content: center; }
 .bulk-counts { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem; }
 .bulk-badge { display: inline-block; width: fit-content; padding: .25rem .65rem; border-radius: 5px; font-size: .85rem; font-weight: 600; }
 .bulk-running { background: #e8edff; color: #3349a2; }
@@ -655,7 +722,6 @@ body:has(dialog[open]) { overflow: hidden; }
 .bulk-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .bulk-row-note { flex-basis: 100%; overflow-wrap: anywhere; }
 .bulk-warning { color: #805214; }
-.bulk-complete-heading { color: #24643d; font-weight: 600; }
 .bulk-completed { margin-top: .5rem; }
 .bulk-completed summary { color: #49566a; }
 @media (max-width: 768px) {

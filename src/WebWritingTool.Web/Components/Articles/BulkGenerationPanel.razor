@@ -8,46 +8,52 @@
 @if (error is not null) { <p class="alert alert-danger" role="alert">@error</p> }
 @if (items.Count > 0)
 {
-    <section class="article-panel bulk-progress mb-3" aria-label="一括生成の進捗" data-testid="bulk-generation-progress">
+    <section class="article-panel bulk-progress @(!HasAttention ? "bulk-progress-compact" : "") mb-3" aria-label="一括生成の進捗" data-testid="bulk-generation-progress">
         <span class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">@announcement</span>
         @if (ArticleId.HasValue && items.All(i => i.Status == "Succeeded"))
         {
-            <div class="bulk-complete-heading"><span aria-hidden="true">✓</span> @(items[0].Options.Scope == "FullArticle" ? "記事完成" : "構成完了")・保存済み</div>
-            <details class="bulk-completed"><summary>生成の詳細</summary>
+            <details class="bulk-completed" open="@(items[0].Warning is not null)"><summary>生成の詳細@(items[0].Warning is not null ? "（注意あり）" : "")</summary>
                 <BulkGenerationRow Item="items[0]" ShowTitle="false" />
             </details>
         }
         else
         {
-            <div class="bulk-progress-header">
-                <div><h2 class="h5 mb-1">@(ArticleId.HasValue ? "自動生成の状況" : "一括生成の状況")</h2>
-                    @if (!ArticleId.HasValue) { <p class="small text-muted mb-0">処理中・要対応の記事は、すべての登録から表示します。</p> }
+            @if (HasAttention)
+            {
+                <div class="bulk-progress-header">
+                    <div><h2 class="h5 mb-1">@(ArticleId.HasValue ? "自動生成の状況" : "一括生成の状況")</h2>
+                        @if (!ArticleId.HasValue) { <p class="small text-muted mb-0">処理中・要対応の記事は、すべての登録から表示します。</p> }
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="RefreshAsync">状況を更新</button>
                 </div>
-                <button type="button" class="btn btn-outline-secondary" @onclick="RefreshAsync">状況を更新</button>
-            </div>
-            @if (!ArticleId.HasValue && batches.Count > 0)
-            {
-                <div class="bulk-batch-picker">
-                    <label for="bulk-batch" class="form-label">登録履歴</label>
-                    <select id="bulk-batch" class="form-select" value="@selectedBatchId" @onchange="SelectBatchAsync">
-                        @foreach (var batch in batches)
-                        { <option value="@batch.BatchId">@batch.CreatedAt.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy/MM/dd HH:mm:ss") · @batch.ArticleCount 件</option> }
-                    </select>
+                <div class="bulk-counts" aria-label="処理中・要対応の記事数">
+                    <span class="bulk-badge bulk-running">◷ 処理中 @items.Count(i => i.IsActive) 件</span>
+                    <span class="bulk-badge bulk-failed">! 失敗 @items.Count(i => i.Status == "Failed") 件</span>
+                    <span class="bulk-badge bulk-stopped">Ⅱ 手動停止 @items.Count(i => i.Status == "Canceled") 件</span>
                 </div>
+                @foreach (var item in items.Where(i => i.Status != "Succeeded").OrderBy(i => i.IsActive))
+                {
+                    <BulkGenerationRow @key="item.RunId" Item="item" Acting="acting" OnRetry="RetryAsync" OnStop="StopAsync" />
+                }
             }
-            <div class="bulk-counts" aria-label="処理中・要対応の記事数">
-                <span class="bulk-badge bulk-running">◷ 処理中 @items.Count(i => i.IsActive) 件</span>
-                <span class="bulk-badge bulk-failed">! 失敗 @items.Count(i => i.Status == "Failed") 件</span>
-                <span class="bulk-badge bulk-stopped">Ⅱ 手動停止 @items.Count(i => i.Status == "Canceled") 件</span>
-            </div>
-            @foreach (var item in items.Where(i => i.Status != "Succeeded").OrderBy(i => i.IsActive))
+            @if (!ArticleId.HasValue)
             {
-                <BulkGenerationRow @key="item.RunId" Item="item" Acting="acting" OnRetry="RetryAsync" OnStop="StopAsync" />
-            }
-            @if (items.Any(i => i.Status == "Succeeded"))
-            {
-                <details class="bulk-completed">
-                    <summary>選択した登録：完了 @items.Count(i => i.Status == "Succeeded") 件の記事</summary>
+                <details class="bulk-history" open="@HasAttention">
+                    <summary>完了 @items.Count(i => i.Status == "Succeeded") 件 · 登録履歴@(items.Any(i => i.Warning is not null) ? "（注意あり）" : "")</summary>
+                    <div class="bulk-history-controls">
+                        @if (batches.Count > 0)
+                        {
+                            <div class="bulk-batch-picker">
+                                <label for="bulk-batch" class="form-label">登録履歴</label>
+                                <select id="bulk-batch" class="form-select" value="@selectedBatchId" @onchange="SelectBatchAsync">
+                                    @foreach (var batch in batches)
+                                    { <option value="@batch.BatchId">@JapanTimeDisplay.Format(batch.CreatedAt, "yyyy/MM/dd HH:mm:ss") · @batch.ArticleCount 件</option> }
+                                </select>
+                            </div>
+                        }
+                        @if (!HasAttention)
+                        { <button type="button" class="btn btn-outline-secondary" @onclick="RefreshAsync">状況を更新</button> }
+                    </div>
                     @foreach (var item in items.Where(i => i.Status == "Succeeded"))
                     { <BulkGenerationRow @key="item.RunId" Item="item" /> }
                 </details>
@@ -64,6 +70,7 @@
     private readonly CancellationTokenSource lifetime = new();
     private IReadOnlyList<BulkGenerationProgress> items = [];
     private IReadOnlyList<BulkGenerationBatch> batches = [];
+    private bool HasAttention => items.Any(item => item.Status != "Succeeded");
     private Guid? lastBatchParameter;
     private Guid? lastArticleParameter;
     private bool initialized;

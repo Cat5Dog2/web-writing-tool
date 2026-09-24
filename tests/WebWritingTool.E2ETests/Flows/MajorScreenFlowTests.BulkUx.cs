@@ -79,8 +79,7 @@ public sealed partial class MajorScreenFlowTests
         await page.Locator("#heading-body").FillAsync("本文から目次への移動を確認します。");
         await page.GetByRole(AriaRole.Button, new() { Name = "本文を保存", Exact = true }).ClickAsync();
         await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("保存済み");
-        await page.GetByRole(AriaRole.Button, new() { Name = "HTML変換", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Link, new() { Name = "プレビュー", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "保存してプレビュー", Exact = true }).ClickAsync();
         await page.SetViewportSizeAsync(390, 844);
         await page.GetByRole(AriaRole.Navigation, new() { Name = "記事の目次" })
             .GetByRole(AriaRole.Link, new() { Name = "保存の方法", Exact = true }).ClickAsync();

@@ -35,21 +35,30 @@
     }
     else if (string.IsNullOrWhiteSpace(sanitizedHtml))
     {
-        <div class="alert alert-info" role="status">プレビューできるHTML本文がありません。</div>
+        <div class="alert alert-info" role="status">
+            @(article.Headings.Count > 0 || !string.IsNullOrWhiteSpace(article.Body) ? "プレビューの更新が必要です。編集画面の「保存してプレビュー」で最新の内容を表示してください。" : "まだ本文がありません。編集画面で本文を作成してください。")
+        </div>
     }
     else
     {
-        <p class="small text-muted">最後にHTML変換した保存内容のプレビューです。編集後は「HTML変換」で表示を更新してください。</p>
+        <p class="small text-muted">保存した内容のプレビューです。編集後は「保存してプレビュー」で表示を更新できます。</p>
         @if (toc.Count > 0)
         {
             <nav class="article-panel preview-toc" aria-label="記事の目次">
                 <h2 class="h5">目次</h2><ol>
-                @foreach (var item in toc)
+                @foreach (var group in GetTocGroups())
                 {
-                    <li class="@($"level-{item.Level}")">
-                        <a href="@($"/articles/{ArticleId}/preview#{item.Id}")">@item.Title</a>
-                        @if (item.HeadingId is Guid headingId)
-                        { <a class="preview-edit-link" href="@($"/articles/{ArticleId}?heading={headingId}")" aria-label="@($"{item.Title}を編集")">この見出しを編集</a> }
+                    <li class="@($"level-{group.Heading.Level}")">
+                        @RenderTocEntry(group.Heading)
+                        @if (group.Children.Count > 0)
+                        {
+                            <ol>
+                                @foreach (var child in group.Children)
+                                {
+                                    <li class="level-3">@RenderTocEntry(child)</li>
+                                }
+                            </ol>
+                        }
                     </li>
                 }
                 </ol>
@@ -73,6 +82,29 @@
     {
         public Guid? HeadingId { get; init; }
     }
+
+    private sealed record PreviewHeadingGroup(PreviewHeading Heading, List<PreviewHeading> Children);
+
+    private IReadOnlyList<PreviewHeadingGroup> GetTocGroups()
+    {
+        var groups = new List<PreviewHeadingGroup>();
+        foreach (var heading in toc)
+        {
+            if (heading.Level == 3 && groups.LastOrDefault()?.Heading.Level == 2)
+                groups[^1].Children.Add(heading);
+            else
+                groups.Add(new(heading, []));
+        }
+        return groups;
+    }
+
+    private RenderFragment RenderTocEntry(PreviewHeading item) => @<div class="preview-toc-entry">
+        <a class="preview-toc-title" href="@($"/articles/{ArticleId}/preview#{item.Id}")">@item.Title</a>
+        @if (item.HeadingId is Guid headingId)
+        {
+            <a class="preview-edit-link" href="@($"/articles/{ArticleId}?heading={headingId}")" aria-label="@($"{item.Title}を編集")">編集</a>
+        }
+    </div>;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

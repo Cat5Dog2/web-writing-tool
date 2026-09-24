@@ -1021,8 +1021,7 @@
 
     private static string ToDisplayDate(DateTimeOffset value)
     {
-        var local = value.ToLocalTime();
-        return $"{local:yyyy/M/d HH}時";
+        return JapanTimeDisplay.Format(value, "yyyy/M/d HH時");
     }
 
     private static string GetStatusBadgeClass(string status)

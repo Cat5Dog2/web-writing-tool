@@ -150,8 +150,7 @@ public sealed partial class MajorScreenFlowTests
         await Expect(page.Locator(".article-outline-title")).ToHaveCSSAsync("white-space", "normal");
         await page.Locator(".article-outline-item").ClickAsync();
         await Expect(page.Locator("#heading-editor")).ToBeFocusedAsync();
-        await page.GetByRole(AriaRole.Button, new() { Name = "HTML変換", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Link, new() { Name = "プレビュー", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "保存してプレビュー", Exact = true }).ClickAsync();
         await Expect(page.GetByRole(AriaRole.Navigation, new() { Name = "記事の目次" })).ToBeVisibleAsync();
         await Expect(page.GetByRole(AriaRole.Link, new() { Name = "編集に戻る", Exact = true })).ToHaveCountAsync(2);
         Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= innerWidth"));
@@ -159,6 +158,7 @@ public sealed partial class MajorScreenFlowTests
         await page.GetByRole(AriaRole.Link, new() { Name = heading + "を編集", Exact = true }).ClickAsync();
         await Expect(page.Locator("#heading-title")).ToHaveValueAsync(heading);
         await page.SetViewportSizeAsync(667, 375);
+        await page.GetByRole(AriaRole.Button, new() { Name = "全体を表示", Exact = true }).ClickAsync();
         await Expect(page.Locator(".navbar-toggler")).ToBeVisibleAsync();
         Assert.True(await page.Locator(".sidebar").EvaluateAsync<bool>("el => el.getBoundingClientRect().height < 100"));
         Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= innerWidth"));

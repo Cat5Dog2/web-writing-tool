@@ -36,6 +36,18 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await Expect(page.Locator(".alert-success")).ToContainTextAsync("2件の記事を登録しました。");
             await Expect(page.GetByTestId("bulk-generation-progress")).ToContainTextAsync("完了 2 件", new() { Timeout = 60000 });
 
+            await page.ReloadAsync(new() { WaitUntil = WaitUntilState.NetworkIdle });
+            await page.SetViewportSizeAsync(1280, 720);
+            var progress = page.GetByTestId("bulk-generation-progress");
+            await Expect(progress.Locator(".bulk-counts")).ToHaveCountAsync(0);
+            await Expect(progress.Locator(".bulk-history")).Not.ToHaveAttributeAsync("open", "");
+            Assert.True(await progress.EvaluateAsync<bool>("el => el.getBoundingClientRect().height < 100"));
+            await Expect(page.Locator(".article-table tbody tr").First).ToBeInViewportAsync();
+            await page.ScreenshotAsync(new() { Path = Path.Combine(fixture.TestResultsDirectory, "editor-ux-list-completed.png") });
+            await progress.Locator(".bulk-history > summary").ClickAsync();
+            await Expect(page.Locator("#bulk-batch")).ToBeVisibleAsync();
+            await Expect(progress.GetByRole(AriaRole.Link, new() { Name = "記事を確認", Exact = true })).ToHaveCountAsync(2);
+
             var articleLinks = await page.Locator(".article-table tbody a.fw-semibold").AllAsync();
             Assert.Equal(2, articleLinks.Count);
             var urls = new List<string>();
@@ -53,13 +65,19 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
                 await Expect(page.GetByTestId("bulk-generation-progress")).ToContainTextAsync("記事完成");
                 await Expect(page.Locator(".article-editor-page h1")).Not.ToHaveTextAsync("生成結果編集");
                 await page.SetViewportSizeAsync(320, 740);
-                await Expect(page.Locator(".bulk-complete-heading")).ToContainTextAsync("記事完成・保存済み");
+                await Expect(page.Locator(".editor-status")).ToContainTextAsync("記事完成");
+                await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("保存済み");
                 Assert.True(await page.GetByTestId("bulk-generation-progress").EvaluateAsync<bool>("el => el.getBoundingClientRect().height < 160"));
                 Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= innerWidth"));
+                Assert.True(await page.Locator("#heading-body").EvaluateAsync<bool>("el => el.getBoundingClientRect().top < innerHeight - 100"));
+                await Expect(page.GetByRole(AriaRole.Button, new() { Name = "保存してプレビュー", Exact = true })).ToBeInViewportAsync();
+                await page.ScreenshotAsync(new() { Path = Path.Combine(fixture.TestResultsDirectory, "editor-ux-guest-320.png") });
                 await page.SetViewportSizeAsync(1280, 900);
                 await Expect(page.Locator("#heading-body")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex("ダミー"));
-                await Expect(page.GetByRole(AriaRole.Button, new() { Name = "本文を生成", Exact = true })).ToBeEnabledAsync();
-                await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
+                await Expect(page.GetByRole(AriaRole.Button, new() { Name = "本文を再生成", Exact = true })).ToBeHiddenAsync();
+                await page.Locator(".article-generation-tools > summary").ClickAsync();
+                await Expect(page.GetByRole(AriaRole.Button, new() { Name = "本文を再生成", Exact = true })).ToBeEnabledAsync();
+                await page.Locator(".research-disclosure > summary").ClickAsync();
                 await Expect(page.GetByTestId("research-web-results")).ToContainTextAsync("サンプル");
                 await Expect(page.GetByTestId("research-x-results")).ToContainTextAsync("サンプル");
                 await page.ReloadAsync(new() { WaitUntil = WaitUntilState.NetworkIdle });
@@ -98,7 +116,7 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "ゲストの記事" }))
                 .ToBeVisibleAsync(new() { Timeout = 30000 });
 
-            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
+            await page.Locator(".research-disclosure > summary").ClickAsync();
             var web = page.GetByRole(AriaRole.Button, new() { Name = "Web検索を実行" });
             await Expect(web).ToBeEnabledAsync();
             await web.ClickAsync();
@@ -114,9 +132,10 @@ public sealed class GuestLoginFlowTests(GuestE2ETestFixture fixture) : IClassFix
             await body.ClickAsync();
             await Expect(page.Locator("#heading-body")).ToHaveValueAsync(
                 new System.Text.RegularExpressions.Regex("ダミー"), new() { Timeout = 30000 });
-            await Expect(body).ToBeEnabledAsync();
+            await Expect(page.Locator("#heading-body")).ToBeEnabledAsync();
             await page.ReloadAsync();
-            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
+            await page.Locator(".article-generation-tools > summary").ClickAsync();
+            await page.Locator(".research-disclosure > summary").ClickAsync();
             await Expect(page.GetByTestId("research-x-results")).ToContainTextAsync("サンプル投稿");
             await page.GotoAsync("/settings");
             await Expect(page.GetByText("認証情報の入力は不要です。", new() { Exact = false })).ToBeVisibleAsync();

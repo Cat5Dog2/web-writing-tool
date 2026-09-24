@@ -914,8 +914,10 @@ public sealed partial class MajorScreenFlowTests(E2ETestFixture fixture)
         await page.GetByRole(AriaRole.Button, new() { Name = "本文を保存" }).ClickAsync();
         await Expect(page.GetByRole(AriaRole.Status).Filter(new() { HasText = "本文を保存しました。" })).ToBeVisibleAsync();
 
-        await page.GetByRole(AriaRole.Button, new() { Name = "HTML変換" }).ClickAsync();
-        await Expect(page.GetByRole(AriaRole.Status).Filter(new() { HasText = "HTMLへ変換しました。" })).ToBeVisibleAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "保存してプレビュー", Exact = true }).ClickAsync();
+        await Expect(page.Locator(".article-preview-body")).ToContainTextAsync("E2E本文です。");
+        await page.GetByRole(AriaRole.Link, new() { Name = "編集に戻る", Exact = true }).First.ClickAsync();
+        await Expect(page.Locator("#heading-body")).ToHaveValueAsync("E2E本文です。ブラウザ経由で保存される本文です。");
     }
 
     private static async Task EnqueueOutlineGenerationAsync(

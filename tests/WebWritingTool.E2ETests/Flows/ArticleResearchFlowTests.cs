@@ -32,7 +32,7 @@ public sealed class ArticleResearchFlowTests : IClassFixture<ResearchE2ETestFixt
             await page.GetByRole(AriaRole.Button, new() { Name = "ログイン", Exact = true }).ClickAsync();
             await page.WaitForURLAsync("**/articles");
             await page.GotoAsync($"/articles/{articleId}");
-            await page.Locator("summary").Filter(new() { HasText = "検索・参考情報" }).ClickAsync();
+            await page.Locator(".research-disclosure > summary").ClickAsync();
             var webButton = page.GetByRole(AriaRole.Button, new() { Name = "Web検索を実行" });
             await Expect(webButton).ToBeEnabledAsync();
             await Expect(page.Locator("#research-query")).ToHaveValueAsync(keyword);
@@ -56,7 +56,7 @@ public sealed class ArticleResearchFlowTests : IClassFixture<ResearchE2ETestFixt
             await bodyButton.ClickAsync();
             await Expect(page.Locator("#heading-body")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex("参考情報（動作確認用）"), new() { Timeout = 30000 });
             await Expect(page.Locator("#heading-body")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex(manualQuery));
-            await Expect(bodyButton).ToBeEnabledAsync();
+            await Expect(page.Locator("#heading-body")).ToBeEnabledAsync();
             // Generation updates versions outside the UI scope. Two subsequent saves must
             // use fresh data and must preserve unsaved metadata while saving a heading.
             await page.GetByRole(AriaRole.Button, new() { Name = "記事情報を編集" }).ClickAsync();

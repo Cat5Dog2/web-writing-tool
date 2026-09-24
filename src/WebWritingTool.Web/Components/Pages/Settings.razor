@@ -561,7 +561,7 @@
 
     private static string ToDisplayDate(DateTimeOffset value)
     {
-        return $"{value.ToLocalTime():yyyy/M/d HH:mm}";
+        return JapanTimeDisplay.Format(value, "yyyy/M/d HH:mm");
     }
 
     private static string GetServiceErrorMessage(
