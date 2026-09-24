@@ -618,6 +618,11 @@
   - 検証: 改善前の新規E2E6件失敗を確認し、境界ケースを含む新規7件が成功。既存16件も確認した。関連23件の初回実行で入力エラーテスト1件が失敗したため、未保存状態の反映確認を追加し、保存・プレビューを含む関連10件を再実行して成功。変更C#のformat、Slopwatch（0件）、diffチェック成功。実機Safari／AndroidのOSキーボード、本番反映、全体テストは未実施。
   - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~MobileEditing_|FullyQualifiedName~EditorUx_SaveAndPreview'`。既存回帰はT-1348と同じフィルターへ`FullyQualifiedName~MobileEditing_`を加えて実行。記録は`test-results/mobile-editing-20260924.md`。
 
+- [x] `T-1350` 記事情報パネル表示後のフォーカス移動とキーワード削除の競合を修正する。
+  - 完了条件: パネル内の入力フォーカスと文字選択を保持し、通常のパネル誘導は維持する。遅延したフォーカス移動の回帰E2Eと保存・プレビューの既存E2E、関連設計書を更新する。
+  - 検証: 修正前にキーワード削除の失敗を再現し、通常のパネル誘導は成功。修正後は回帰2ケースとCI失敗ケースの3件、編集・プレビュー・モバイル・未保存・ダイアログの関連E2E17件が成功。変更C#のformat、Slopwatch（0件）、`git diff --check`成功。全体テスト・実API・CI再実行・本番反映は未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-build --filter 'FullyQualifiedName~EditorUx_|FullyQualifiedName~MobileEditing_|FullyQualifiedName~UxReview_Unsaved|FullyQualifiedName~UxReview_PostDialog'`。記録は`test-results/editor-focus-fix-20260924/verification.md`。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

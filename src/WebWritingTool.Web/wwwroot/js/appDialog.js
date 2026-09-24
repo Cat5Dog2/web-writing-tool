@@ -35,8 +35,10 @@ export function close(dialog) {
     dialogs.delete(dialog);
 }
 
-export function focus(id) {
+export function focus(id, preserveChildFocus = false) {
     const element = document.getElementById(id);
+    // Delayed panel initialization must not interrupt an input the user already selected.
+    if (preserveChildFocus && element?.contains(document.activeElement)) return;
     element?.focus();
     element?.scrollIntoView({ block: "nearest" });
 }
