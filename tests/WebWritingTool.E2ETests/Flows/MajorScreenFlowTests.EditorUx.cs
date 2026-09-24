@@ -40,7 +40,9 @@ public sealed partial class MajorScreenFlowTests
         var page = session.Page;
         var id = await OpenEditorWithHeadingAsync(page);
         await page.GetByRole(AriaRole.Button, new() { Name = "記事情報を編集", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#article-meta")).ToBeFocusedAsync();
         await page.Locator("#keyword").FillAsync("");
+        await Expect(page.Locator("#keyword")).ToHaveValueAsync("");
         await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("未保存の変更があります");
         await page.Locator("#heading-body").FillAsync("保存失敗でも失わない本文");
         var preview = page.GetByRole(AriaRole.Button, new() { Name = "保存してプレビュー", Exact = true });
@@ -52,6 +54,46 @@ public sealed partial class MajorScreenFlowTests
         await page.Locator("#keyword").FillAsync("修正したキーワード");
         await preview.ClickAsync();
         await Expect(page.Locator(".article-preview-body")).ToContainTextAsync("保存失敗でも失わない本文");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EditorUx_MetadataFocus_DelayedInitializationRespectsCurrentFocus(bool editingKeyword)
+    {
+        await using var session = await fixture.CreateSessionAsync($"{nameof(EditorUx_MetadataFocus_DelayedInitializationRespectsCurrentFocus)}_{editingKeyword}");
+        var page = session.Page;
+        await OpenEditorWithHeadingAsync(page);
+        // Delay the actual JS call so the user can select text before panel focus arrives.
+        await page.RouteAsync(new System.Text.RegularExpressions.Regex(@"/js/appDialog(?:\.[a-z0-9]+)?\.js$"), route => route.FulfillAsync(new()
+        {
+            ContentType = "text/javascript",
+            Body = """
+                export * from './appDialog.js?focus-regression';
+                import { focus as originalFocus } from './appDialog.js?focus-regression';
+                export async function focus(...args) {
+                    await new Promise(resolve => { window.releaseEditorFocus = resolve; });
+                    originalFocus(...args);
+                    window.editorFocusCompleted = true;
+                }
+                """
+        }));
+        await page.GetByRole(AriaRole.Button, new() { Name = "記事情報を編集", Exact = true }).ClickAsync();
+        await page.WaitForFunctionAsync("typeof window.releaseEditorFocus === 'function'");
+        var keyword = page.Locator("#keyword");
+        await Expect(keyword).ToHaveValueAsync("暮らしを整えるための実践ガイド");
+        if (editingKeyword) await keyword.SelectTextAsync();
+        await page.EvaluateAsync("window.releaseEditorFocus()");
+        await page.WaitForFunctionAsync("window.editorFocusCompleted === true");
+        if (!editingKeyword)
+        {
+            await Expect(page.Locator("#article-meta")).ToBeFocusedAsync();
+            await keyword.SelectTextAsync();
+        }
+        await page.Keyboard.PressAsync("Delete");
+        await Expect(keyword).ToHaveValueAsync("");
+        await Expect(keyword).ToBeFocusedAsync();
+        await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("未保存の変更があります");
     }
 
     [Fact]

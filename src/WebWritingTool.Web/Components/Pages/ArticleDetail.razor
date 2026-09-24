@@ -1073,9 +1073,10 @@
             await navigationModule.InvokeVoidAsync("setDirty", editorRoot, HasUnsavedChanges);
         if (!focusMeta && !focusEditor && !focusError) return;
         var id = focusError ? "editor-error" : focusMeta ? "article-meta" : "heading-editor";
+        var preserveChildFocus = !focusError && focusMeta;
         focusMeta = focusEditor = focusError = false;
         await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/appDialog.js");
-        await module.InvokeVoidAsync("focus", id);
+        await module.InvokeVoidAsync("focus", id, preserveChildFocus);
     }
 
     public async ValueTask DisposeAsync()
