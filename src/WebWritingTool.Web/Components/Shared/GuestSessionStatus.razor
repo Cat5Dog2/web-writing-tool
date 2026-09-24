@@ -4,7 +4,7 @@
 <section class="article-panel mb-3">
     <h2 class="h5">ゲストの利用期限</h2>
     <p class="mb-1">@RemainingLabel</p>
-    <p class="small text-muted mb-0">終了予定：@ExpiresAt.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy/MM/dd HH:mm")（日本時間）</p>
+    <p class="small text-muted mb-0">終了予定：@JapanTimeDisplay.Format(ExpiresAt, "yyyy/MM/dd HH:mm")（日本時間）</p>
 </section>
 
 @code {

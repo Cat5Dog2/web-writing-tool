@@ -11,14 +11,15 @@
 @inject ILogger<ArticleResearchPanel> Logger
 
 @* Keep native disclosure changes from being lost when prerender is replaced. *@
-<section class="article-panel mb-3" aria-label="検索・参考情報" inert="@(!RendererInfo.IsInteractive || Disabled)">
+@if (!string.IsNullOrEmpty(error)) { <div class="alert alert-danger mt-3" role="alert">@error</div> }
+<details class="article-panel article-generation-tools" open="@(!HasBody)" inert="@(!RendererInfo.IsInteractive || Disabled)">
+    <summary>生成・検索・参考情報</summary>
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
         <button class="btn btn-outline-primary" disabled="@(busy || Headings.Count > 0)" @onclick='() => RunAsync("outline")'>構成を生成</button>
-        <button class="btn btn-primary" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>本文を生成</button>
+        <button class="btn @(HasBody ? "btn-outline-secondary" : "btn-primary")" disabled="@(busy || Headings.Count == 0)" @onclick='() => RunAsync("body")'>@(TargetHasBody ? "本文を再生成" : "本文を生成")</button>
         <span class="small text-muted">対象：@(HeadingId is null ? "記事全体" : Headings.FirstOrDefault(h => h.Id == HeadingId)?.Title)</span>
     </div>
     <p class="small text-muted mb-2">本文生成は対象の保存済み本文を置き換えます。対象・参考資料は下の「検索・参考情報」で変更できます。</p>
-    @if (!string.IsNullOrEmpty(error)) { <div class="alert alert-danger" role="alert">@error</div> }
     @if (!string.IsNullOrEmpty(status)) { <div class="generation-status" role="status">@status</div> }
     <details class="research-disclosure">
     <summary>検索・参考情報</summary>
@@ -83,7 +84,7 @@
                             <a href="@result.Url" target="_blank" rel="noopener noreferrer">@result.Title</a>
                         }
                         <p class="mb-1">@result.Snippet</p>
-                        <small class="text-muted">取得：@result.FetchedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</small>
+                        <small class="text-muted">取得：@JapanTimeDisplay.Format(result.FetchedAt, "yyyy/MM/dd HH:mm")</small>
                     </div>
                 }
                 </div>
@@ -103,7 +104,7 @@
                         {
                             <a href="@post.Url" target="_blank" rel="noopener noreferrer">Xで投稿を確認</a>
                         }
-                        <div><small class="text-muted">取得：@post.FetchedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</small></div>
+                        <div><small class="text-muted">取得：@JapanTimeDisplay.Format(post.FetchedAt, "yyyy/MM/dd HH:mm")</small></div>
                     </div>
                 }
                 </div>
@@ -111,7 +112,19 @@
         </div>
     }
     </details>
-</section>
+</details>
+
+@if (showRegenerateDialog)
+{
+    <AppDialog Title="本文を再生成" OnClose="() => showRegenerateDialog = false">
+        <p><strong>対象：@TargetLabel</strong></p>
+        <p>対象の保存済み本文を置き換えます。編集済みの内容も対象です。画面から元の本文へ戻すことはできません。</p>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+            <button type="button" class="btn btn-outline-secondary" autofocus @onclick="() => showRegenerateDialog = false">キャンセル</button>
+            <button type="button" class="btn btn-primary" @onclick='() => RunAsync("body", confirmed: true)'>再生成する</button>
+        </div>
+    </AppDialog>
+}
 
 @code {
     [Parameter] public Guid? InitialJobId { get; set; }
@@ -130,6 +143,10 @@
     private string headingValue = string.Empty;
     private int maxResults = 5;
     private bool busy;
+    private bool showRegenerateDialog;
+    private bool HasBody => Headings.Any(heading => !string.IsNullOrWhiteSpace(heading.Body));
+    private bool TargetHasBody => Headings.Any(heading => (HeadingId is null || heading.Id == HeadingId) && !string.IsNullOrWhiteSpace(heading.Body));
+    private string TargetLabel => HeadingId is null ? "記事全体の本文" : Headings.FirstOrDefault(heading => heading.Id == HeadingId)?.Title ?? "選択した見出し";
     private string? error;
     private string? status;
     private ArticleResearchResponse? results;
@@ -185,10 +202,22 @@
         finally { busy = false; }
     }
 
-    private async Task RunAsync(string action)
+    private async Task RunAsync(string action, bool confirmed = false)
     {
         if (busy || Disabled) return;
+        if (action == "body" && TargetHasBody && !confirmed)
+        {
+            showRegenerateDialog = true;
+            return;
+        }
+        showRegenerateDialog = false;
         if (action is "outline" or "body" && BeforeGenerate is not null && !await BeforeGenerate()) return;
+        // Saving an initially empty heading can create a body that now needs replacement consent.
+        if (action == "body" && TargetHasBody && !confirmed)
+        {
+            showRegenerateDialog = true;
+            return;
+        }
         busy = true;
         if (action is "outline" or "body") await OnBusyChanged.InvokeAsync(true);
         error = null;

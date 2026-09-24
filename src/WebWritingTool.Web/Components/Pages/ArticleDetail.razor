@@ -18,26 +18,19 @@
 <PageTitle>@(article?.Title ?? "生成結果編集")</PageTitle>
 <NavigationLock OnBeforeInternalNavigation="BeforeNavigationAsync" />
 
-<div class="article-page article-editor-page" @ref="editorRoot">
+<div class="article-page article-editor-page @(FocusMode ? "editor-focus-mode" : "")" @ref="editorRoot">
     <header class="article-page-header">
         <div>
             <h1>@(article?.Title ?? article?.Keyword ?? "生成結果編集")</h1>
-            @if (article is not null)
-            {
-                <div class="text-muted">@GetArticleStatusLabel(article.Status) · キーワード：@article.Keyword</div>
-            }
         </div>
         <div class="article-actions">
-            <a class="btn btn-outline-secondary" href="/articles">一覧へ戻る</a>
-            <a class="btn @(article?.Status == "Completed" ? "btn-primary" : "btn-outline-primary") @(article?.HtmlBody is null ? "disabled" : string.Empty)"
-               href="@($"/articles/{ArticleId}/preview")"
-               aria-disabled="@(article?.HtmlBody is null)">プレビュー</a>
+            <a class="btn btn-outline-secondary" href="/articles" aria-label="一覧へ戻る">← 一覧</a>
         </div>
     </header>
 
     @if (!string.IsNullOrWhiteSpace(errorMessage))
     {
-        <div class="alert alert-danger" role="alert">@errorMessage</div>
+        <div id="editor-error" tabindex="-1" class="alert alert-danger" role="alert">@errorMessage</div>
     }
 
     @if (!string.IsNullOrWhiteSpace(successMessage))
@@ -55,21 +48,28 @@
     }
     else
     {
-        <BulkGenerationPanel ArticleId="ArticleId" OnProgressChanged="ReloadWorkflowAsync" OnActiveChanged="value => automaticGenerationActive = value" />
         <section class="article-panel article-editor-toolbar">
-            <div class="article-editor-actions">
-                <button type="button" class="btn @(HasUnsavedChanges ? "btn-primary" : "btn-outline-primary")" disabled="@(isSubmitting || isGenerating)" @onclick="SaveAllAsync">変更をまとめて保存</button>
-                <span class="editor-save-state" role="status">@(HasUnsavedChanges ? "未保存の変更があります" : "保存済み")</span>
-                <button type="button" class="btn btn-outline-primary" disabled="@(isSubmitting || isGenerating)" @onclick="() => GuardAsync(ConvertHtmlAsync)">HTML変換</button>
-                <label class="form-check article-period-break">
-                    <input class="form-check-input" type="checkbox" @bind="insertLineBreakAfterPeriod" />
-                    <span class="form-check-label">句点改行</span>
-                </label>
+            <div class="editor-status" aria-label="記事の状態">
+                <span class="badge @(article.Status is "Completed" or "Posted" ? "text-bg-success" : article.Status == "Failed" ? "text-bg-danger" : "text-bg-light")">@GetArticleStatusLabel(article.Status)</span>
             </div>
+            <div class="article-editor-actions">
+                <div class="editor-save-feedback">
+                    <span id="editor-save-message" class="editor-save-state @(saveFailed ? "text-danger" : "")" role="status">@SaveStateText</span>
+                    @if (errorMessage is not null)
+                    { <button type="button" class="btn btn-link" @onclick="FocusError">エラーを確認</button> }
+                </div>
+                <div class="editor-save-buttons">
+                    <button type="button" class="btn btn-outline-primary" aria-label="変更をまとめて保存" aria-describedby="editor-save-message" disabled="@IsEditorBusy" @onclick="SaveAllAsync">保存</button>
+                    <button type="button" class="btn btn-primary" disabled="@IsEditorBusy" @onclick="SaveAndPreviewAsync">@(isPreparingPreview ? "プレビューを準備中…" : "保存してプレビュー")</button>
+                </div>
+            </div>
+        </section>
+        <div class="article-editor-options">
             <button type="button" class="btn btn-link" aria-expanded="@showMetaPanel" @onclick="ToggleMetaAsync">
                 記事情報@(showMetaPanel ? "を閉じる" : "を編集")
             </button>
-        </section>
+            <BulkGenerationPanel ArticleId="ArticleId" OnProgressChanged="ReloadWorkflowAsync" OnActiveChanged="value => automaticGenerationActive = value" />
+        </div>
 
         @if (showMetaPanel)
         {
@@ -78,27 +78,27 @@
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="form-label" for="title">タイトル</label>
-                        <input id="title" class="form-control" disabled="@(isGenerating || isSubmitting)" @bind="form.Title" @bind:event="oninput" />
+                        <input id="title" class="form-control" disabled="@IsEditorBusy" @bind="form.Title" @bind:event="oninput" />
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="keyword">キーワード</label>
-                        <input id="keyword" class="form-control" disabled="@(isGenerating || isSubmitting)" @bind="form.Keyword" @bind:event="oninput" />
+                        <input id="keyword" class="form-control" disabled="@IsEditorBusy" @bind="form.Keyword" @bind:event="oninput" />
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="meta-description">メタディスクリプション</label>
-                        <textarea id="meta-description" class="form-control" disabled="@(isGenerating || isSubmitting)" rows="4" @bind="form.MetaDescription" @bind:event="oninput"></textarea>
+                        <textarea id="meta-description" class="form-control" disabled="@IsEditorBusy" rows="4" @bind="form.MetaDescription" @bind:event="oninput"></textarea>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="tags">タグ</label>
-                        <input id="tags" class="form-control" disabled="@(isGenerating || isSubmitting)" @bind="form.Tags" @bind:event="oninput" />
+                        <input id="tags" class="form-control" disabled="@IsEditorBusy" @bind="form.Tags" @bind:event="oninput" />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="memo">メモ</label>
-                        <textarea id="memo" class="form-control" disabled="@(isGenerating || isSubmitting)" rows="3" @bind="form.Memo" @bind:event="oninput"></textarea>
+                        <textarea id="memo" class="form-control" disabled="@IsEditorBusy" rows="3" @bind="form.Memo" @bind:event="oninput"></textarea>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="generation-model">生成モデル</label>
-                        <select id="generation-model" class="form-select" disabled="@(isGenerating || isSubmitting)" @bind="form.GenerationModel">
+                        <select id="generation-model" class="form-select" disabled="@IsEditorBusy" @bind="form.GenerationModel">
                             @foreach (var model in formOptions.GenerationModels)
                             {
                                 <option value="@model.Model">@model.DisplayName</option>
@@ -107,7 +107,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="outline-method">構成</label>
-                        <select id="outline-method" class="form-select" disabled="@(isGenerating || isSubmitting)" @bind="form.OutlineMethod">
+                        <select id="outline-method" class="form-select" disabled="@IsEditorBusy" @bind="form.OutlineMethod">
                             <option value="Keyword">キーワード</option>
                             <option value="Search">検索</option>
                             <option value="Ai">AI</option>
@@ -115,28 +115,25 @@
                     </div>
                     <div class="col-12 d-flex flex-wrap gap-3">
                         <div class="form-check">
-                            <input id="search-mode" class="form-check-input" disabled="@(isGenerating || isSubmitting)" type="checkbox" @bind="form.SearchMode" />
+                            <input id="search-mode" class="form-check-input" disabled="@IsEditorBusy" type="checkbox" @bind="form.SearchMode" />
                             <label class="form-check-label" for="search-mode">検索モード</label>
                         </div>
                         <div class="form-check">
-                            <input id="is-domestic" class="form-check-input" disabled="@(isGenerating || isSubmitting)" type="checkbox" @bind="form.IsDomesticOnly" />
+                            <input id="is-domestic" class="form-check-input" disabled="@IsEditorBusy" type="checkbox" @bind="form.IsDomesticOnly" />
                             <label class="form-check-label" for="is-domestic">国内限定</label>
                         </div>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline-primary mt-3" disabled="@(isSubmitting || isGenerating)" @onclick="SaveArticleAsync">記事情報を保存</button>
+                <button type="button" class="btn btn-outline-primary mt-3" disabled="@IsEditorBusy" @onclick="SaveArticleAsync">記事情報を保存</button>
             </section>
         }
 
-        <WebWritingTool.Web.Components.Articles.ArticleResearchPanel @key="ArticleId" ArticleId="ArticleId"
-            Keyword="@article.Keyword" SearchMode="article.SearchMode" Headings="article.Headings"
-            InitialJobId="monitoredOutlineJobId" Disabled="automaticGenerationActive" BeforeGenerate="ConfirmUnsavedAsync" OnBusyChanged="value => manualGenerationActive = value" OnGenerated="ReloadGeneratedArticleAsync" />
-
         <div class="editor-mobile-switch" role="group" aria-label="編集表示">
             <button class="btn @(showOutline ? "btn-outline-primary" : "btn-primary")" aria-pressed="@(!showOutline)" @onclick="() => showOutline = false">本文</button>
-            <button class="btn @(showOutline ? "btn-primary" : "btn-outline-primary")" aria-pressed="@showOutline" @onclick="() => showOutline = true">見出し構成（@article.Headings.Count）</button>
+            <button class="btn @(showOutline ? "btn-primary" : "btn-outline-primary")" aria-label="@($"見出し構成（{article.Headings.Count}）")" aria-pressed="@showOutline" @onclick="() => showOutline = true">構成（@article.Headings.Count）</button>
+            <button class="btn btn-outline-secondary" aria-expanded="@(!FocusMode)" @onclick="ToggleFocusMode">@(FocusMode ? "全体を表示" : "本文に集中")</button>
         </div>
-        <fieldset disabled="@(isGenerating || isSubmitting)" class="editor-fields">
+        <fieldset disabled="@IsEditorBusy" class="editor-fields">
         <div class="article-editor-grid @(showOutline ? "show-outline" : "show-body")">
             <aside class="article-editor-sidebar">
                 <section class="article-panel">
@@ -166,16 +163,6 @@
                         </div>
                     }
 
-                    @if (deleteHeadingId.HasValue)
-                    {
-                        <div class="alert alert-warning mt-3" role="alert">
-                            <div>この見出しと本文を削除します。H2の場合は配下のH3も対象です。画面から元には戻せません。</div>
-                            <div class="d-flex gap-2 mt-2">
-                                <button type="button" class="btn btn-sm btn-danger" @onclick="() => GuardAsync(ConfirmDeleteHeadingAsync)">削除</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelDeleteHeading">キャンセル</button>
-                            </div>
-                        </div>
-                    }
                 </section>
             </aside>
 
@@ -189,25 +176,35 @@
                 else
                 {
                     <section class="article-panel article-heading-editor">
+                        <nav class="heading-navigation" aria-label="見出し間の移動">
+                            <button type="button" class="btn btn-outline-secondary" disabled="@(SelectedHeadingIndex <= 0)" @onclick="() => ChangeHeadingAsync(-1)">前の見出し</button>
+                            <span class="heading-position" aria-live="polite">@(SelectedHeadingIndex + 1) / @article.Headings.Count</span>
+                            <button type="button" class="btn btn-outline-secondary" disabled="@(SelectedHeadingIndex >= article.Headings.Count - 1)" @onclick="() => ChangeHeadingAsync(1)">次の見出し</button>
+                        </nav>
                         <div class="article-section-header">
                             <div>
                                 <span class="badge text-bg-light">@($"H{selectedHeading.Level}")</span>
                                 <span class="badge text-bg-secondary ms-1">@GetHeadingStatusLabel(selectedHeading.Status)</span>
                             </div>
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-secondary" @onclick="() => GuardAsync(() => MoveSelectedHeadingAsync(-1))">上へ</button>
-                                <button type="button" class="btn btn-outline-secondary" @onclick="() => GuardAsync(() => MoveSelectedHeadingAsync(1))">下へ</button>
-                                <button type="button" class="btn btn-outline-danger" @onclick="() => RequestDeleteHeading(selectedHeading.Id)">削除</button>
-                            </div>
+                            <button id="heading-tools-toggle" type="button" class="btn btn-outline-secondary" aria-expanded="@showHeadingTools" aria-controls="heading-tools" @onclick="() => showHeadingTools = !showHeadingTools">見出しの操作</button>
                         </div>
+                        @if (showHeadingTools)
+                        {
+                            <div id="heading-tools" class="heading-tools" role="group" aria-label="見出しの補助操作">
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => GuardAsync(() => MoveSelectedHeadingAsync(-1))">上へ移動</button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => GuardAsync(() => MoveSelectedHeadingAsync(1))">下へ移動</button>
+                                <button type="button" class="btn btn-outline-danger" @onclick="() => RequestDeleteHeadingAsync(selectedHeading.Id)">削除</button>
+                            </div>
+                        }
 
-                        <div class="mb-3">
+                        <div class="mb-3 heading-title-field">
                             <label class="form-label" for="heading-title">見出しタイトル</label>
                             <input id="heading-title" class="form-control" @bind="headingForm.Title" @bind:event="oninput" />
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label" for="heading-body">本文</label>
+                            <label class="form-label heading-body-label" for="heading-body">本文 <span class="editor-focus-title">@selectedHeading.Title</span></label>
+                            @if (ExecutionContext.IsGuest) { <span class="editor-focus-guest">ゲスト · サンプル</span> }
                             <textarea id="heading-body" class="form-control article-body-editor" rows="18" @bind="headingForm.Body" @bind:event="oninput"></textarea>
                         </div>
 
@@ -221,8 +218,8 @@
                                 </label>
                             </div>
                             <div class="article-heading-save">
-                                <span class="text-muted">@HeadingBodyLength 文字 · @(IsHeadingDirty ? "未保存" : "保存済み")</span>
-                                <button type="button" class="btn btn-primary" disabled="@isSubmitting" @onclick="SaveHeadingAsync">本文を保存</button>
+                                <span class="text-muted">@HeadingBodyLength 文字</span>
+                                <button type="button" class="btn btn-outline-primary" disabled="@IsEditorBusy" @onclick="SaveHeadingAsync">本文を保存</button>
                             </div>
                         </div>
                         <div class="editor-feedback" aria-live="polite">@(errorMessage ?? successMessage)</div>
@@ -234,12 +231,36 @@
         </div>
 
         </fieldset>
+        <details class="preview-options article-panel mt-3">
+            <summary>プレビューの表示設定</summary>
+            <label class="form-check article-period-break">
+                <input class="form-check-input" type="checkbox" disabled="@IsEditorBusy" @bind="insertLineBreakAfterPeriod" />
+                <span class="form-check-label">句点で改行する</span>
+            </label>
+            <p class="form-text mb-0">「保存してプレビュー」で反映します。</p>
+        </details>
+        <WebWritingTool.Web.Components.Articles.ArticleResearchPanel @key="ArticleId" ArticleId="ArticleId"
+            Keyword="@article.Keyword" SearchMode="article.SearchMode" Headings="article.Headings"
+            InitialJobId="monitoredOutlineJobId" Disabled="@(automaticGenerationActive || isSubmitting || isPreparingPreview)" BeforeGenerate="ConfirmUnsavedAsync" OnBusyChanged="value => manualGenerationActive = value" OnGenerated="ReloadGeneratedArticleAsync" />
         <div class="article-editor-danger">
-            <button type="button" class="btn btn-outline-danger" @onclick="() => showDeleteDialog = true">記事を削除</button>
+            <button type="button" class="btn btn-outline-danger" disabled="@IsEditorBusy" @onclick="() => showDeleteDialog = true">記事を削除</button>
         </div>
     }
 </div>
 
+@if (deleteHeadingId.HasValue)
+{
+    var target = article?.Headings.FirstOrDefault(heading => heading.Id == deleteHeadingId);
+    <AppDialog Title="見出しを削除" OnClose="CancelDeleteHeading" ReturnFocusId="heading-tools-toggle">
+        <p><strong>@target?.Title</strong></p>
+        <p>この見出しと本文@(target?.Level == 2 ? $"、配下のH3 {article!.Headings.Count(heading => heading.ParentId == target.Id)}件とその本文" : "")を削除します。画面から元には戻せません。</p>
+        @if (errorMessage is not null) { <div class="alert alert-danger" role="alert">@errorMessage</div> }
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+            <button class="btn btn-outline-secondary" disabled="@IsEditorBusy" autofocus @onclick="CancelDeleteHeading">キャンセル</button>
+            <button class="btn btn-danger" disabled="@IsEditorBusy" @onclick="() => GuardAsync(ConfirmDeleteHeadingAsync)">削除する</button>
+        </div>
+    </AppDialog>
+}
 @if (unsavedChoice is not null)
 {
     <AppDialog Title="未保存の変更" OnClose="CancelUnsaved">
@@ -278,14 +299,20 @@
     private TaskCompletionSource<bool>? unsavedChoice;
     private bool showDeleteDialog;
     private bool showOutline;
+    private bool showHeadingTools;
+    private bool shortViewport;
+    private bool? focusPreference;
+    private bool FocusMode => focusPreference ?? shortViewport;
     private bool manualGenerationActive;
     private bool automaticGenerationActive;
     private bool isGenerating => manualGenerationActive || automaticGenerationActive;
     private Guid? monitoredOutlineJobId;
     private bool focusMeta;
     private bool focusEditor;
+    private bool focusError;
     private ElementReference editorRoot;
     private IJSObjectReference? navigationModule;
+    private IJSObjectReference? viewportModule;
     private DotNetObjectReference<ArticleDetail>? navigationReference;
     private bool disposed;
     private ArticleDetailResponse? article;
@@ -295,6 +322,14 @@
     private HeadingEditForm headingForm = new();
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool isPreparingPreview;
+    private bool isSaving;
+    private bool saveFailed;
+    private string SaveStateText => isSaving ? "保存中…"
+        : isPreparingPreview ? "プレビューを準備中…"
+        : saveFailed ? "保存に失敗しました"
+        : HasUnsavedChanges ? "未保存の変更があります" : "保存済み";
+    private bool IsEditorBusy => isSubmitting || isPreparingPreview || isGenerating;
     private bool showMetaPanel;
     private bool insertLineBreakAfterPeriod;
     private Guid? deleteHeadingId;
@@ -304,6 +339,8 @@
     private bool CanAddH3 => article is not null && GetSelectedH2Id().HasValue;
 
     private int HeadingBodyLength => headingForm.Body?.Length ?? 0;
+    private int SelectedHeadingIndex => article?.Headings.OrderBy(heading => heading.DisplayOrder).ToList()
+        .FindIndex(heading => heading.Id == selectedHeading?.Id) ?? -1;
 
     protected override async Task OnInitializedAsync()
     {
@@ -350,7 +387,7 @@
 
     private async Task ReloadWorkflowAsync()
     {
-        if (!HasUnsavedChanges && !isSubmitting) await LoadAsync();
+        if (!HasUnsavedChanges && !IsEditorBusy) await LoadAsync();
     }
 
     private void PopulateForm(ArticleDetailResponse detail)
@@ -401,7 +438,9 @@
         savedHeadingForm = headingForm with { };
     }
 
-    private async Task SaveArticleAsync()
+    private Task SaveArticleAsync() => SaveAsync(SaveArticleCoreAsync);
+
+    private async Task SaveArticleCoreAsync()
     {
         using var scope = CreateOperationScope();
         var actor = await GetActorAsync();
@@ -410,7 +449,6 @@
             return;
         }
 
-        isSubmitting = true;
         ClearMessages();
 
         var result = await scope.ServiceProvider.GetRequiredService<IArticleCommandService>().UpdateAsync(
@@ -438,8 +476,6 @@
                 article.HtmlBody,
                 form.RowVersion));
 
-        isSubmitting = false;
-
         if (!result.Succeeded || result.Value is null)
         {
             errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
@@ -451,7 +487,9 @@
         successMessage = "記事を保存しました。";
     }
 
-    private async Task SaveHeadingAsync()
+    private Task SaveHeadingAsync() => SaveAsync(SaveHeadingCoreAsync);
+
+    private async Task SaveHeadingCoreAsync()
     {
         using var scope = CreateOperationScope();
         var actor = await GetActorAsync();
@@ -460,7 +498,6 @@
             return;
         }
 
-        isSubmitting = true;
         ClearMessages();
 
         var result = await scope.ServiceProvider.GetRequiredService<IArticleHeadingService>().UpdateHeadingAsync(
@@ -476,7 +513,6 @@
 
         if (!result.Succeeded || result.Value is null)
         {
-            isSubmitting = false;
             errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
             return;
         }
@@ -492,7 +528,6 @@
             var unchanged = (savedForm with { RowVersion = null }) == (metadataBaseline with { RowVersion = null });
             form = metadata with { RowVersion = unchanged ? savedForm.RowVersion : metadata.RowVersion };
         }
-        isSubmitting = false;
         successMessage = "本文を保存しました。";
     }
 
@@ -543,8 +578,11 @@
         successMessage = "見出しを追加しました。";
     }
 
-    private void RequestDeleteHeading(Guid headingId)
+    private async Task RequestDeleteHeadingAsync(Guid headingId)
     {
+        if (IsEditorBusy || !await ConfirmUnsavedAsync()) return;
+        ClearMessages();
+        showHeadingTools = false;
         deleteHeadingId = headingId;
     }
 
@@ -569,14 +607,13 @@
 
         ClearMessages();
         var result = await scope.ServiceProvider.GetRequiredService<IArticleHeadingService>().DeleteHeadingAsync(actor, ArticleId, deleteHeadingId.Value);
-        deleteHeadingId = null;
-
         if (!result.Succeeded)
         {
             errorMessage = GetServiceErrorMessage(result.Error, result.ValidationErrors);
             return;
         }
 
+        deleteHeadingId = null;
         selectedHeading = null;
         await LoadAsync();
         successMessage = "見出しを削除しました。";
@@ -702,6 +739,38 @@
         successMessage = "HTMLへ変換しました。";
     }
 
+    private async Task SaveAndPreviewAsync()
+    {
+        if (IsEditorBusy) return;
+        isPreparingPreview = true;
+        isSubmitting = true;
+        isSaving = true;
+        saveFailed = false;
+        ClearMessages();
+        try
+        {
+            await SaveAllCoreAsync();
+            saveFailed = errorMessage is not null;
+            isSaving = false;
+            if (HasUnsavedChanges || errorMessage is not null) return;
+            await ConvertHtmlAsync();
+            if (errorMessage is not null) return;
+            NavigationManager.NavigateTo($"/articles/{ArticleId}/preview");
+        }
+        catch (Exception exception)
+        {
+            saveFailed = isSaving;
+            errorMessage = "プレビューを準備できませんでした。入力内容を確認して、もう一度お試しください。";
+            Logger.LogWarning("Preparing article preview failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally
+        {
+            isSaving = false;
+            isPreparingPreview = false;
+            isSubmitting = false;
+        }
+    }
+
     private async Task DeleteArticleAsync()
     {
         using var scope = CreateOperationScope();
@@ -813,7 +882,7 @@
             "OutlineReady" => "構成完了",
             "BodyQueued" => "本文待機",
             "BodyGenerating" => "本文生成中",
-            "Completed" => "完了",
+            "Completed" => "記事完成",
             "Posted" => "投稿済み",
             "Failed" => "失敗",
             _ => status
@@ -860,16 +929,42 @@
         return scope;
     }
 
-    private async Task SaveAllAsync()
+    private Task SaveAllAsync() => SaveAsync(SaveAllCoreAsync);
+
+    private async Task SaveAllCoreAsync()
     {
-        if (isSubmitting || isGenerating) return;
-        if (IsArticleDirty) { await SaveArticleAsync(); if (errorMessage is not null) return; }
-        if (IsHeadingDirty) await SaveHeadingAsync();
+        if (IsArticleDirty) { await SaveArticleCoreAsync(); if (errorMessage is not null) return; }
+        if (IsHeadingDirty) await SaveHeadingCoreAsync();
+    }
+
+    private async Task SaveAsync(Func<Task> action)
+    {
+        if (IsEditorBusy) return;
+        isSubmitting = true;
+        isSaving = true;
+        saveFailed = false;
+        ClearMessages();
+        try
+        {
+            await action();
+            saveFailed = errorMessage is not null;
+        }
+        catch (Exception exception)
+        {
+            saveFailed = true;
+            errorMessage = "保存できませんでした。入力内容は画面に残っています。もう一度お試しください。";
+            Logger.LogWarning("Saving article failed. exceptionType={ExceptionType}", exception.GetType().Name);
+        }
+        finally
+        {
+            isSaving = false;
+            isSubmitting = false;
+        }
     }
 
     private async Task GuardAsync(Func<Task> action)
     {
-        if (isSubmitting || isGenerating) return;
+        if (IsEditorBusy) return;
         if (!await ConfirmUnsavedAsync()) return;
         isSubmitting = true;
         try { await action(); }
@@ -923,13 +1018,39 @@
     {
         SelectHeading(id);
         showOutline = false;
+        showHeadingTools = false;
         focusEditor = true;
         return Task.CompletedTask;
+    }
+
+    private Task ChangeHeadingAsync(int direction) => GuardAsync(async () =>
+    {
+        var headings = article?.Headings.OrderBy(heading => heading.DisplayOrder).ToArray() ?? [];
+        var index = SelectedHeadingIndex + direction;
+        if (index >= 0 && index < headings.Length) await SelectHeadingAsync(headings[index].Id);
+    });
+
+    private void ToggleFocusMode()
+    {
+        focusPreference = !FocusMode;
+        showOutline = false;
+        focusEditor = FocusMode;
+    }
+
+    private void FocusError() => focusError = true;
+
+    [JSInvokable]
+    public Task SetShortViewportAsync(bool value)
+    {
+        if (disposed) return Task.CompletedTask;
+        shortViewport = value;
+        return InvokeAsync(StateHasChanged);
     }
 
     private Task ToggleMetaAsync()
     {
         showMetaPanel = !showMetaPanel;
+        if (showMetaPanel) focusPreference = false;
         focusMeta = showMetaPanel;
         return Task.CompletedTask;
     }
@@ -943,12 +1064,16 @@
             navigationModule = imported;
             navigationReference = DotNetObjectReference.Create(this);
             await navigationModule.InvokeVoidAsync("watch", editorRoot, navigationReference);
+            var importedViewport = await JS.InvokeAsync<IJSObjectReference>("import", "./js/editorViewport.js");
+            if (disposed) { await importedViewport.DisposeAsync(); return; }
+            viewportModule = importedViewport;
+            await viewportModule.InvokeVoidAsync("watch", editorRoot, navigationReference);
         }
         if (navigationModule is not null)
             await navigationModule.InvokeVoidAsync("setDirty", editorRoot, HasUnsavedChanges);
-        if (!focusMeta && !focusEditor) return;
-        var id = focusMeta ? "article-meta" : "heading-editor";
-        focusMeta = focusEditor = false;
+        if (!focusMeta && !focusEditor && !focusError) return;
+        var id = focusError ? "editor-error" : focusMeta ? "article-meta" : "heading-editor";
+        focusMeta = focusEditor = focusError = false;
         await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/appDialog.js");
         await module.InvokeVoidAsync("focus", id);
     }
@@ -957,6 +1082,18 @@
     {
         disposed = true;
         CompleteUnsaved(false);
+        if (viewportModule is not null)
+        {
+            try
+            {
+                await viewportModule.InvokeVoidAsync("stop", editorRoot);
+                await viewportModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                Logger.LogDebug("Skipped editor viewport cleanup because the circuit disconnected.");
+            }
+        }
         if (navigationModule is not null)
         {
             try

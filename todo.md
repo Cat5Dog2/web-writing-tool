@@ -603,6 +603,21 @@
   - 検証: 修正前に回帰テスト10件の失敗を再現。修正後は回帰12件と、それを含む関連結合44件が成功。変更C#のformat、Slopwatch（0件）、diffチェック成功。本番反映・実API・全体テスト・E2Eは未実施。
   - コマンド: `dotnet test tests/WebWritingTool.IntegrationTests --no-restore --filter 'FullyQualifiedName~CookieAuthenticationTests'`、同プロジェクトの`--no-build --filter 'FullyQualifiedName~CookieAuthenticationTests|FullyQualifiedName~GuestLoginTests|FullyQualifiedName~AccountApiTests|FullyQualifiedName~ArticleApiTests|FullyQualifiedName~AdminApiTests|FullyQualifiedName~SecurityIntegrationTests|FullyQualifiedName~SecurityHeadersTests|FullyQualifiedName~HealthEndpointTests'`。
 
+- [x] `T-1347` 画面の日時表示をサーバーのタイムゾーンに依存しない日本時間へ統一する。
+  - 完了条件: 記事の作成日、Web/X資料の取得日時、登録履歴、ゲストの終了予定、設定・管理画面の日時を共通処理で日本時間表示する。UTC環境で修正前の失敗と修正後の成功、日付・年をまたぐ変換、未設定日時を検証する。
+  - 検証: UTCの隔離コンテナで修正前の5件失敗を再現し、修正後は日本時間のWindows・UTCのLinuxとも回帰6件成功。Webを含むビルド、変更C#のformat、Slopwatch（0件）、diffチェック成功。本番反映・実API・全体テスト・E2E再実行は未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.UnitTests --no-restore --filter 'FullyQualifiedName~DateTimeDisplayTests'`。UTC検証は`Dockerfile.dev`指定のSDKイメージで、ネットワーク無効・テスト出力のみ読み取り専用マウント・`TZ=Etc/UTC`を指定して`dotnet vstest /tests/WebWritingTool.UnitTests.dll --TestCaseFilter:FullyQualifiedName~DateTimeDisplayTests`を実行。
+
+- [x] `T-1348` 編集・プレビュー・一覧のUI/UXレビュー6点を反映する。
+  - 完了条件: モバイルの本文優先配置と固定保存操作、保存してプレビュー、完了履歴の折りたたみ、再生成の対象確認、階層を持つ目次、状態表示と操作の整理を実装する。保存失敗時の入力保持、未保存確認、生成中制御を維持し、PC・モバイルのE2Eで検証する。
+  - 検証: 改善前に新規E2E5件の失敗を確認。改善後は追加した境界ケースを含む関連E2E16件と、日時表示の回帰6件が成功。320×740、390×844、667×375、1280×900の画面と1280×720の記事一覧を確認。変更C#のformat、Slopwatch（0件）、diffチェック成功。本番反映・実外部API・全体テストは未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~EditorUx_|FullyQualifiedName~UxReview_Unsaved|FullyQualifiedName~UxReview_Mobile|FullyQualifiedName~BulkUx_|FullyQualifiedName~GuestLoginFlowTests|FullyQualifiedName~ArticleResearchFlowTests|FullyQualifiedName~E2E006And007|FullyQualifiedName~MajorScreens_CompleteSmokeFlow'`（関連群と共通手順、追加境界ケースに分けて実行）、`dotnet test tests/WebWritingTool.UnitTests --no-restore --filter 'FullyQualifiedName~DateTimeDisplayTests'`。
+
+- [x] `T-1349` モバイル編集の削除確認・集中表示・保存状態・見出し移動・補助操作とキーボード表示への対応を改善する。
+  - 完了条件: 見出し削除の確認を共通ダイアログにし、横向きは本文を優先する。保存状態と失敗への導線を保存バーに表示し、前後の見出し移動でも未保存保護を維持する。並べ替え・削除を補助操作へまとめる。表示領域縮小・復帰・拡大表示時をブラウザーで検証し、実機未確認の範囲を明示する。
+  - 検証: 改善前の新規E2E6件失敗を確認し、境界ケースを含む新規7件が成功。既存16件も確認した。関連23件の初回実行で入力エラーテスト1件が失敗したため、未保存状態の反映確認を追加し、保存・プレビューを含む関連10件を再実行して成功。変更C#のformat、Slopwatch（0件）、diffチェック成功。実機Safari／AndroidのOSキーボード、本番反映、全体テストは未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-restore --filter 'FullyQualifiedName~MobileEditing_|FullyQualifiedName~EditorUx_SaveAndPreview'`。既存回帰はT-1348と同じフィルターへ`FullyQualifiedName~MobileEditing_`を加えて実行。記録は`test-results/mobile-editing-20260924.md`。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
