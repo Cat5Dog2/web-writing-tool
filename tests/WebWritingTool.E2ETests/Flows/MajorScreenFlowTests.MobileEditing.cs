@@ -145,6 +145,55 @@ public sealed partial class MajorScreenFlowTests
         await Expect(page.GetByRole(AriaRole.Button, new() { Name = "エラーを確認", Exact = true })).ToHaveCountAsync(0);
     }
 
+    [Fact]
+    public async Task MobileEditing_ErrorFocus_StopsEarlierSmoothScroll()
+    {
+        await using var session = await fixture.CreateSessionAsync(nameof(MobileEditing_ErrorFocus_StopsEarlierSmoothScroll));
+        var page = session.Page;
+        await OpenEditorWithHeadingAsync(page);
+        await page.SetViewportSizeAsync(390, 844);
+        await page.EmulateMediaAsync(new() { ReducedMotion = ReducedMotion.NoPreference });
+        await page.RouteAsync(new System.Text.RegularExpressions.Regex(@"/js/appDialog(?:\.[a-z0-9]+)?\.js$"), route => route.FulfillAsync(new()
+        {
+            ContentType = "text/javascript",
+            Body = """
+                export * from './appDialog.js?scroll-regression';
+                import { focus as originalFocus } from './appDialog.js?scroll-regression';
+                export async function focus(id, ...args) {
+                    if (id === 'editor-error')
+                        await new Promise(resolve => { window.releaseErrorFocus = resolve; });
+                    originalFocus(id, ...args);
+                    if (id === 'editor-error') window.errorFocusCompleted = true;
+                }
+                """
+        }));
+        await page.GetByRole(AriaRole.Button, new() { Name = "記事情報を編集", Exact = true }).ClickAsync();
+        await Expect(page.Locator("#article-meta")).ToBeFocusedAsync();
+        await page.Locator("#keyword").FillAsync("");
+        await page.GetByRole(AriaRole.Button, new() { Name = "変更をまとめて保存", Exact = true }).ClickAsync();
+        await Expect(page.Locator(".editor-save-state")).ToHaveTextAsync("保存に失敗しました");
+        await page.GetByRole(AriaRole.Button, new() { Name = "エラーを確認", Exact = true }).ClickAsync();
+        await page.WaitForFunctionAsync("typeof window.releaseErrorFocus === 'function'");
+        // Resume error focus while the error is still visible and an earlier scroll is moving away.
+        Assert.True(await page.EvaluateAsync<bool>("""
+            async () => {
+                window.scrollTo({ top: 0, behavior: 'instant' });
+                await new Promise(requestAnimationFrame);
+                window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+                while (scrollY === 0) await new Promise(requestAnimationFrame);
+                const rect = document.querySelector('#editor-error').getBoundingClientRect();
+                const visible = rect.top >= 0 && rect.bottom <= innerHeight;
+                document.addEventListener('scrollend', () => { window.errorScrollEnded = true; }, { once: true });
+                window.releaseErrorFocus();
+                return visible;
+            }
+            """));
+        await page.WaitForFunctionAsync("window.errorFocusCompleted === true && window.errorScrollEnded === true");
+        await Expect(page.Locator("#editor-error")).ToBeFocusedAsync();
+        await Expect(page.Locator("#editor-error")).ToBeInViewportAsync(new() { Ratio = 1 });
+        await Expect(page.Locator("#editor-error")).ToContainTextAsync("1から200文字で入力してください。");
+    }
+
     [Theory]
     [InlineData(410, 0)]
     [InlineData(300, 60)]

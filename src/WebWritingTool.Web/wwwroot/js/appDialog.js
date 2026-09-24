@@ -38,9 +38,11 @@ export function close(dialog) {
 export function focus(id, preserveChildFocus = false) {
     const element = document.getElementById(id);
     // Delayed panel initialization must not interrupt an input the user already selected.
-    if (preserveChildFocus && element?.contains(document.activeElement)) return;
-    element?.focus();
-    element?.scrollIntoView({ block: "nearest" });
+    if (!element || (preserveChildFocus && element.contains(document.activeElement))) return;
+    // scrollIntoView does nothing for a visible target, so stop any earlier animation explicitly.
+    window.scrollTo({ top: window.scrollY, left: window.scrollX, behavior: "instant" });
+    element.focus({ preventScroll: true });
+    element.scrollIntoView({ block: "nearest", behavior: "instant" });
 }
 
 export async function copy(text) {
