@@ -623,6 +623,11 @@
   - 検証: 修正前にキーワード削除の失敗を再現し、通常のパネル誘導は成功。修正後は回帰2ケースとCI失敗ケースの3件、編集・プレビュー・モバイル・未保存・ダイアログの関連E2E17件が成功。変更C#のformat、Slopwatch（0件）、`git diff --check`成功。全体テスト・実API・CI再実行・本番反映は未実施。
   - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-build --filter 'FullyQualifiedName~EditorUx_|FullyQualifiedName~MobileEditing_|FullyQualifiedName~UxReview_Unsaved|FullyQualifiedName~UxReview_PostDialog'`。記録は`test-results/editor-focus-fix-20260924/verification.md`。
 
+- [x] `T-1351` 「エラーを確認」のフォーカス後も先行スクロールが続き、エラー説明が画面外へ流れる不具合を修正する。
+  - 完了条件: 先行する滑らかなスクロール中でもエラー説明へ確実に移動し、前回追加した入力フォーカス保護を維持する。回帰E2Eで修正前後を確認し、関連設計書を更新する。
+  - 検証: 修正前にフォーカス後の画面外移動を再現。修正後は回帰・CI失敗・入力フォーカス保護の4件とE2E全51件が成功。画像確認、変更C#のformat、Slopwatch（0件）、`git diff --check`成功。E2E以外の全体テスト・実API・CI再実行・実機キーボード・本番反映は未実施。
+  - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-build --logger 'trx;LogFileName=full-e2e.trx' --results-directory test-results/editor-error-scroll-fix-20260924`。記録は`test-results/editor-error-scroll-fix-20260924/verification.md`。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
