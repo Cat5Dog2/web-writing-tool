@@ -480,11 +480,10 @@ Caddyの証明書発行には、80/443が外部から到達可能である必要
 
 ### 7.9 PostgreSQL起動
 
-```bash
-docker compose pull
-docker compose up -d postgres
-docker compose ps
-```
+PostgreSQLは、7.10でイメージをスキャンした後に`production-compose.ps1`経由で起動する。スキャン前に
+`docker compose pull`や`docker compose up -d postgres`で起動しない。ゲートを通っていないイメージが本番DBとして
+動くうえ、7.10のラッパーがスキャン済みのimage IDでコンテナを作り直すことになるためである。postgresのような
+第三者イメージの取得は、7.10の`scripts/scan-image.ps1`がスキャンの前に行う。
 
 ### 7.10 ビルドとスキャン、初回Migration
 
@@ -498,11 +497,21 @@ CIの`docker-production`ジョブも同じ順序で動く。詳細は[CI/CD設�
 
 本番appイメージにSDKやEF CLIは含めない。`migrate`サービスは`tools` profileでのみ起動し、プロジェクトと同じ`dotnet-ef 10.0.8`を使用する。
 
+`migrate`は長期稼働サービスのmanifestに入らないため、Migrationの前に別にスキャンし、単回使用のreceipt
+（`artifacts/scanned-migrate.json`）を作る。ラッパーは、receiptが無い、24時間より古い、現在のmigrateイメージと
+食い違う、のいずれかに当たるとMigrationを拒否し、使ったreceiptは成否にかかわらず消費する。Migrationを
+やり直すときは、migrateのスキャンからやり直す。
+
 ```bash
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml \
   -ComposeCommand 'up -d postgres'
@@ -582,6 +591,12 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
 
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
+
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
   -ComposeCommand 'up -d postgres'
@@ -660,6 +675,12 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
@@ -863,7 +884,7 @@ AdminSeed__Password
 - 既存Adminのパスワードを起動時に上書きしない。
 - パスワードをログ、監査ログ、レスポンスへ出さない。
 - 初回ログイン後は、アカウント画面で初期Adminパスワードを変更する。
-- 変更成功後は`AdminSeed__Email`と`AdminSeed__Password`を`.env`から削除または空にし、配置時と同じComposeファイル指定で`docker compose up -d app`を実行する。共通Caddy構成では7.12節と同じ2つの`-f`を付ける。
+- 変更成功後は`AdminSeed__Email`と`AdminSeed__Password`を`.env`から削除または空にし、`scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'`でappを作り直す。`.env`の変更はコンテナを作り直さないと反映されないため、`start`ではなく`up`を使う。`-ComposeFile`は配置時と同じ値にし、共通Caddy構成では7.12節と同じ2つのComposeファイルを指定する。`docker compose up`を直接使わない（[運用設計](operation-design.md)14.2）。
 
 ### 11.2 2人目以降のAdmin
 
@@ -1001,6 +1022,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d postgres'
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app caddy'

@@ -80,8 +80,12 @@ flowchart LR
 
 ### 5.1 Compose管理方針
 
-- `docker compose up -d`でサービスを起動する。
-- `docker compose pull`またはイメージ差し替え後に`docker compose up -d`で反映する。
+- スキャン以降にイメージを解決・起動する`up`と`run`は、すべて`scripts/production-compose.ps1`経由にし、
+  スキャンで記録したimage IDで起動する。`docker compose up`を直接使わない（14.2）。
+- イメージを差し替えるときは、14.2の順序でビルドとスキャンをやり直してから反映する。ラッパーは`build`・`pull`
+  コマンドと`--build`・`--pull`を拒否する。
+- 止めたコンテナをそのまま再開するときは`docker compose start`を使う。イメージの解決もコンテナの作り直しも
+  起きない（19.4）。
 - `postgres`のvolumeは削除しない。
 - 本番では`restart: unless-stopped`を設定する。
 - `app`はヘルスチェック成功後にCaddyから疎通確認する。
@@ -786,9 +790,13 @@ docker compose exec -T postgres \
     --username "$POSTGRES_USER" \
     --dbname "$POSTGRES_DB"' < "$RESTORE_FILE"
 
-docker compose up -d app
+docker compose start app
 curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
+
+appの再開には`docker compose start app`を使う。止めたコンテナをそのまま再開するので、イメージの再解決や
+コンテナの作り直しが起きない。`docker compose up`を直接使うと、シェルの`APP_IMAGE`や`.env`のタグから
+イメージを解決し直し、スキャンしていないイメージでappが起動したり、稼働中のpostgresが作り直されたりしうる（14.2）。
 
 復元後確認:
 
@@ -807,7 +815,7 @@ docker run --rm \
   -v "$(pwd)/backups:/backup:ro" \
   alpine:3.20 \
   tar -xzf "/backup/$(basename "$KEYS_RESTORE_FILE")" -C /target
-docker compose up -d app
+docker compose start app
 curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 ```
 
@@ -823,7 +831,8 @@ curl -fsS --resolve example.com:443:127.0.0.1 https://example.com/health/ready
 
 ## 20. 運用受け入れ基準
 
-- VPS上で`docker compose up -d`により全サービスが起動する。
+- VPS上で`scripts/production-compose.ps1`経由の`up -d --no-build`により全サービスが起動し、起動中のイメージが
+  スキャンで記録したimage IDと一致する。
 - HTTPSでアプリへアクセスできる。
 - `/health/live`、`/health/ready`が正常応答する。
 - DB、Data Protectionキー、Caddyデータが永続化される。
@@ -937,7 +946,8 @@ infra側であらかじめ用意しておく必要があるもの（web-writing-
    `workflow_run`を再発火させる。
 
 通知が最終的に失敗しても、mainのCIそのもの（ビルド・テスト・スキャン）や本番運用には影響しない。
-本番デプロイは引き続き14.2の手順で人手により実施できる。
+そのコミットがinfra側で本番反映の候補にならないだけである。CDを使わずに反映する場合は、14.2の
+手動手順を使う。
 
 ### 22.6 監視・ログ上の注意
 

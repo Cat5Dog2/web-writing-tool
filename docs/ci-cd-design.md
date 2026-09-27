@@ -30,7 +30,7 @@ CI/CD基盤はGitHub Actionsとする。
 | main CI | GitHub Actionsの`push` workflowで実行する |
 | 夜間CI | GitHub Actionsの`schedule` workflowで実行する |
 | リリース前チェック | GitHub Actionsの`workflow_dispatch`で実行する。現行workflowはtag pushでは起動しない |
-| production deploy | 未実装。VPS上での手動デプロイを正とする。[運用設計](operation-design.md)14.2の手順に従う |
+| production deploy | infra側（wwt-seo-infra）が行う。main CI成功の通知を受けたinfraが採用SHA更新PRを作り、そのマージを承認点としてVPSへ反映する。23章を参照。CDを使わない場合は[運用設計](operation-design.md)14.2の手動手順に従う |
 | Runner | 初期はGitHub-hosted runnerを使う |
 | self-hosted runner | 本番相当性能確認、長時間E2E、VPS近似検証が必要になった段階で検討する |
 
@@ -59,7 +59,7 @@ on:
 | PR | mainへ入れる前の品質ゲート | PR CI必須 |
 | `main` | 統合済みブランチ | main CI、E2E全件、Docker build、本番Docker確認 |
 | release tag | リリース候補の記録 | mainでCIが成功したコミットへ打つ。tag自体はCIを起動しない |
-| production deploy | 本番反映 | VPS上で手動実行 |
+| production deploy | 本番反映 | infra側で、採用SHA更新PRのマージ後に自動実行。CDを使わない場合はVPS上で手動実行 |
 
 mainへのマージ条件は、PR CI成功とレビュー完了とする。
 
@@ -920,7 +920,9 @@ MVPの本番デプロイは、Linux VPS + Docker Compose + Caddyを対象とす�
 - production deployは手動承認または明示操作で開始する。
 - 本番DBバックアップを取得してからMigrationを適用する。
 - Migrationはデプロイ手順内で明示実行する。
-- `docker compose up -d`でサービス更新する。
+- サービスの更新は`scripts/production-compose.ps1`経由で行い、スキャンで記録したimage IDで起動する。
+  スキャン以降にイメージを解決・起動する`up`と`run`はすべてこのラッパーを通し、`docker compose up`を
+  直接使わない（9章「スキャンした成果物を起動する」）。
 - デプロイ後にヘルスチェックと最小動作確認を行う。
 
 デプロイ後確認:
@@ -978,7 +980,7 @@ DBスキーマ変更を含むリリースでは、前後方互換のある段階
 9. P12で本番/配置用Docker buildとCompose確認を追加する。
 10. Migration SQL生成と適用確認を追加する。
 11. 脆弱性確認を追加する。
-12. 手動承認付きproduction deployを追加する。未実装。現状はVPS上での手動デプロイ。
+12. 手動承認付きproduction deployを追加する。infra側（wwt-seo-infra）で実装済み。承認点は採用SHA更新PRのマージ（23章）。
 13. tag pushでのリリース前チェック起動を追加する。未実装。現状はmainのCI成功コミットへtagを打つ運用。
 
 ## 20. 受け入れ基準
@@ -1124,8 +1126,13 @@ Secret相当としてログにマスクされる。
 扱う経路はない。
 
 成功時は最終ステップが`リリース候補を通知済み`とだけ`$GITHUB_STEP_SUMMARY`へ出力する。
-「本番デプロイ完了」という表示はしない。本番への反映は引き続き[運用設計](operation-design.md)14.2の
-手順で人手により行う。通知はあくまでinfra側への一次シグナルであり、本番デプロイの実行を意味しない。
+「本番デプロイ完了」という表示はしない。通知はあくまでinfra側への一次シグナルであり、本番デプロイの
+実行を意味しない。
+
+本番への反映はinfra側（wwt-seo-infra）が行う。infraが作る採用SHA更新PRのマージが承認点で、マージ後は
+infraのCI成功を経て、[運用設計](operation-design.md)14.2と同じ順序（preflight、ビルドとスキャン、
+migrateイメージのスキャン、app停止、バックアップ、Migration、起動、readiness確認）で自動的に反映される。
+14.2は、CDを使わない場合や障害調査のときの手動手順として残る。
 
 ### 23.7 新規Actionsの固定
 
