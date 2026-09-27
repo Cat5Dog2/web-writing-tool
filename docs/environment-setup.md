@@ -863,7 +863,7 @@ AdminSeed__Password
 - 既存Adminのパスワードを起動時に上書きしない。
 - パスワードをログ、監査ログ、レスポンスへ出さない。
 - 初回ログイン後は、アカウント画面で初期Adminパスワードを変更する。
-- 変更成功後は`AdminSeed__Email`と`AdminSeed__Password`を`.env`から削除または空にし、配置時と同じComposeファイル指定で`docker compose up -d app`を実行する。共通Caddy構成では7.12節と同じ2つの`-f`を付ける。
+- 変更成功後は`AdminSeed__Email`と`AdminSeed__Password`を`.env`から削除または空にし、`scripts/production-compose.ps1 -ComposeCommand 'up -d --no-build app'`でappを作り直す。`.env`の変更はコンテナを作り直さないと反映されないため、`start`ではなく`up`を使う。`-ComposeFile`は配置時と同じ値にし、共通Caddy構成では7.12節と同じ2つのComposeファイルを指定する。`docker compose up`を直接使わない（[運用設計](operation-design.md)14.2）。
 
 ### 11.2 2人目以降のAdmin
 
