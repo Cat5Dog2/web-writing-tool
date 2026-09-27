@@ -480,11 +480,10 @@ Caddyの証明書発行には、80/443が外部から到達可能である必要
 
 ### 7.9 PostgreSQL起動
 
-```bash
-docker compose pull
-docker compose up -d postgres
-docker compose ps
-```
+PostgreSQLは、7.10でイメージをスキャンした後に`production-compose.ps1`経由で起動する。スキャン前に
+`docker compose pull`や`docker compose up -d postgres`で起動しない。ゲートを通っていないイメージが本番DBとして
+動くうえ、7.10のラッパーがスキャン済みのimage IDでコンテナを作り直すことになるためである。postgresのような
+第三者イメージの取得は、7.10の`scripts/scan-image.ps1`がスキャンの前に行う。
 
 ### 7.10 ビルドとスキャン、初回Migration
 
