@@ -497,11 +497,21 @@ CIの`docker-production`ジョブも同じ順序で動く。詳細は[CI/CD設�
 
 本番appイメージにSDKやEF CLIは含めない。`migrate`サービスは`tools` profileでのみ起動し、プロジェクトと同じ`dotnet-ef 10.0.8`を使用する。
 
+`migrate`は長期稼働サービスのmanifestに入らないため、Migrationの前に別にスキャンし、単回使用のreceipt
+（`artifacts/scanned-migrate.json`）を作る。ラッパーは、receiptが無い、24時間より古い、現在のmigrateイメージと
+食い違う、のいずれかに当たるとMigrationを拒否し、使ったreceiptは成否にかかわらず消費する。Migrationを
+やり直すときは、migrateのスキャンからやり直す。
+
 ```bash
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml \
   -ComposeCommand 'up -d postgres'
@@ -581,6 +591,12 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
 
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
+
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.shared-caddy.yml \
   -ComposeCommand 'up -d postgres'
@@ -659,6 +675,12 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
   -Build \
   -ProvenanceOutputPath artifacts/scanned-images.json
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 \
+  -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
+  -ComposeProfile tools \
+  -ServiceName migrate \
+  -ScanReceiptOutputPath artifacts/scanned-migrate.json
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 \
   -ComposeFile docker-compose.yml,docker-compose.external-caddy.yml \
@@ -1000,6 +1022,7 @@ docker compose --env-file .env -f docker-compose.dev.yml down
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -Build -ProvenanceOutputPath artifacts/scanned-images.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeFile docker-compose.yml -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d postgres'
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand '--profile tools run --rm migrate'
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/production-compose.ps1 -ComposeFile docker-compose.yml -ComposeCommand 'up -d --no-build app caddy'
