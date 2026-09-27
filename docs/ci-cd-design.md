@@ -920,7 +920,9 @@ MVPの本番デプロイは、Linux VPS + Docker Compose + Caddyを対象とす�
 - production deployは手動承認または明示操作で開始する。
 - 本番DBバックアップを取得してからMigrationを適用する。
 - Migrationはデプロイ手順内で明示実行する。
-- `docker compose up -d`でサービス更新する。
+- サービスの更新は`scripts/production-compose.ps1`経由で行い、スキャンで記録したimage IDで起動する。
+  スキャン以降にイメージを解決・起動する`up`と`run`はすべてこのラッパーを通し、`docker compose up`を
+  直接使わない（9章「スキャンした成果物を起動する」）。
 - デプロイ後にヘルスチェックと最小動作確認を行う。
 
 デプロイ後確認:
