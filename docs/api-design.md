@@ -28,6 +28,7 @@ MVPでは外部公開APIを正式提供せず、`/api`配下はBlazor Web Appが
 | グループ | ベースパス | 用途 |
 | --- | --- | --- |
 | Articles | `/api/articles` | 記事CRUD、検索、一括作成、人間確認 |
+| BulkGenerations | `/api/bulk-generations` | 一括自動生成の登録履歴、進捗、再開、停止 |
 | Research | `/api/articles/{articleId}/research` | Web/X検索ジョブ登録と参考情報取得 |
 | Headings | `/api/articles/{articleId}/headings` | 見出し操作 |
 | Generation | `/api/articles/{articleId}/generation` | AI生成ジョブ登録 |
@@ -427,6 +428,7 @@ Response `202 Accepted`:
 - `GET /api/bulk-generations/overview?batchId={id}`: 選択した登録（省略時は最新）の記事に、他の登録の未完了記事を加えて返す。完了以外の待機・実行・失敗・手動停止を継続して追跡する。従来の進捗GETの絞り込み動作は変更しない。
 - 進捗には`runId`、`batchId`、`articleId`、`keyword`、`status`、`stage`、`completedHeadings`、`totalHeadings`、`error`、`warning`、`stopRequested`、`options`を返す。
 - 進捗には補助表示用の`title`も返す。記事一覧の各項目には`automaticGenerationStatus`を追加し、停止・失敗時の再開操作に使う。
+- 進捗GETとoverviewのレスポンスは`BulkGenerationProgress`のJSON配列である。DTOの計算プロパティ`isActive`も返し、`status`が`Queued`または`Running`のときだけtrueとなる。batchesは`BulkGenerationBatch`のJSON配列を返す。DTOの定義は[BulkGenerationContracts.cs](../src/WebWritingTool.Application/Articles/BulkGenerationContracts.cs)、ルート定義は[BulkGenerationEndpoints.cs](../src/WebWritingTool.Web/Endpoints/BulkGenerationEndpoints.cs)を参照する。
 - `POST /api/bulk-generations/{articleId}/retry`: 失敗・停止から未完了段階を再開。同じ段階のジョブを再利用する。
 - `POST /api/bulk-generations/{articleId}/stop`: 待機中は停止、実行中は現在の段階終了後に停止する。
 - 全経路で認証・所有者または管理者の認可を検証する。POSTはCSRF必須。成功204、対象なし404、状態競合409。進捗GETは参照できない記事を返さない。

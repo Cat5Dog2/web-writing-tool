@@ -60,7 +60,9 @@ erDiagram
 | `Articles` | 業務 | 記事本体 |
 | `ArticleHeadings` | 業務 | 見出し階層と本文 |
 | `ArticleGenerationJobs` | 業務 | バックグラウンドジョブ |
+| `ArticleGenerationRuns` | 業務 | 一括自動生成の設定、現在の段階、停止予約。定義は6.4を参照 |
 | `AiGenerationLogs` | 履歴 | AI生成履歴 |
+| `GeminiQuotaStates` | 制御 | Gemini送信量の共有状態。定義は6.13.1を参照 |
 | `UsageLedgers` | 台帳 | AI生成ごとの文字数利用履歴。MVPでは月次集計しない |
 | `SearchResults` | 履歴 | Tavily Web検索結果 |
 | `XSearchPosts` | 履歴 | X API Full-Archive Search投稿結果 |
@@ -101,6 +103,10 @@ erDiagram
 - `WordpressSites`
 - `NotificationSettings`
 - `UserUsageLimits`
+
+[ApplicationDbContext](../src/WebWritingTool.Infrastructure/Data/ApplicationDbContext.cs) は上記5テーブルの `RowVersion` を `IsConcurrencyToken()` として設定し、追加・変更時に暗号学的乱数の16バイトで更新する。PostgreSQLの自動採番値ではない。
+
+Base64文字列の `RowVersion` をDTOで受け渡すのは記事・見出し・WordPressサイトである。対応する更新リクエストでの指定は任意で、省略時はクライアントの取得時点との競合を確認できない。EFによるサービス読込後の競合検出は残る。`NotificationSettings` と `UserUsageLimits` は列を持つが、DTOでは受け渡していない。
 
 ### 5.3 命名
 
