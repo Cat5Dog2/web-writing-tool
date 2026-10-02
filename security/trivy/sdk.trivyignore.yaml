@@ -1,0 +1,13 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-84782",
+      "purls": [
+        "pkg:deb/ubuntu/libssl3t64@3.0.13-0ubuntu3.15",
+        "pkg:deb/ubuntu/openssl@3.0.13-0ubuntu3.15"
+      ],
+      "statement": "OpenSSL DTLS only. The out-of-bounds read is in DTLS handshake retransmission: it needs a connection made from a DTLS method whose retransmission timer fires while a handshake write is suspended. migrate runs nothing but the .NET CLI: a locked dotnet restore and dotnet tool restore against the NuGet feed, then dotnet-ef database update. .NET has no DTLS API: every TLS connection it makes, NuGet's HttpClient included, goes through SslStream, which creates its contexts from TLS_method() and runs over TCP, and Npgsql reaches PostgreSQL over TCP on the Docker network with ssl off on the server. The container is short lived and publishes no port. The image also ships the openssl command line tool, git, curl and wget, but the migrate command runs none of them. Ubuntu ships the fix as 3.0.13-0ubuntu3.16, but the SDK is pinned by digest and the newest sdk:10.0 on MCR (created 2026-09-21) still carries 3.0.13-0ubuntu3.15, so no pin can clear it yet. The purls are pinned to 3.0.13-0ubuntu3.15 so any other version re-opens the gate; delete this file when the sdk digest moves to an image that carries the fix. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    }
+  ]
+}

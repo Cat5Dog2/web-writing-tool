@@ -1,0 +1,13 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-84782",
+      "purls": [
+        "pkg:deb/ubuntu/libssl3t64@3.0.13-0ubuntu3.15",
+        "pkg:deb/ubuntu/openssl@3.0.13-0ubuntu3.15"
+      ],
+      "statement": "OpenSSL DTLS only. The out-of-bounds read is in DTLS handshake retransmission: it needs a connection made from a DTLS method whose retransmission timer fires while a handshake write is suspended. Nothing in this image makes one. The only process is the ASP.NET Core application, and .NET has no DTLS API: every TLS connection it makes goes through SslStream, which creates its contexts from TLS_method() and runs over TCP. Kestrel listens on plain HTTP 8080 with TLS terminated by Caddy in a separate container, the calls to Gemini, Tavily, X, WordPress and Discord are HTTPS through HttpClient, and Npgsql reaches PostgreSQL over TCP on the Docker network with ssl off on the server. The source has no QUIC, HTTP/3 or OpenSSL interop of its own and starts no processes. The openssl command line tool is installed only as a dependency of ca-certificates and is never run. Ubuntu ships the fix as 3.0.13-0ubuntu3.16, but the aspnet base is pinned by digest and the newest aspnet:10.0 on MCR (created 2026-09-21) still carries 3.0.13-0ubuntu3.15, so no pin can clear it yet. The purls are pinned to 3.0.13-0ubuntu3.15 so any other version re-opens the gate; delete this file when the aspnet digest moves to an image that carries the fix. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-10-27T00:00:00Z"
+    }
+  ]
+}

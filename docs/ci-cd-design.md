@@ -456,9 +456,29 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない |
-| `postgres:16-alpine` | `libcrypto3` / `libssl3`のCVE-2026-14456 | OpenSSL 3.5のQUICサーバーlistenerでのみ発生する。PostgreSQL 16はQUICを実装せず、TCP上のTLSを従来の`SSL_accept`で終端する。本番Composeは5432を公開せず、`ssl`も無効。公式イメージをそのまま使う現構成では、Alpineの修正版3.5.8-r0は上流の再ビルドで入る |
+| `web-writing-tool-app` | `libssl3t64` / `openssl`のCVE-2026-84782 | OpenSSLのDTLSハンドシェイク再送処理でのみ発生する。.NETはDTLSのAPIを持たず、`SslStream`はTCP上のTLSだけを扱う。KestrelはTLSを終端せず（Caddyが別コンテナで終端）、外部APIへのHTTPSとNpgsqlもTCPである。`openssl`コマンドは`ca-certificates`の依存として入っているだけで実行しない。Ubuntuの修正版3.0.13-0ubuntu3.16は、上流がaspnetを再ビルドした後のdigest更新で入る |
+| `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl`のCVE-2026-84782 | 同上。migrateは.NET CLIでlocked restore、tool restore、`dotnet-ef database update`を実行するだけで、同梱の`openssl`、git、curl、wgetは使わない。修正版は上流がsdkを再ビルドした後のdigest更新で入る |
 
 `caddy`は受容記録を持たない。到達可能なTLS DoSを受容せず、自前ビルドで解消したためである。9.1参照。
+
+#### digest固定したベースの指摘
+
+appの`Dockerfile`はruntimeベース（aspnet）を、migrateは公開SDKイメージをdigestで固定している。これらの
+ベース層に出た指摘は、digest更新で取り込むのが原則である。ただし上流が修正版パッケージで再ビルドした
+イメージを公開するまでは、どのdigestへ動かしても消えない。CVE-2026-84782（Ubuntuの公開は2026-09-29）が
+この状態で、修正版3.0.13-0ubuntu3.16はnoble-securityにあるが、2026-10-02時点で公開されている最新の
+`aspnet:10.0`と`sdk:10.0`（いずれも2026-09-21作成）は脆弱な3.0.13-0ubuntu3.15のままだった。
+
+その間は到達性を評価し、到達しないものだけを、固定中のdigestが持つパッケージ版へ`purls`を限定して
+受容する。版を限定するので、digestを動かして版が変われば受容は効かなくなり、別の版で残っていれば
+ゲートが再び止まる。到達しうるものは受容しない。digest固定より修正を優先し、9.1のcaddyと同じく
+自前ビルド（必要なら版を固定したパッケージ更新層を足す）で解消する。
+
+到達しない指摘のために、appの`Dockerfile`のruntimeステージで`apt-get upgrade`する案は採らない。
+同じコミットからのビルドでもビルド日によってOSパッケージが変わり、ベースをdigestで固定した意味
+（実行基盤をレビューで決める）がなくなるためである。migrateは公開イメージをそのまま使うので、そもそも
+層を足せない。digestを動かしたときは受容を見直し、解消したものを消す。手順は「SDKイメージのdigest更新」を
+参照する。
 
 ### 9.3 ゲートの動作確認
 
@@ -607,7 +627,7 @@ manifestにスコープ外のサービスがある、image変数が定義され�
 | 対策 | 場所 | 欠けたときに起きること |
 | --- | --- | --- |
 | digest固定 | `docker-compose.yml`の`migrate.image` | タグが差し替われば未レビューのイメージが動く |
-| 受容記録 | `security/trivy/sdk.trivyignore.yaml`（現在は受容0件のため不在） | 修正できないHIGHが残るとゲートが常に赤で、誰も見なくなる |
+| 受容記録 | `security/trivy/sdk.trivyignore.yaml` | 修正できないHIGHが残るとゲートが常に赤で、誰も見なくなる |
 | デプロイ時スキャンと単回使用receipt | `-ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json` | 固定と受容記録が実際のMigrationに結び付かない |
 
 ```powershell
@@ -632,9 +652,10 @@ migrateは長期稼働サービスのmanifestへ入れない。代わりにmigra
 並行実行や後日の再利用を拒否する。再試行は新しいスキャンから行う。PRでは`migration-image-gate`、main / schedule /
 手動実行では`docker-production`がこの経路を検証する。
 
-現在の受容内容は0件で、`security/trivy/sdk.trivyignore.yaml`は存在しない。SDK 10.0.400が同梱していた
-PowerShell 7.6.4の`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6
-（同 10.0.10）を同梱したことで解消したため、digest更新と同時に受容記録を削除した。`scripts/scan-image.ps1`は
+現在の受容内容は`libssl3t64` / `openssl`のCVE-2026-84782の1件である。到達性の評価と、digest更新ではなく
+受容で扱う理由は9.2を参照する。SDK 10.0.400が同梱していたPowerShell 7.6.4の
+`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
+同梱したことで解消したため、digest更新と同時に受容記録を削除した。`scripts/scan-image.ps1`は
 中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
 
 digestを更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALをトリアージしてから
@@ -694,7 +715,9 @@ docker image inspect mcr.microsoft.com/dotnet/aspnet:10.0 --format '{{index .Rep
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate
 ```
 
-3. 残る4か所を同じSDKへ更新する。
+3. 残る4か所を同じSDKへ更新する。`Dockerfile`のruntimeステージ（aspnet）を動かした場合のappイメージの
+   スキャンは、ここではなく5で行う。SDKが変わるとlockファイルを再生成するまで`Dockerfile`の
+   `--locked-mode` restoreがNU1004で落ち、appイメージをビルドできないためである。
 
 4. lockファイルを再生成する。差分は暗黙参照の1エントリだけになるはずで、他のパッケージまで動いていれば
    別の変更が混ざっている。
@@ -710,8 +733,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore W
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dotnet.ps1 restore WebWritingTool.slnx --locked-mode
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package-locks.ps1 -Phase AfterRestore
 
-# 本番イメージのビルド。Dockerfileの--locked-mode restoreを通る
+# 本番イメージのビルド。Dockerfileの--locked-mode restoreを通る。
+# 下のスキャンと同じ名前にするため、.envやシェルの値に関係なくAPP_IMAGEを明示する。
+# ビルドが失敗したらここで止める。進むと同名の古いイメージをスキャンして通ってしまう
+$env:APP_IMAGE = 'web-writing-tool-app:local'
 docker compose build --pull app
+
+# runtimeステージ（aspnet）を動かしたときは、上でビルドしたappイメージを同じ名前でスキャンし、
+# security/trivy/web-writing-tool-app.trivyignore.yaml の受容を見直す。解消したものは消す
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ServiceName app -AppImage $env:APP_IMAGE
+
+# 後の操作へ持ち越さない。Composeでは.envよりシェルの値が優先される
+Remove-Item Env:APP_IMAGE
 
 # migrateのrestoreだけを、本番と同じイメージ・同じマウント・同じフラグで通す
 docker compose --profile tools run --rm --no-deps --entrypoint /bin/bash migrate -lc "cp /source/global.json /work/global.json && cp /source/Directory.Build.props /work/Directory.Build.props && cp -a /source/src /work/src && dotnet restore src/WebWritingTool.Web/WebWritingTool.Web.csproj --locked-mode"
