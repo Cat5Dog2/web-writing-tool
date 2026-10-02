@@ -35,10 +35,15 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来22件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
 | `postgres:16-alpine` | `libcrypto3` / `libssl3` | CVE-2026-14456の1件。OpenSSL 3.5のQUICサーバーlistener限定で、PostgreSQLはQUICを実装しない。Alpineは3.5.8-r0で修正済みだが上流イメージの再ビルド待ち |
+| `web-writing-tool-app` | `libssl3t64` / `openssl` | CVE-2026-84782の1件。OpenSSLのDTLS再送処理に限られ、.NETはDTLSを実装しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、digest固定したaspnetベースは最新の公開イメージ（2026-09-21作成）も3.0.13-0ubuntu3.15のままで、上流の再ビルド待ち |
+| `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl` | 同じCVE-2026-84782の1件。migrateは.NET CLIでrestoreとMigrationを行うだけでDTLSを使わない。最新の`sdk:10.0`も同じ版のままで、上流の再ビルド待ち |
 
-`mcr.microsoft.com/dotnet/sdk`も受容記録を持たない。SDK 10.0.400の同梱PowerShell 7.6.4にあった
-`System.Security.Cryptography.Xml` 10.0.6由来の5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
-同梱したことで解消したため、digest更新と同時に`sdk.trivyignore.yaml`を削除した。
+digest固定したベースの指摘を、Dockerfileの`apt-get upgrade`ではなく受容で扱う理由は
+[docs/ci-cd-design.md](../../docs/ci-cd-design.md) 9.2を参照。
+
+`mcr.microsoft.com/dotnet/sdk`の受容は上のCVE-2026-84782だけである。SDK 10.0.400の同梱PowerShell 7.6.4に
+あった`System.Security.Cryptography.Xml` 10.0.6由来の5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
+同梱したことで解消したため、digest更新と同時に削除した。
 `scripts/scan-image.ps1`は中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
 
 `caddy`は受容記録を持たない。公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な

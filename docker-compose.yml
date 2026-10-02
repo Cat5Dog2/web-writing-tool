@@ -100,8 +100,8 @@ services:
     # `packages.lock.json`と食い違ってMigrationが起動前にNU1004で落ちる。
     #
     # 更新するときは、新しいdigestを先にスキャンし、HIGH/CRITICALを
-    # security/trivy/sdk.trivyignore.yaml へトリアージしてからこの行を変える。現在は受容0件のため
-    # そのファイルは無い。手順は docs/ci-cd-design.md「SDKイメージのdigest更新」を参照。
+    # security/trivy/sdk.trivyignore.yaml へトリアージしてからこの行を変える。新しいdigestで解消した
+    # 受容はそのとき消す。手順は docs/ci-cd-design.md「SDKイメージのdigest更新」を参照。
     image: mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5
     profiles:
       - tools

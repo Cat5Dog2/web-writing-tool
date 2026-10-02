@@ -46,6 +46,13 @@ RUN dotnet publish src/WebWritingTool.Web/WebWritingTool.Web.csproj \
 # runtime patches now arrive only when this line is bumped, so the image scan failing on the pinned
 # base is the signal to bump it rather than something to work around.
 #
+# A bump only helps once upstream has rebuilt on the fixed package. Until then a finding that cannot
+# be reached is triaged into security/trivy/web-writing-tool-app.trivyignore.yaml, scoped to the
+# package version this digest carries, instead of patched here with an apt upgrade: that would let
+# the OS packages change between two builds of the same commit, which is what the pin exists to
+# stop. A reachable one is fixed, not accepted - see docs/ci-cd-design.md 9.2. Re-check that file
+# whenever this line moves, and drop what the new base clears.
+#
 # The matching tag is 10.0 (ASP.NET Core 10.0.12).
 FROM mcr.microsoft.com/dotnet/aspnet@sha256:1fe86375600b62e6566b465da9553eef0621f13c67f40fe764cd8dbb1dee1497 AS runtime
 

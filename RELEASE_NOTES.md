@@ -76,6 +76,7 @@ CIの`build-test`は、restoreしうる最初のコマンドをlocked restoreに
 | Caddyイメージ | `grpc`を`v1.82.1`から`v1.83.2`へ更新。CVE-2026-84304（HIGH、GHSA-vp52-pcj8-j9qc）は`v1.83.1`で修正済みだが、`--replace`が`v1.82.1`へ固定していたため取り込めていなかった |
 | Caddyイメージ | 併せて`x/net`を`v0.58.0`、`x/text`を`v0.41.0`へ更新。`--replace`は強制置換で上下両方向に固定するため、1つ動かすときは全行を見直す方針を[CI/CD設計](docs/ci-cd-design.md)9.1へ追記した |
 | SDKイメージ | `security/trivy/sdk.trivyignore.yaml`を削除。SDK 10.0.400同梱のPowerShell 7.6.4にあった`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで解消した。新digestのスキャンはHIGH/CRITICAL 0件 |
+| appイメージ / SDKイメージ | `libssl3t64` / `openssl` 3.0.13-0ubuntu3.15のCVE-2026-84782（HIGH、OpenSSLのDTLS再送処理）を、`security/trivy/web-writing-tool-app.trivyignore.yaml`と`security/trivy/sdk.trivyignore.yaml`で2026-10-27まで受容。.NETはDTLSを使わず到達しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、最新の`aspnet:10.0` / `sdk:10.0`（2026-09-21作成）も脆弱版のままでdigest更新では解消できず、2026-10-01の夜間CIの`Production Docker smoke`がappイメージのゲートで失敗していた。上流の再ビルド後にdigestを更新して受容を消す |
 
 ## v0.1.0 — MVP初回リリース
 
