@@ -628,6 +628,90 @@
   - 検証: 修正前にフォーカス後の画面外移動を再現。修正後は回帰・CI失敗・入力フォーカス保護の4件とE2E全51件が成功。画像確認、変更C#のformat、Slopwatch（0件）、`git diff --check`成功。E2E以外の全体テスト・実API・CI再実行・実機キーボード・本番反映は未実施。
   - コマンド: `dotnet test tests/WebWritingTool.E2ETests --no-build --logger 'trx;LogFileName=full-e2e.trx' --results-directory test-results/editor-error-scroll-fix-20260924`。記録は`test-results/editor-error-scroll-fix-20260924/verification.md`。
 
+- [x] `T-1352` 実装コードを根拠にドキュメントを照合し、矛盾しない説明の不足を補足する。
+  - 完了条件: 食い違うコード・記述とバグの疑いは変更せず、根拠と判断事項を要確認リストへ記録する。
+  - 変更: 設定読込・設定キー、一括生成APIの戻り値、DBテーブル一覧・RowVersion、テスト実行範囲・Fixtureの説明を補足。[要確認リスト](docs/confirmation-list.md)に実装との差異14件、バグの疑い7件を記録し、索引から案内する。レビュー後、B-002の誤検知を撤回し、追加説明の誤記と各項目の根拠・影響を訂正した。
+  - 検証: 相対リンクの参照先と追加記述の実装根拠を静的に確認。`git diff --check`成功。未追跡の`docs/confirmation-list.md`は同コマンドの対象外のため、末尾空白・UTF-8・改行・最終改行を別途確認。アプリコードは未変更。ビルド・単体・結合・E2E・性能テスト、実API・本番操作は未実施。
+
+## 17.2 実装照合の要確認対応（2026-10-02）
+
+[要確認リスト](docs/confirmation-list.md)の「対応方針」に基づく。T-1352の後にB-009を追加し、全項目の方針を決定した。コード修正（T-1353〜T-1362）は上から順に進める。文書整合（T-1363〜T-1365）はコードを変更しないため並行してよい。各タスクは失敗するテストを先に追加し、完了時に要確認リストの該当項目を対応済みとして記録する。
+
+- [ ] `T-1353` B-008: 無効化したユーザーの既存セッションを失効させる。
+  - 参照: `docs/security-design.md`, `docs/error-codes.md`, `docs/confirmation-list.md`
+  - 対象: `AdminUserService.UpdateUserAsync`、Cookie検証（`OnValidatePrincipal`、`SecurityStampValidatorOptions`）、`AccountPasswordService`と`AccountEndpoints`のパスワード変更、Blazorの認証状態Provider
+  - 方針: 無効化時にSecurityStampを更新する。Cookie検証で`IsEnabled`も確認し、検証間隔を数分程度へ短縮する。無効ユーザーのパスワード変更とCookie再発行を拒否する。開いているcircuitは`RevalidatingServerAuthenticationStateProvider`で定期的に再検証する。
+  - 完了条件: 実Cookieの結合テストで、無効化後の要求の拒否と、無効ユーザーのパスワード変更の拒否を修正前の失敗から確認する。circuitの再検証は単体テストで確認する。検証間隔の値と根拠を記載し、`docs/security-design.md`26.2の手順2を「無効化で失効する」へ更新する。
+
+- [ ] `T-1354` B-008: 管理者が一時パスワードを設定できるようにする。
+  - 参照: `docs/security-design.md`, `docs/api-design.md`, `docs/screen-design.md`
+  - 対象: `AdminUserService`、`AdminEndpoints`、`AdminUsers.razor`
+  - 方針: 不正ログイン疑いでは攻撃者が現在のパスワードを知っているため、本人の再設定のために有効化し直すと、その間に再ログインされ得る。管理者が一時パスワードを設定し、SecurityStampを更新して監査ログへ記録する。パスワードはログ・監査ログ・レスポンスへ出さない。
+  - 完了条件: 設定後に旧パスワードと既存Cookieが使えないこと、Admin以外の拒否、監査ログの記録を結合テストで確認する。`docs/security-design.md`26.2の手順3と、API・画面設計を更新する。
+
+- [ ] `T-1355` B-001/Q-013: WordPress投稿内容を記事の保存内容に限定し、Payloadから本文を除く。
+  - 参照: `docs/article-quality-guidelines.md`, `docs/content-rendering-design.md`, `docs/job-design.md`, `docs/data-retention-privacy.md`, `docs/api-design.md`, `docs/screen-design.md`
+  - 対象: `WordpressPostService`、`WordpressPostJobHandler`、`WordpressPostPayload`、投稿API、`Articles.razor`の投稿ダイアログ
+  - 方針: 投稿のタイトル・HTMLは記事の保存値を使い、投稿ダイアログは確認用の表示にする。修正は編集画面で行い、保存時に人間確認を外す。投稿APIのタイトル・HTML指定は廃止する（MVPの`/api`は互換性保証の対象外）。Payloadには記事ID・サイト・カテゴリ・ステータスと登録時の内容ハッシュだけを保存し、実行時に記事の現在値と照合して、不一致なら投稿しない。
+  - 完了条件: 確認済み記事へ別の内容でPublishできないこと、登録後に記事が変わった場合に投稿しないこと、PayloadJsonに本文が残らないことを修正前の失敗から確認する。既存ジョブのPayloadJsonに残る本文を消去するかを決め、消去する場合は手順を用意する。投稿ダイアログのE2Eを更新する。
+
+- [ ] `T-1356` B-005: ジョブ登録の重複確認をトランザクション内で行う。
+  - 参照: `docs/job-design.md`, `docs/db-design.md`
+  - 対象: `JobService.EnqueueAsync`、`WordpressPostService`（手動・自動投稿）、`ApplicationDbContext`、Migration
+  - 方針: トランザクション内で記事行を`FOR UPDATE`でロックしてから重複を確認し、登録する。DB側の保険として、`Queued`・`Running`のWordPress投稿ジョブに記事単位の部分一意索引を追加し、違反は409にする。
+  - 完了条件: 2スコープからの同時登録で1件だけ登録されることを、PostgreSQL結合テストで修正前の失敗から確認する。Migration作成前に、既存データに実行中の重複がないことを確認する。`docs/job-design.md`7.3へ、タイトル生成・検索の重複規則も記載する。
+
+- [ ] `T-1357` B-009: WordPress投稿で結果が不明な失敗を自動再試行しない。
+  - 参照: `docs/job-design.md`, `docs/external-integration-design.md`, `docs/configuration-reference.md`, `docs/error-codes.md`
+  - 対象: `JobRetryPolicy`、`JobLeaseService`（`MarkFailureOrRetryAsync`、`RecoverExpiredLocksAsync`）、`WordpressPostJobHandler`、`WordpressOptions`、`appsettings.json`
+  - 方針: WordPress投稿は、送信が拒否されたと確定する429（`RateLimited`）だけ自動再試行する。タイムアウト・通信エラー・5xx・応答不正・不明なエラーなど、送信後の結果が分からない失敗は再送せず失敗とし、WordPress側を確認してから再投稿するよう画面で案内する。送信前に投稿履歴へ送信中を記録し、未送信・送信済み・成功済みを区別する。429など送信が拒否されたと確定した応答では、投稿履歴を未作成の失敗として記録する。Handlerは、同じジョブの投稿履歴が成功済みなら再投稿せず履歴の結果で完了し、送信済みで結果が分からない場合は再送しない。失敗を記録する経路（通常の失敗処理`MarkFailureOrRetryAsync`とロック期限切れの復旧）では、試行回数やエラー種別に関係なく、まず投稿履歴の状態で扱いを決め、一律に失敗にはしない。判定と結果の復元は両経路で共通にする。成功済みなら`Succeeded`とし、履歴の`PostId`・`PostUrl`から結果を復元して、失敗通知ではなく通常の成功時と同じ成功通知を登録する。送信済みで結果が分からなければ再送せず失敗とし、未送信なら通常の再試行規則に従う。未使用の`Wordpress:RetryCount`は削除する（Q-002）。
+  - 完了条件: 上記の失敗で再試行されず、429では再試行されることを単体・結合テストで修正前の失敗から確認する。投稿成功後・結果保存前にプロセスが停止した場合は、ロック期限切れの復旧後も再投稿されずに失敗となること、結果保存後・ジョブ完了記録前に停止した場合は、復旧でジョブが`Succeeded`となり、最初の`PostId`・`PostUrl`が結果として残ることを確認する。投稿履歴の保存後に`MarkSucceededAsync`だけが失敗した場合も、通常の失敗処理でジョブが`Succeeded`となり、失敗通知が登録されないことを確認する。`docs/job-design.md`9.3・11.7・12.1・12.2と設定リファレンスを更新する。
+
+- [ ] `T-1358` B-003: 構成再生成・リライト・本文の部分生成で古いHTMLを無効化する。
+  - 参照: `docs/screen-design.md`, `docs/content-rendering-design.md`, `docs/job-design.md`
+  - 対象: `OutlineGenerationJobHandler`、`RewriteJobHandler`、`BodyGenerationJobHandler`
+  - 方針: 手動の見出し編集と同じく、見出しから本文を組み直し、`HtmlBody`をnullにする。全見出しがそろったときに再変換する既存の動作は維持する。
+  - 完了条件: 各経路で古いHTMLがプレビューと投稿ダイアログに残らないことを、Handlerの結合テストで修正前の失敗から確認する。
+
+- [ ] `T-1359` B-006: Queuedジョブのキャンセルと完了記録の状態遷移を原子化する。
+  - 参照: `docs/job-design.md`
+  - 対象: `JobService.CancelCoreAsync`、`JobLeaseService.MarkSucceededAsync`、`JobLeaseService.MarkFailureOrRetryAsync`
+  - 方針: キャンセルは`Status = Queued`を条件にした更新とし、更新0件なら409にする。成功・失敗の記録は`Running`からだけ遷移させる。一括生成の停止処理と同じ方式にそろえる。
+  - 完了条件: Worker取得後のキャンセルと、キャンセル後の成功・失敗記録で状態が上書きされないことを、PostgreSQL結合テストで修正前の失敗から確認する。
+
+- [ ] `T-1360` B-004: 生成JSONの型を確認し、最終失敗時に記事状態を戻す。
+  - 参照: `docs/prompt-design.md`, `docs/job-design.md`, `docs/error-codes.md`
+  - 対象: `GenerationOutputParsers`、`TitleGenerationJobHandler`、`OutlineGenerationJobHandler`、`JobLeaseService`
+  - 方針: 型を確認してから読む。トップレベル配列（`["候補A"]`、`[{"title":"見出しA"}]`）は受け付け、`{"headings":["見出しA"]}`のような想定外の要素は`ExternalBadResponse`にする。一括生成以外のジョブが再試行上限で失敗した場合も、生成中の記事状態を`Failed`へ戻す。
+  - 完了条件: 上記3入力の単体テストと、最終失敗後に`OutlineGenerating`が残らないことの結合テストを、修正前の失敗から確認する。
+
+- [ ] `T-1361` Q-007: 構成生成の残数を登録時に確認し、実行開始時に消費する。
+  - 参照: `docs/requirements.md`, `docs/api-design.md`, `docs/job-design.md`, `docs/error-codes.md`
+  - 対象: 構成生成ジョブを登録する全経路（`JobService.EnqueueAsync`、`ArticleService.BulkCreateAsync`ほか）、一括生成の再開（`BulkGenerationService.RetryAsync`）、`JobLeaseService.TryAcquireAsync`、`UserUsageLimits`
+  - 方針: 登録時は、ユーザーの`UserUsageLimits`行（なければ既定値40で作成）を`FOR UPDATE`でロックしてユーザー単位で直列化し、残数から予約数を引いた値が登録に必要な数以上かを確認してから登録する。予約数は、`Status = Queued`かつ`StartedAt`がnullの構成生成ジョブ数と、構成生成より前の段階（検索・タイトル生成）にある`Queued`・`Running`の一括生成Run数の合計とする。キャンセル・停止・失敗したジョブとRunは、`StartedAt`がnullのままでも含めない。不足なら`UsageLimitExceeded`（422）で拒否し、一括作成は全件を拒否する。画面では送信時に残数不足を表示し、ボタンの無効化は行わない（画面設計どおり）。残数をまだ消費していないRun（構成生成より前の段階、または未開始の構成生成ジョブで停止・失敗したもの）を再開する場合も同じ確認を行う。ロックはユーザー行、記事行の順に取り、T-1356とそろえる。消費は構成生成ジョブの初回の実行開始時に、取得と同じトランザクション内の条件付き更新で1減らす。その時点で0なら実行せず`UsageLimitExceeded`で失敗とし、再試行しない。このとき記事の状態も失敗へ戻し、一括生成ではRunも失敗にする。同じジョブの再試行・制限待ちからの再開・一括生成の段階再開では追加消費しない。残数は返却しないため、管理者が0にした停止状態がキャンセルで解除されることはない。
+  - 完了条件: 次をPostgreSQL結合テストで修正前の失敗から確認する。残数0での登録拒否、0にした後の待機ジョブが実行されないこと、0にした後に待機ジョブをキャンセルしても0のままで新規登録が拒否されること、一括生成の停止で未実行分を消費しないこと、残数1で登録したジョブまたはRunを未実行のまま停止・キャンセルした後に、新規登録と再開のどちらも受け付けられること、残数1で一括生成Runが構成生成前の段階で待機中のときに追加登録が拒否されること、同じユーザーが別の記事を同時に登録しても残数分しか受け付けないこと、同時実行で0未満にならないこと。API設計15.5の停止手順と画面設計の記述を、待機中のジョブも実行されない動作に合わせて更新する。
+
+- [ ] `T-1362` Q-005/Q-006: APIエラー応答の本文なし404と英語の`detail`を直す。
+  - 参照: `docs/error-codes.md`, `docs/api-design.md`
+  - 対象: `src/WebWritingTool.Web/Endpoints`の`Results.NotFound()`（11か所）と英語の`detail`、レート制限とCSRFフィルターの応答
+  - 方針: 404もProblemDetailsの本文を返し、ステータスコードページの再実行でHTMLにならないようにする。`detail`は「です・ます」調の日本語にし、英語の`title`は維持する。`errorCode`・`traceId`は外部公開API（`/api/v1`）の導入時に追加するとし、MVPの範囲を`docs/error-codes.md`と`docs/api-design.md`へ明記する。
+  - 完了条件: 404が`application/problem+json`で返ること、`detail`が日本語であることを結合テストで確認し、既存テストの期待値を更新する。
+
+- [ ] `T-1363` Q-001/Q-002/Q-004/Q-008: 設定・構成・ヘルスチェックの記述を実装に合わせる。
+  - 対象: `docs/configuration-reference.md`, `docs/basic-design.md`, `docs/coding-guidelines.md`, `docs/external-integration-design.md`, `docs/job-design.md`, `docs/test-design.md`, `docs/ci-cd-design.md`, `docs/observability-logging.md`, `docs/environment-setup.md`, `docs/operation-design.md`, `docs/security-design.md`
+  - 方針: Options一覧を実際のクラスとセクション（`GeminiOptions`と`AiProviders:Gemini`、`SearchCachePolicyOptions`と`SearchCache`など）へ合わせ、未実装クラスと重複行を整理する。`BackgroundJobs:DefaultMaxAttempts`と`Seed:Enabled`を削除し、`Security:CookieSecurePolicy`は固定値の説明に、`App:BaseUrl`は現状未使用と明記する。Response CompressionはCaddyの`encode`が担うと記載し、`IDbContextFactory`とOpenAPIは不採用または後続とする。ProblemDetailsは共通登録（`AddProblemDetails`）を行わず、各Endpointが`Results.Problem`で返すと基本設計4.1へ記載し、`errorCode`・`traceId`の共通付与は`/api/v1`導入時とする（T-1362）。`/health/deps`は外部APIキーの設定確認とし、管理者限定で監視ツールからは使わないため、HTTPステータスは変えず本文で判定すると記載する。
+  - 完了条件: 記載した名前と値がコードと一致し、相対リンクが解決する。コードは変更しない（`Wordpress:RetryCount`はT-1357で扱う）。
+
+- [ ] `T-1364` Q-003/Q-009〜Q-012: サービス名・ログ・TTL・生成出力・参考情報の記述を実装に合わせる。
+  - 対象: `docs/basic-design.md`, `docs/job-design.md`, `docs/coding-guidelines.md`, `docs/observability-logging.md`, `docs/data-retention-privacy.md`, `docs/security-design.md`, `docs/test-design.md`, `docs/prompt-design.md`
+  - 方針: サービス一覧を現在の契約名と実装の配置へ合わせる。ログは現行のメッセージテンプレートと記録項目を記載する。検索キャッシュTTLは環境ポリシーとトピック区分で決まると記載する。生成JSONはコードフェンスなしを要求し、受信時はフェンスを除去して解釈すると記載する。AIへ渡す参考情報は現行の4項目を記載する。`eventName`の統一、ユーザー・記事単位のTTL、参考情報の項目拡張は後続フェーズ候補とする。
+  - 完了条件: 記載した名前と項目がコードと一致し、相対リンクが解決する。コードは変更しない。
+
+- [ ] `T-1365` Q-014/B-007: WordPress再投稿と単一Worker前提を運用文書に明記する。
+  - 対象: `docs/content-update-maintenance.md`, `docs/operation-design.md`, `docs/job-design.md`
+  - 方針: アプリから再投稿すると新規投稿になり、既存記事の差し替えはWordPress側で行うと記載する。ジョブのロックを延長しないため1プロセス1Workerを前提とし、Workerを複数にする場合は先にロック延長を実装すると記載する。
+  - 完了条件: 記載内容がコードと一致し、相対リンクが解決する。コードは変更しない。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
@@ -690,3 +774,9 @@ todo.md の T-1303 API結合テストを実装して。
 - CSP違反レポート収集エンドポイント（匿名書き込み経路とレポートURLの保持設計が前提）
 - Secret Manager導入
 - 脆弱性スキャンCI
+- 外部公開API（`/api/v1`）とProblemDetailsの`errorCode`・`traceId`（要確認Q-005）
+- WordPress既存投稿の更新・差し替え（要確認Q-014）
+- ユーザー・記事・データソース単位の検索キャッシュTTL指定（要確認Q-010）
+- 構造化ログの`eventName`統一（要確認Q-009）
+- AIへ渡す参考情報の資料種別・日時・信頼性の独立項目化（要確認Q-012）
+- 複数Worker向けのジョブロック延長（要確認B-007）

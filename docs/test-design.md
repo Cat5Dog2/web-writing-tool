@@ -730,6 +730,12 @@ PR CIのE2Eは現行workflowではフィルターなしで全件実行する。�
 - 実Tavily API、実X APIを通常の自動テストで呼び出さない。
 - `.env`や秘密情報をコミットしない。
 
+### 16.3 結合テストの初期化と差し替え範囲
+
+結合テストの実際の初期化は [IntegrationTestFixture.cs](../tests/WebWritingTool.IntegrationTests/Support/IntegrationTestFixture.cs) と [TestApplicationFactory.cs](../tests/WebWritingTool.IntegrationTests/Support/TestApplicationFactory.cs) を参照する。FixtureはTestcontainersのPostgreSQLを起動し、Migrationを適用してからWebApplicationFactoryを作成する。Factoryは `Test` 環境とテスト設定を使い、Hosted Serviceを常に除去し、認証・URL安全性検証・WordPress Clientをテスト用の実装へ差し替える。したがって、このFactoryでAPIテストが成功しても、常駐Workerの自動巡回や本番Cookie認証まで検証したことにはならない。
+
+ジョブの個別処理や取得・状態遷移は [JobIntegrationTests.cs](../tests/WebWritingTool.IntegrationTests/Jobs/JobIntegrationTests.cs) 等、Cookie認証は [CookieAuthenticationTests.cs](../tests/WebWritingTool.IntegrationTests/Security/CookieAuthenticationTests.cs) を参照する。`ArticleJobWorker` の巡回ループを直接検証する結合テストは現時点ではない。一方、[E2ETestFixture.cs](../tests/WebWritingTool.E2ETests/Support/E2ETestFixture.cs) はダミーモードまたはゲストジョブ有効時にWorkerを有効にしてアプリを起動する。
+
 ## 17. 受け入れ基準
 
 MVP実装完了時点で以下を満たす。

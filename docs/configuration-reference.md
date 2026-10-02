@@ -41,6 +41,15 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | `AiProviders:Gemini:ApiKey` | `AiProviders__Gemini__ApiKey` |
 | `Security:DataProtectionKeysPath` | `Security__DataProtectionKeysPath` |
 
+### 3.1 Development起動時の `.env` 補完
+
+[DevelopmentEnvironmentFileConfiguration](../src/WebWritingTool.Web/Configuration/DevelopmentEnvironmentFileConfiguration.cs) は、プロセスの `ASPNETCORE_ENVIRONMENT` が空の場合、見つかった `.env` の同名キーで環境名を補完する。その後の設定補完は `Development` のみで行う。
+
+- Content Root、カレントディレクトリ、アプリ配置先を起点に親を探索し、最初に見つけた `.env` を使う。Solutionのルートで探索を打ち切る。
+- `.env` が見つかった場合、`__` を `:` に変換し、既存設定が空または空白のキーを補う。この補完はDevelopmentのコンテナ内でも行う。
+- 例外として、`.env` が見つかったコンテナ外のDevelopmentでは、User Secretsなどで既に設定された非空の `ConnectionStrings:DefaultConnection` も解析・再シリアライズする。その際、`Host` / `Server` が `localhost` または `postgres` なら `127.0.0.1` へ正規化し、元の文字列と異なる場合は設定を上書きする。`.env` が見つからなければ正規化しない。
+- 接続文字列が空で `.env` に `POSTGRES_PASSWORD` がある場合、`POSTGRES_DB` と `POSTGRES_USER` からローカル接続文字列を組み立てる。接続先は `127.0.0.1:5432`、DB名とユーザー名の省略時は `web_writing_tool` とする。
+
 ## 4. 環境
 
 | 環境 | `ASPNETCORE_ENVIRONMENT` | 用途 |
@@ -105,6 +114,7 @@ ASP.NET Core標準の設定読み込みを前提とする。後から読み込�
 | `AiProviders__Gemini__Model` | `AiProviders:Gemini:Model` | 推奨 | 必須 | No | `gemini-3.8-flash` |
 | `AiProviders__Gemini__Region` | `AiProviders:Gemini:Region` | 推奨 | 必須 | No | `Japan` |
 | `AiProviders__Gemini__TimeoutSeconds` | `AiProviders:Gemini:TimeoutSeconds` | 任意 | 任意 | No | 120 |
+| `AiProviders__Gemini__EndpointBaseAddress` | `AiProviders:Gemini:EndpointBaseAddress` | 任意 | 任意 | No | `https://generativelanguage.googleapis.com/`。Gemini ClientのHTTP基準URL |
 | `AiProviders__Gemini__MaxInputChars` | `AiProviders:Gemini:MaxInputChars` | 任意 | 任意 | No | 実装時にモデル制限へ合わせる |
 
 Gemini以外のAI ProviderはMVP対象外である。後続フェーズで追加する場合は `AiProviders:{ProviderName}:*` の形で拡張する。
@@ -201,6 +211,7 @@ Discord Webhook URLはユーザー別にDB暗号化保存する。環境変数�
 
 | 環境変数 | 設定キー | local | production | 秘密情報 | 既定値 |
 | --- | --- | --- | --- | --- | --- |
+| `BackgroundJobs__Enabled` | `BackgroundJobs:Enabled` | 任意 | 任意 | No | `true`。登録済みの3種類のWorkerを有効にする |
 | `BackgroundJobs__IdleDelaySeconds` | `BackgroundJobs:IdleDelaySeconds` | 任意 | 任意 | No | 3 |
 | `BackgroundJobs__LockTimeoutMinutes` | `BackgroundJobs:LockTimeoutMinutes` | 任意 | 任意 | No | 30 |
 | `BackgroundJobs__MaxJobsPerLoop` | `BackgroundJobs:MaxJobsPerLoop` | 任意 | 任意 | No | 1 |
@@ -218,6 +229,7 @@ Discord Webhook URLはユーザー別にDB暗号化保存する。環境変数�
 | --- | --- | --- | --- | --- | --- |
 | `Security__DataProtectionKeysPath` | `Security:DataProtectionKeysPath` | 任意 | 必須 | No | Data Protectionキー保存先 |
 | `Security__RequireHttps` | `Security:RequireHttps` | 任意 | 必須 | No | HTTPS必須化 |
+| `Security__ForwardedHeadersEnabled` | `Security:ForwardedHeadersEnabled` | 任意 | 任意 | No | 未指定時はDevelopmentで無効、それ以外で有効。明示値を優先する |
 | `Security__AllowedForwardedHosts__0` | `Security:AllowedForwardedHosts:0` | 任意 | 推奨 | No | Forwarded Headersで許可するホスト |
 | `Security__ContentSecurityPolicyMode` | `Security:ContentSecurityPolicyMode` | 任意 | 任意 | No | `ReportOnly`（既定） / `Enforce` / `Disabled`。[セキュリティ設計](security-design.md)18.3を参照 |
 | `Security__CookieSecurePolicy` | `Security:CookieSecurePolicy` | 任意 | 必須 | No | `Always` |
@@ -230,6 +242,7 @@ Data ProtectionキーはCookie認証と暗号化保存に影響する。producti
 | --- | --- | --- | --- | --- | --- |
 | `AdminSeed__Email` | `AdminSeed:Email` | 初回のみ | 初回のみ | No | 初期Adminメール |
 | `AdminSeed__Password` | `AdminSeed:Password` | 初回のみ | 初回のみ | Yes | 初期Adminパスワード |
+| `AdminSeed__DisplayName` | `AdminSeed:DisplayName` | 任意 | 任意 | No | 初期Adminの表示名。空または空白の場合は `Admin` |
 
 初期Admin Seedは、Adminユーザーが存在しない場合のみ作成する。既存Adminのパスワードを起動時に上書きしない。初回ログイン後は初期Adminパスワードを変更し、`.env` またはsecret fileから削除または無効化する。
 

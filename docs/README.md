@@ -3,6 +3,8 @@
 このディレクトリは Web Writing Tool の設計書、運用資料、実装ガイドを管理する。
 実装前は対象タスクに関連する文書を確認し、仕様差分が出た場合は該当文書を同じ変更で更新する。
 
+2026-10-02の実装照合では、コードで確認でき、既存記述と矛盾しない説明を補足した。コードと文書の食い違い、バグの疑いは、どちらも変更せず [要確認リスト](confirmation-list.md) に記録している。対応方針は決定済みで、[todo.md](../todo.md)の17.2で対応する。未対応の項目は、その文書の記述が現行動作を保証するものとして扱わない。
+
 ## まず読む文書
 
 | 文書 | 役割 |
@@ -10,6 +12,7 @@
 | [requirements.md](requirements.md) | 要件、MVP範囲、機能要件の基準 |
 | [basic-design.md](basic-design.md) | 全体アーキテクチャ、レイヤー責務、主要な設計判断 |
 | [coding-guidelines.md](coding-guidelines.md) | 実装規約、レイヤー別ルール、禁止事項 |
+| [confirmation-list.md](confirmation-list.md) | 実装照合で見つかった差異・バグの疑い、根拠、対応方針 |
 | [../todo.md](../todo.md) | 実装フェーズ、タスクID、完了条件 |
 | [../RELEASE_NOTES.md](../RELEASE_NOTES.md) | リリース単位の変更概要。リリース前チェックで参照する |
 

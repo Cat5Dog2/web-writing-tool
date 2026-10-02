@@ -52,6 +52,7 @@ MVPの主要フローは実装済みである。[todo.md](todo.md) の実装タ�
 | 入口 | 内容 |
 | --- | --- |
 | [docs/README.md](docs/README.md) | 設計書一覧、領域別分類、変更時の更新先 |
+| [docs/confirmation-list.md](docs/confirmation-list.md) | 実装との食い違い、バグの疑い、決定した対応方針と登録タスク。該当するコード・文書は未修正 |
 | [docs/requirements.md](docs/requirements.md) | 要件、MVP範囲、画面・機能要件 |
 | [docs/basic-design.md](docs/basic-design.md) | 全体構成、レイヤー責務、ASP.NET Core設計 |
 | [docs/external-integration-design.md](docs/external-integration-design.md) | Gemini、Tavily、X、WordPress、Discord連携 |
@@ -105,6 +106,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
 ```
 
 `scripts/test.ps1` は `Category=E2E` を常に除外し、単体・結合・PostgreSQL・ジョブ・セキュリティテストを実行する。
+
+`scripts/test.ps1 -IncludePerformance` は、通常テストが成功した後に `scripts/test-performance.ps1` を呼び出す。性能テストの分離方針は後述の「テスト方針」を参照する。
 
 Playwright E2Eはコンテナではなくホストで実行する。ホストに.NET SDKとDockerが必要である。
 
