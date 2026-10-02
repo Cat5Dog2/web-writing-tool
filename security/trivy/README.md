@@ -34,7 +34,6 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 | イメージ | 対象 | 概要 |
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来22件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
-| `postgres:16-alpine` | `libcrypto3` / `libssl3` | CVE-2026-14456の1件。OpenSSL 3.5のQUICサーバーlistener限定で、PostgreSQLはQUICを実装しない。Alpineは3.5.8-r0で修正済みだが上流イメージの再ビルド待ち |
 | `web-writing-tool-app` | `libssl3t64` / `openssl` | CVE-2026-84782の1件。OpenSSLのDTLS再送処理に限られ、.NETはDTLSを実装しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、digest固定したaspnetベースは最新の公開イメージ（2026-09-21作成）も3.0.13-0ubuntu3.15のままで、上流の再ビルド待ち |
 | `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl` | 同じCVE-2026-84782の1件。migrateは.NET CLIでrestoreとMigrationを行うだけでDTLSを使わない。最新の`sdk:10.0`も同じ版のままで、上流の再ビルド待ち |
 

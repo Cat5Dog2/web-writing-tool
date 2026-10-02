@@ -456,7 +456,6 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない |
-| `postgres:16-alpine` | `libcrypto3` / `libssl3`のCVE-2026-14456 | OpenSSL 3.5のQUICサーバーlistenerでのみ発生する。PostgreSQL 16はQUICを実装せず、TCP上のTLSを従来の`SSL_accept`で終端する。本番Composeは5432を公開せず、`ssl`も無効。公式イメージをそのまま使う現構成では、Alpineの修正版3.5.8-r0は上流の再ビルドで入る |
 | `web-writing-tool-app` | `libssl3t64` / `openssl`のCVE-2026-84782 | OpenSSLのDTLSハンドシェイク再送処理でのみ発生する。.NETはDTLSのAPIを持たず、`SslStream`はTCP上のTLSだけを扱う。KestrelはTLSを終端せず（Caddyが別コンテナで終端）、外部APIへのHTTPSとNpgsqlもTCPである。`openssl`コマンドは`ca-certificates`の依存として入っているだけで実行しない。Ubuntuの修正版3.0.13-0ubuntu3.16は、上流がaspnetを再ビルドした後のdigest更新で入る |
 | `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl`のCVE-2026-84782 | 同上。migrateは.NET CLIでlocked restore、tool restore、`dotnet-ef database update`を実行するだけで、同梱の`openssl`、git、curl、wgetは使わない。修正版は上流がsdkを再ビルドした後のdigest更新で入る |
 
