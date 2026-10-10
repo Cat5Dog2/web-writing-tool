@@ -33,9 +33,18 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 
 | イメージ | 対象 | 概要 |
 | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来22件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
+| `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来25件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
 | `web-writing-tool-app` | `libssl3t64` / `openssl` | CVE-2026-84782の1件。OpenSSLのDTLS再送処理に限られ、.NETはDTLSを実装しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、digest固定したaspnetベースは最新の公開イメージ（2026-09-21作成）も3.0.13-0ubuntu3.15のままで、上流の再ビルド待ち |
 | `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl` | 同じCVE-2026-84782の1件。migrateは.NET CLIでrestoreとMigrationを行うだけでDTLSを使わない。最新の`sdk:10.0`も同じ版のままで、上流の再ビルド待ち |
+
+2026-10-10の再評価では、最新の`postgres:16-alpine`をpullしても`gosu 1.19`（Go 1.24.6ビルド）が残った。
+追加した3件はそれぞれ、HTTPのRangeヘッダー処理（CVE-2026-78667）、HTTP/2のSETTINGS処理
+（CVE-2026-78669）、TLSのECH拡張解析（CVE-2026-97031）に限られる。
+[gosuの実装](https://github.com/tianon/gosu/blob/1.19/main.go)はユーザーを変更して`exec`するだけで、
+HTTPサーバー・クライアントもTLSハンドシェイクも実行しないため、各経路へ到達しない。
+上流Dockerfileはgosuのリリースバイナリを取得するため、`apk upgrade`でも置換できない。
+対象を`usr/local/bin/gosu`に限定し、既存の再評価期限と同じ`2026-11-24T00:00:00Z`まで受容する。
+各CVEの条件と修正版は[Goの公式告知](https://groups.google.com/g/golang-announce/c/U2fTuyDJznI)を参照。
 
 digest固定したベースの指摘を、Dockerfileの`apt-get upgrade`ではなく受容で扱う理由は
 [docs/ci-cd-design.md](../../docs/ci-cd-design.md) 9.2を参照。
@@ -48,6 +57,7 @@ digest固定したベースの指摘を、Dockerfileの`apt-get upgrade`では�
 `caddy`は受容記録を持たない。公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
 TLSのKeyUpdate DoS（CVE-2026-56862）を含んでいたため、修正版Goでビルドし直す
 [Dockerfile.caddy](../../Dockerfile.caddy) へ切り替えてHIGH / CRITICALを0件にした。
+2026-10-08（UTC）公開のHTTP/TLS指摘も受容せず、Go 1.27.2と`x/net v0.60.0`への更新で対応する。
 
 ## 再トリアージ
 

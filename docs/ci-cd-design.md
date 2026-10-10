@@ -406,7 +406,7 @@ Composeが`build`を持つサービスのイメージは自前ビルドとして
 この構成のCaddyはインターネットに面するTLS終端であり、未認証のクライアントから到達できる。
 修正はGo 1.25.13 / 1.26.6 / 1.27.0以降にしかなく、再ビルドでしか取り込めない。
 
-そのため`Dockerfile.caddy`でGo 1.27.0を使って`v2.11.4`をビルドし直す。同時にHIGH / CRITICALが出ていた
+そのため`Dockerfile.caddy`でGo 1.27.2を使って`v2.11.4`をビルドし直す。同時にHIGH / CRITICALが出ていた
 x/crypto、x/net、x/text、grpc-goもバージョンを上げ、ランタイム層は`apk upgrade`する。
 結果としてcaddyイメージのHIGH / CRITICALは0件になり、受容記録は不要になった。
 
@@ -420,8 +420,18 @@ CVE-2026-56854（GO-2026-6303、2026-08-28公開）はv0.55.0未満のx/crypto�
 要求するv0.52.0も同じく対象なので、固定が脆弱性を持ち込んだわけではない。v0.55.0への更新で
 しか解消しない。
 
-上流がGo 1.26.6以降でビルドしたcaddyイメージを公開したら、`Dockerfile.caddy`を削除して
-公式イメージへ戻す。`docker compose config`から対象を取るため、戻してもスキャン範囲は変わらない。
+2026-10-08（UTC）公開のCVE-2026-78667（HTTP Range）、CVE-2026-78669（HTTP/2 SETTINGS）、
+CVE-2026-97031（TLS ECH）により、Go 1.27.0と`x/net v0.58.0`の固定ではHIGHが4件残った。
+CVE-2026-78669はGo標準ライブラリと`x/net`の両方で検出されたため、3つのCVEが4件の指摘になる。
+[Goの公式告知](https://groups.google.com/g/golang-announce/c/U2fTuyDJznI)と
+[x/netの脆弱性情報](https://pkg.go.dev/vuln/GO-2026-6611)に従い、Go 1.27.2と`x/net v0.60.0`へ更新する。
+`x/net v0.60.0`の[go.mod](https://github.com/golang/net/blob/v0.60.0/go.mod)は`x/crypto v0.57.0`と
+`x/text v0.42.0`を要求するため、強制置換でそれより古い版へ戻さないよう両方の固定も合わせる。
+grpcは修正済みの`v1.83.2`を維持する。
+
+上流がGo 1.26.9 / 1.27.2以降でビルドし、依存モジュールも含めHIGH / CRITICALが残らない
+caddyイメージを公開したら、`Dockerfile.caddy`を削除して公式イメージへ戻す。
+`docker compose config`から対象を取るため、戻してもスキャン範囲は変わらない。
 
 toolsプロファイルの`migrate`は通常の長期稼働サービス用manifestには含めないが、別のスキャンゲートを
 必須にする。本番DBへ書き込むコンポーネントなので、短命でソケットを開かないことは未検査でよい理由に
@@ -455,7 +465,7 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 22件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない |
+| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 25件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。2026-10-10に追加したHTTP/TLSの3件の到達性評価は`security/trivy/README.md`参照 |
 | `web-writing-tool-app` | `libssl3t64` / `openssl`のCVE-2026-84782 | OpenSSLのDTLSハンドシェイク再送処理でのみ発生する。.NETはDTLSのAPIを持たず、`SslStream`はTCP上のTLSだけを扱う。KestrelはTLSを終端せず（Caddyが別コンテナで終端）、外部APIへのHTTPSとNpgsqlもTCPである。`openssl`コマンドは`ca-certificates`の依存として入っているだけで実行しない。Ubuntuの修正版3.0.13-0ubuntu3.16は、上流がaspnetを再ビルドした後のdigest更新で入る |
 | `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl`のCVE-2026-84782 | 同上。migrateは.NET CLIでlocked restore、tool restore、`dotnet-ef database update`を実行するだけで、同梱の`openssl`、git、curl、wgetは使わない。修正版は上流がsdkを再ビルドした後のdigest更新で入る |
 

@@ -175,6 +175,30 @@
       ],
       "statement": "Go stdlib compiled into usr/local/bin/gosu. gosu runs only in the postgres entrypoint to drop root before starting the server. It reads no untrusted input, opens no socket, and exits before PostgreSQL accepts connections. PostgreSQL itself is never published outside the Docker network in either Compose configuration. gosu is not an apk package, so an apk upgrade layer would not replace it: with the official image used as is, only an upstream rebuild clears these. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-78667",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go net/http Range-header CPU exhaustion affects FileServer, ServeContent and ServeFile. gosu 1.19 in the current postgres:16-alpine image is built with Go 1.24.6, but only switches user and execs the postgres entrypoint; it never runs an HTTP server or parses Range headers, so this path is unreachable. The downloaded gosu release binary is not managed by apk; neither pulling the current upstream image nor upgrading Alpine packages replaces it with a fixed Go build. Accept only this binary pending an upstream gosu update. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-78669",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go net/http HTTP/2 CPU exhaustion requires a peer to open streams and repeatedly change SETTINGS_INITIAL_WINDOW_SIZE. gosu only switches user and execs the postgres entrypoint; it opens no network socket and runs neither an HTTP/2 client nor an HTTP/2 server, so attacker-controlled SETTINGS frames cannot reach this code. The current upstream image still downloads gosu 1.19 built with Go 1.24.6, and apk upgrade cannot replace this release binary. Accept only this binary pending an upstream gosu update. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-97031",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go crypto/tls memory exhaustion requires a TLS server to process a malformed ClientHello containing multiple ECH outer extension references. gosu only switches user and execs the postgres entrypoint; it performs no TLS handshake and is replaced before PostgreSQL accepts connections, so the ECH parser is unreachable. PostgreSQL's own TLS implementation is not this Go binary. The current upstream image still downloads gosu 1.19 built with Go 1.24.6, and apk upgrade cannot replace it. Accept only this binary pending an upstream gosu update. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
     }
   ]
 }
