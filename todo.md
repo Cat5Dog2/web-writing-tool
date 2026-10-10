@@ -712,6 +712,15 @@
   - 方針: アプリから再投稿すると新規投稿になり、既存記事の差し替えはWordPress側で行うと記載する。ジョブのロックを延長しないため1プロセス1Workerを前提とし、Workerを複数にする場合は先にロック延長を実装すると記載する。
   - 完了条件: 記載内容がコードと一致し、相対リンクが解決する。コードは変更しない。
 
+## 17.3 本番Docker smokeの脆弱性ゲート修正（2026-10-10）
+
+- [x] `T-1366` CaddyのGo依存を更新し、PostgreSQLの新規指摘を個別にトリアージする。
+  - 対象: `Dockerfile.caddy`, `security/trivy/postgres.trivyignore.yaml`, `security/trivy/README.md`, `docs/ci-cd-design.md`, `RELEASE_NOTES.md`
+  - 原因: Production Docker smokeのイメージスキャンで、CaddyにHIGH 4件、PostgreSQLの`gosu`に未受容のHIGH 3件が残り、起動確認前に失敗した。
+  - 完了条件: CaddyをGo 1.27.2と`x/net v0.60.0`で再ビルドし、要求される`x/crypto`と`x/text`の固定も合わせる。`gosu`のHTTP/TLS経路への到達性をCVE単位で記録し、pathと期限を限定する。修正前のゲート失敗と修正後の成功、受容記録の検証、Caddyの設定読込・転送を確認する。
+  - 検証: 同じ脆弱性DB（2026-10-10 07:01:36 UTC更新）で修正前のHIGH 4件・3件と終了コード1を再現。修正後はCaddyのHIGH / CRITICAL 0件、app・postgres・caddyのゲート成功、manifestの3サービスと実image IDの一致を確認。実バイナリのGoと置換モジュール、Caddyfileの検証、ネットワーク隔離コンテナでのHTTP/HTTPS転送4ケース、PowerShell 5.1/7のセルフテスト、文書リンク・UTF-8・`git diff --check`も成功。
+  - コマンド: `docker build --pull --file Dockerfile.caddy --tag web-writing-tool-caddy:ci-fix-20261010 .`、修正前は`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ServiceName 'postgres,caddy'`、修正後は`CADDY_IMAGE`を検証用タグに設定して`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:local -ProvenanceOutputPath test-results/docker-vulnerability-fix-20261010/scanned-images.json`。受容記録は`powershell`と`pwsh`で`-File scripts/scan-image.ps1 -ValidateOnly -SelfTest`を実行。ログは`test-results/docker-vulnerability-fix-20261010/`（Git管理外）。GitHub Actions再実行、Migration、DBを含むCompose起動、アプリの全体テスト、本番反映は未実施。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
