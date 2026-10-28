@@ -466,8 +466,10 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 25件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。2026-10-10に追加したHTTP/TLSの3件の到達性評価は`security/trivy/README.md`参照 |
-| `web-writing-tool-app` | `libssl3t64` / `openssl`のCVE-2026-84782 | OpenSSLのDTLSハンドシェイク再送処理でのみ発生する。.NETはDTLSのAPIを持たず、`SslStream`はTCP上のTLSだけを扱う。KestrelはTLSを終端せず（Caddyが別コンテナで終端）、外部APIへのHTTPSとNpgsqlもTCPである。`openssl`コマンドは`ca-certificates`の依存として入っているだけで実行しない。Ubuntuの修正版3.0.13-0ubuntu3.16は、上流がaspnetを再ビルドした後のdigest更新で入る |
-| `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl`のCVE-2026-84782 | 同上。migrateは.NET CLIでlocked restore、tool restore、`dotnet-ef database update`を実行するだけで、同梱の`openssl`、git、curl、wgetは使わない。修正版は上流がsdkを再ビルドした後のdigest更新で入る |
+
+appとSDKのCVE-2026-84782は、2026-10-28に修正済みOpenSSLを含む公式イメージへ固定digestを更新し、
+受容を解消した。同梱ライブラリのHIGH / CRITICALも解消するため、SDK 10.0.403 / ASP.NET Core 10.0.14へ
+そろえ、`global.json`と暗黙参照のlockファイルも更新した。根拠は`security/trivy/README.md`参照。
 
 `caddy`は受容記録を持たない。到達可能なTLS DoSを受容せず、自前ビルドで解消したためである。9.1参照。
 
@@ -476,8 +478,9 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 appの`Dockerfile`はruntimeベース（aspnet）を、migrateは公開SDKイメージをdigestで固定している。これらの
 ベース層に出た指摘は、digest更新で取り込むのが原則である。ただし上流が修正版パッケージで再ビルドした
 イメージを公開するまでは、どのdigestへ動かしても消えない。CVE-2026-84782（Ubuntuの公開は2026-09-29）が
-この状態で、修正版3.0.13-0ubuntu3.16はnoble-securityにあるが、2026-10-02時点で公開されている最新の
-`aspnet:10.0`と`sdk:10.0`（いずれも2026-09-21作成）は脆弱な3.0.13-0ubuntu3.15のままだった。
+この例で、2026-10-02の初回評価では、当時の最新の`aspnet:10.0`と`sdk:10.0`（いずれも2026-09-21作成）は
+脆弱な3.0.13-0ubuntu3.15のままだった。その後、公式イメージが修正版3.0.13-0ubuntu3.16で
+再ビルドされたため、2026-10-28の再評価ではdigest更新で解消できた。
 
 その間は到達性を評価し、到達しないものだけを、固定中のdigestが持つパッケージ版へ`purls`を限定して
 受容する。版を限定するので、digestを動かして版が変われば受容は効かなくなり、別の版で残っていれば
@@ -637,7 +640,7 @@ manifestにスコープ外のサービスがある、image変数が定義され�
 | 対策 | 場所 | 欠けたときに起きること |
 | --- | --- | --- |
 | digest固定 | `docker-compose.yml`の`migrate.image` | タグが差し替われば未レビューのイメージが動く |
-| 受容記録 | `security/trivy/sdk.trivyignore.yaml` | 修正できないHIGHが残るとゲートが常に赤で、誰も見なくなる |
+| 受容記録（必要な場合のみ） | `security/trivy/sdk.trivyignore.yaml` | 修正できないHIGHが残るとゲートが常に赤で、誰も見なくなる |
 | デプロイ時スキャンと単回使用receipt | `-ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath artifacts/scanned-migrate.json` | 固定と受容記録が実際のMigrationに結び付かない |
 
 ```powershell
@@ -662,8 +665,8 @@ migrateは長期稼働サービスのmanifestへ入れない。代わりにmigra
 並行実行や後日の再利用を拒否する。再試行は新しいスキャンから行う。PRでは`migration-image-gate`、main / schedule /
 手動実行では`docker-production`がこの経路を検証する。
 
-現在の受容内容は`libssl3t64` / `openssl`のCVE-2026-84782の1件である。到達性の評価と、digest更新ではなく
-受容で扱う理由は9.2を参照する。SDK 10.0.400が同梱していたPowerShell 7.6.4の
+現在、migrateイメージに受容記録はない。`libssl3t64` / `openssl`のCVE-2026-84782は、2026-10-28の
+固定digest更新で解消した。9.2を参照する。SDK 10.0.400が同梱していたPowerShell 7.6.4の
 `System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
 同梱したことで解消したため、digest更新と同時に受容記録を削除した。`scripts/scan-image.ps1`は
 中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。

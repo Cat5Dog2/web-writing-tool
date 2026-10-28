@@ -34,8 +34,6 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 | イメージ | 対象 | 概要 |
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来25件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
-| `web-writing-tool-app` | `libssl3t64` / `openssl` | CVE-2026-84782の1件。OpenSSLのDTLS再送処理に限られ、.NETはDTLSを実装しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、digest固定したaspnetベースは最新の公開イメージ（2026-09-21作成）も3.0.13-0ubuntu3.15のままで、上流の再ビルド待ち |
-| `mcr.microsoft.com/dotnet/sdk` | `libssl3t64` / `openssl` | 同じCVE-2026-84782の1件。migrateは.NET CLIでrestoreとMigrationを行うだけでDTLSを使わない。最新の`sdk:10.0`も同じ版のままで、上流の再ビルド待ち |
 
 2026-10-10の再評価では、最新の`postgres:16-alpine`をpullしても`gosu 1.19`（Go 1.24.6ビルド）が残った。
 追加した3件はそれぞれ、HTTPのRangeヘッダー処理（CVE-2026-78667）、HTTP/2のSETTINGS処理
@@ -49,9 +47,19 @@ HTTPサーバー・クライアントもTLSハンドシェイクも実行しな�
 digest固定したベースの指摘を、Dockerfileの`apt-get upgrade`ではなく受容で扱う理由は
 [docs/ci-cd-design.md](../../docs/ci-cd-design.md) 9.2を参照。
 
-`mcr.microsoft.com/dotnet/sdk`の受容は上のCVE-2026-84782だけである。SDK 10.0.400の同梱PowerShell 7.6.4に
-あった`System.Security.Cryptography.Xml` 10.0.6由来の5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
-同梱したことで解消したため、digest更新と同時に削除した。
+2026-10-28の再評価で、公式のSDK 10.0.403 / ASP.NET Core 10.0.14のlinux/amd64イメージ
+（2026-10-26作成）が、`libssl3t64` / `openssl`に修正版の3.0.13-0ubuntu3.16を含むことを確認した。
+[UbuntuのCVE情報](https://ubuntu.com/security/cves/CVE-2026-84782.json)が示す修正版と一致するため、
+`Dockerfile`、`Dockerfile.dev`、`docker-compose.yml`の固定digestを更新し、CVE-2026-84782の受容を解消した。
+appとSDKの受容ファイルは削除した。
+
+SDK 10.0.401 / ASP.NET Core 10.0.12には、同梱の.NETライブラリやPowerShellにもHIGH / CRITICALが
+残るため、OpenSSLだけを修正した同バージョンのイメージではゲートを通らない。SDK 10.0.403へそろえ、
+`global.json`とWebプロジェクトのlockファイルにある暗黙参照`Microsoft.AspNetCore.App.Internal.Assets`も
+10.0.14へ更新した。再生成したlockファイルの差分はこの1参照だけである。
+
+SDK 10.0.400の同梱PowerShell 7.6.4にあった`System.Security.Cryptography.Xml` 10.0.6由来の5件は、
+SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで既に解消している。
 `scripts/scan-image.ps1`は中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
 
 `caddy`は受容記録を持たない。公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
