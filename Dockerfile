@@ -3,9 +3,9 @@
 # reference and the locked restore below rejects the tracked lock files with NU1004. The SDK and the
 # lock files have to move in the same commit.
 #
-# The matching tag is 10.0 (SDK 10.0.401, ASP.NET Core 10.0.12); global.json pins the same SDK for
+# The matching tag is 10.0 (SDK 10.0.403, ASP.NET Core 10.0.14); global.json pins the same SDK for
 # host runs. To move it, follow docs/ci-cd-design.md "SDKイメージのdigest更新".
-FROM mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5 AS build
+FROM mcr.microsoft.com/dotnet/sdk@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
 
 WORKDIR /src
 
@@ -53,8 +53,8 @@ RUN dotnet publish src/WebWritingTool.Web/WebWritingTool.Web.csproj \
 # stop. A reachable one is fixed, not accepted - see docs/ci-cd-design.md 9.2. Re-check that file
 # whenever this line moves, and drop what the new base clears.
 #
-# The matching tag is 10.0 (ASP.NET Core 10.0.12).
-FROM mcr.microsoft.com/dotnet/aspnet@sha256:1fe86375600b62e6566b465da9553eef0621f13c67f40fe764cd8dbb1dee1497 AS runtime
+# The matching tag is 10.0 (ASP.NET Core 10.0.14).
+FROM mcr.microsoft.com/dotnet/aspnet@sha256:de0ee358cdd672f7017a003bed21e9ac9ed48a27c922a59b18175b6e82fa7fee AS runtime
 
 WORKDIR /app
 

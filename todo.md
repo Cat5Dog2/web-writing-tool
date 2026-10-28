@@ -721,6 +721,15 @@
   - 検証: 同じ脆弱性DB（2026-10-10 07:01:36 UTC更新）で修正前のHIGH 4件・3件と終了コード1を再現。修正後はCaddyのHIGH / CRITICAL 0件、app・postgres・caddyのゲート成功、manifestの3サービスと実image IDの一致を確認。実バイナリのGoと置換モジュール、Caddyfileの検証、ネットワーク隔離コンテナでのHTTP/HTTPS転送4ケース、PowerShell 5.1/7のセルフテスト、文書リンク・UTF-8・`git diff --check`も成功。
   - コマンド: `docker build --pull --file Dockerfile.caddy --tag web-writing-tool-caddy:ci-fix-20261010 .`、修正前は`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ServiceName 'postgres,caddy'`、修正後は`CADDY_IMAGE`を検証用タグに設定して`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -AppImage web-writing-tool-app:local -ProvenanceOutputPath test-results/docker-vulnerability-fix-20261010/scanned-images.json`。受容記録は`powershell`と`pwsh`で`-File scripts/scan-image.ps1 -ValidateOnly -SelfTest`を実行。ログは`test-results/docker-vulnerability-fix-20261010/`（Git管理外）。GitHub Actions再実行、Migration、DBを含むCompose起動、アプリの全体テスト、本番反映は未実施。
 
+## 17.4 OpenSSL受容期限切れによるCI失敗の修正（2026-10-28）
+
+- [x] `T-1367` .NETの公式ベースイメージを修正済みOpenSSLを含むdigestへ更新する。
+  - 対象: `Dockerfile`, `Dockerfile.dev`, `docker-compose.yml`, `global.json`, `src/WebWritingTool.Web/packages.lock.json`, `security/trivy`, `docs/ci-cd-design.md`, `RELEASE_NOTES.md`
+  - 原因: `CVE-2026-84782`の受容期限（2026-10-27 00:00 UTC）が切れ、CIの3ジョブがイメージスキャン前の検証で停止した。
+  - 完了条件: SDK 10.0.403 / ASP.NET Core 10.0.14とOpenSSL 3.0.13-0ubuntu3.16を含む公式イメージへ固定digestを更新し、同梱ライブラリの追加指摘も解消する。SDKの固定箇所と暗黙参照のlockファイルをそろえ、不要な受容ファイルを削除する。受容記録の検証、locked restore、本番appのビルド、appとmigrateの脆弱性ゲート、非ブラウザテストを確認する。
+  - 検証: 修正前の期限切れと、SDK更新時のNU1004を再現。修正後はPowerShell 5.1/7の受容検証・セルフテスト、本番appビルド、appとmigrateのHIGH / CRITICAL 0件とゲート成功、migrateのreceipt生成、単体148件・結合125件、NuGet脆弱性0件、スクリプト文字コード、Compose・通知の回帰テスト、7プロジェクトのlockファイル確認、`git diff --check`が成功した。
+  - コマンド: `scripts/scan-image.ps1 -ValidateOnly -SelfTest`（`powershell`と`pwsh`）、`scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate`、`scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci-openssl-fixed-20261028 -ServiceName app`。ビルド・非ブラウザテスト・NuGetスキャンはGit管理対象の検証用コピーで実行し、302件のソース・設定と全lockファイルの一致を確認した。詳細とログは`test-results/openssl-ci-fix-20261028/verification.md`（Git管理外）。E2E・性能・Caddy/PostgreSQLの再スキャン・GitHub Actions再実行・本番Migrationと反映は未実施。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

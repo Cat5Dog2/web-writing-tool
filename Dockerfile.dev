@@ -3,8 +3,8 @@
 # tracked lock files stop matching. Keep this digest, global.json, Dockerfile and the migrate service in
 # docker-compose.yml on the same SDK; docs/ci-cd-design.md "SDKイメージのdigest更新" has the procedure.
 #
-# The matching tag is 10.0 (SDK 10.0.401, ASP.NET Core 10.0.12).
-FROM mcr.microsoft.com/dotnet/sdk@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5
+# The matching tag is 10.0 (SDK 10.0.403, ASP.NET Core 10.0.14).
+FROM mcr.microsoft.com/dotnet/sdk@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b
 
 WORKDIR /workspace
 

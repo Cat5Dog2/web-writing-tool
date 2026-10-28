@@ -55,12 +55,12 @@ GitHub Appの権限とインストール先、有効化・再実行手順は[運
 ### .NET SDKの固定
 
 `mcr.microsoft.com/dotnet/sdk:10.0`と`aspnet:10.0`をタグからdigest固定へ変え、`global.json`を
-`10.0.401` + `rollForward: disable`にした。Web SDKが暗黙で足す`Microsoft.AspNetCore.App.Internal.Assets`は
+`10.0.403` + `rollForward: disable`にした。Web SDKが暗黙で足す`Microsoft.AspNetCore.App.Internal.Assets`は
 同梱ASP.NET Coreのバージョンに追随し、`packages.lock.json`へ直接参照として残る。タグのままだと上流の
 パッチ公開だけでlockファイルと食い違い、`--locked-mode`のrestoreが`NU1004`で落ちていた（2026-09-09の夜間CI）。
-`packages.lock.json`は 10.0.12 で再生成した。
+`packages.lock.json`の暗黙参照は 10.0.14 で再生成した。
 
-E2Eはホストの`dotnet`を使うため、ローカルで実行する場合はホストへ .NET SDK 10.0.401 が必要になった。
+E2Eはホストの`dotnet`を使うため、ローカルで実行する場合はホストへ .NET SDK 10.0.403 が必要になった。
 それ以外の`dotnet`操作は開発用SDKコンテナ経由のため影響しない。SDKを動かす手順は
 [CI/CD設計](docs/ci-cd-design.md)9章「SDKイメージのdigest更新」を正とする。
 
@@ -75,8 +75,8 @@ CIの`build-test`は、restoreしうる最初のコマンドをlocked restoreに
 | Caddyイメージ | `Dockerfile.caddy`の`--replace`へx/cryptoを追加し`v0.55.0`へ更新。CVE-2026-56854（GO-2026-6303）はv0.55.0未満のx/cryptoすべてが対象で、既存の`x/net v0.56.0`固定が連れてきた`v0.53.0`が検出された |
 | Caddyイメージ | `grpc`を`v1.82.1`から`v1.83.2`へ更新。CVE-2026-84304（HIGH、GHSA-vp52-pcj8-j9qc）は`v1.83.1`で修正済みだが、`--replace`が`v1.82.1`へ固定していたため取り込めていなかった |
 | Caddyイメージ | 併せて`x/net`を`v0.58.0`、`x/text`を`v0.41.0`へ更新。`--replace`は強制置換で上下両方向に固定するため、1つ動かすときは全行を見直す方針を[CI/CD設計](docs/ci-cd-design.md)9.1へ追記した |
-| SDKイメージ | `security/trivy/sdk.trivyignore.yaml`を削除。SDK 10.0.400同梱のPowerShell 7.6.4にあった`System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで解消した。新digestのスキャンはHIGH/CRITICAL 0件 |
-| appイメージ / SDKイメージ | `libssl3t64` / `openssl` 3.0.13-0ubuntu3.15のCVE-2026-84782（HIGH、OpenSSLのDTLS再送処理）を、`security/trivy/web-writing-tool-app.trivyignore.yaml`と`security/trivy/sdk.trivyignore.yaml`で2026-10-27まで受容。.NETはDTLSを使わず到達しない。Ubuntuは3.0.13-0ubuntu3.16で修正済みだが、最新の`aspnet:10.0` / `sdk:10.0`（2026-09-21作成）も脆弱版のままでdigest更新では解消できず、2026-10-01の夜間CIの`Production Docker smoke`がappイメージのゲートで失敗していた。上流の再ビルド後にdigestを更新して受容を消す |
+| SDKイメージ | SDK 10.0.403（PowerShell 7.6.8）へ更新。同梱の.NETライブラリ、ASP.NET Core、PowerShellのHIGH / CRITICALを解消し、受容なしで脆弱性ゲートを通過した |
+| appイメージ / SDKイメージ | CVE-2026-84782の受容期限（2026-10-27 00:00 UTC）が切れ、CIの3ジョブが停止した。2026-10-28に`Dockerfile`、`Dockerfile.dev`、`docker-compose.yml`の固定digestを、修正済みOpenSSL 3.0.13-0ubuntu3.16を含む公式イメージへ更新し、appとSDKの受容ファイルを削除した。同梱ライブラリのHIGH / CRITICALも解消するためSDK 10.0.403 / ASP.NET Core 10.0.14へ更新し、`global.json`とWebプロジェクトのlockファイルの暗黙参照もそろえた |
 | postgresイメージ | `security/trivy/postgres.trivyignore.yaml`から、`libcrypto3` / `libssl3`のCVE-2026-14456と、`libuuid`のutil-linux由来7件（CVE-2026-53612〜53614、76642、78408〜78410）の受容を削除。上流の`postgres:16-alpine`がAlpine 3.24.2で再ビルドされ（2026-09-17作成）、`libcrypto3` / `libssl3` 3.5.8-r0、`libuuid` 2.42.3-r1になって解消した。受容は3.5.7-r0 / 2.42.1-r0に版を限定していたため既に何にも一致しておらず、期限の2026-10-27を過ぎると受容記録の検証でCIが止まるところだった。残る受容は下記の追加分を含め`usr/local/bin/gosu`のGo stdlib 25件 |
 | Caddyイメージ | Goを`1.27.2`、`x/net`を`v0.60.0`へ更新し、CVE-2026-78667、CVE-2026-78669、CVE-2026-97031由来のHIGH 4件を解消。`x/net v0.60.0`の要求に合わせ、強制置換の`x/crypto`を`v0.57.0`、`x/text`を`v0.42.0`へ更新した |
 | postgresイメージ | `gosu`のGo stdlib由来のCVE-2026-78667、CVE-2026-78669、CVE-2026-97031を、`security/trivy/postgres.trivyignore.yaml`で2026-11-24（UTC）まで受容。ユーザー変更後に`exec`するだけでHTTP/TLS処理へ到達しないため、対象を`usr/local/bin/gosu`に限定した。受容は合計25件 |
