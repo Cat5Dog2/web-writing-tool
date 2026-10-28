@@ -406,9 +406,9 @@ Composeが`build`を持つサービスのイメージは自前ビルドとして
 この構成のCaddyはインターネットに面するTLS終端であり、未認証のクライアントから到達できる。
 修正はGo 1.25.13 / 1.26.6 / 1.27.0以降にしかなく、再ビルドでしか取り込めない。
 
-そのため`Dockerfile.caddy`でGo 1.27.2を使って`v2.11.4`をビルドし直す。同時にHIGH / CRITICALが出ていた
-x/crypto、x/net、x/text、grpc-goもバージョンを上げ、ランタイム層は`apk upgrade`する。
-結果としてcaddyイメージのHIGH / CRITICALは0件になり、受容記録は不要になった。
+そのため`Dockerfile.caddy`でGo 1.27.3を使って`v2.11.4`をビルドし直す。同時にHIGH / CRITICALが出ていた
+x/crypto、x/net、x/text、grpc-go、go-jose v4、klauspost/compressもバージョンを上げ、ランタイム層は`apk upgrade`する。
+修正版の無い`go-jose/v3`の1件（後述）だけを受容し、それ以外のHIGH / CRITICALは0件である。
 
 `--replace`は下限保証ではなく強制置換で、指定した版に上下どちらの方向でも固定する。この性質は
 両面に効く。修正版`v1.83.1`が出た後も`grpc`が`v1.82.1`に留まりCVE-2026-84304（HIGH）を抱えたのは
@@ -429,8 +429,23 @@ CVE-2026-78669はGo標準ライブラリと`x/net`の両方で検出されたた
 `x/text v0.42.0`を要求するため、強制置換でそれより古い版へ戻さないよう両方の固定も合わせる。
 grpcは修正済みの`v1.83.2`を維持する。
 
-上流がGo 1.26.9 / 1.27.2以降でビルドし、依存モジュールも含めHIGH / CRITICALが残らない
-caddyイメージを公開したら、`Dockerfile.caddy`を削除して公式イメージへ戻す。
+2026-10-20〜27（UTC）公開のCVE-2026-111943（`crypto/x509`）、CVE-2026-116587（go-jose、RSA鍵入りJWKの
+検証DoS）、CVE-2026-63209（`klauspost/compress`の`s2.NewDict`整数オーバーフロー）により、HIGHが4件出た。
+Go 1.27.3、`go-jose/v4` v4.1.6、`klauspost/compress` v1.18.7への更新で3件を解消する。後の2つは
+これまで`--replace`を持たず、Caddyが自分で選ぶv4.1.4とv1.18.6がどちらも対象だったため、行を追加した。
+残る`go-jose/v3`の1件は修正版が無く、`caddypki`がsmallstepの`go.step.sm/crypto`経由でリンクしている。
+smallstepの最新版もCaddyのmainもv3を要求するため外せない。この構成ではリクエスト由来のJWKを解析する
+ACMEサーバー（`acme_server`）を使わないため到達しないと評価し、9.2のとおり受容する。
+
+`apk upgrade`の層はコマンド文字列でキャッシュされる。一度ビルドしたホストでは、その日のAlpineパッケージの
+まま再利用され続ける。2026-10-28には、2026-10-02にキャッシュされた層から、上流で修正済みのbrotli
+（CVE-2026-111497）とcurl（CVE-2026-92392）のHIGHが再び出た。CIはキャッシュ無しでビルドするため影響しない。
+キャッシュを持つホストでは`--no-cache-filter runtime`でランタイムステージだけを作り直す。xcaddyの
+ビルドステージはキャッシュのまま使える。wwt-seo-infraの`build-and-scan-caddy.sh`はこの指定でビルドするので、
+ステージ名`runtime`を変えるときは同時に直す。
+
+上流がGo 1.26.10 / 1.27.3以降でビルドし、受容済みの`go-jose/v3`を除いて依存モジュールも含め
+HIGH / CRITICALが残らないcaddyイメージを公開したら、`Dockerfile.caddy`を削除して公式イメージへ戻す。
 `docker compose config`から対象を取るため、戻してもスキャン範囲は変わらない。
 
 toolsプロファイルの`migrate`は通常の長期稼働サービス用manifestには含めないが、別のスキャンゲートを
@@ -465,13 +480,16 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 
 | イメージ | 内容 | 理由 |
 | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 25件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。2026-10-10に追加したHTTP/TLSの3件の到達性評価は`security/trivy/README.md`参照 |
+| `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 26件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。2026-10-10に追加したHTTP/TLSの3件と、2026-10-28に追加した`crypto/x509`の1件の到達性評価は`security/trivy/README.md`参照 |
+| `web-writing-tool-caddy` | `github.com/go-jose/go-jose/v3` v3.0.5のCVE-2026-116587 | 修正版が無い。リクエスト由来のJWKを解析するのは`acme_server`が公開するACMEサーバーAPIだけで、どのCaddyfileも設定しない。共通Caddyは`admin off`で、実行中にも追加できない。`purls`をv3.0.5に限定する |
 
 appとSDKのCVE-2026-84782は、2026-10-28に修正済みOpenSSLを含む公式イメージへ固定digestを更新し、
 受容を解消した。同梱ライブラリのHIGH / CRITICALも解消するため、SDK 10.0.403 / ASP.NET Core 10.0.14へ
 そろえ、`global.json`と暗黙参照のlockファイルも更新した。根拠は`security/trivy/README.md`参照。
 
-`caddy`は受容記録を持たない。到達可能なTLS DoSを受容せず、自前ビルドで解消したためである。9.1参照。
+`caddy`は、到達可能なTLS DoSを受容せず自前ビルドで解消した。修正版のある指摘は今もすべて更新で解消し、
+受容は修正版が無く到達しない`go-jose/v3`の1件だけである。9.1参照。wwt-seo-infraは同じ`Dockerfile.caddy`から
+共通Caddyをビルドし、`web-writing-tool-caddy`のタグでスキャンするため、この受容は共通Caddyにも適用される。
 
 #### digest固定したベースの指摘
 

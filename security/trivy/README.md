@@ -33,7 +33,8 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 
 | イメージ | 対象 | 概要 |
 | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来25件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
+| `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来26件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
+| `web-writing-tool-caddy` | `github.com/go-jose/go-jose/v3` v3.0.5 | CVE-2026-116587の1件。修正版が無い。クライアントのJWKを解析するのはACMEサーバー（`acme_server`）だけで、この構成では設定していない |
 
 2026-10-10の再評価では、最新の`postgres:16-alpine`をpullしても`gosu 1.19`（Go 1.24.6ビルド）が残った。
 追加した3件はそれぞれ、HTTPのRangeヘッダー処理（CVE-2026-78667）、HTTP/2のSETTINGS処理
@@ -43,6 +44,13 @@ HTTPサーバー・クライアントもTLSハンドシェイクも実行しな�
 上流Dockerfileはgosuのリリースバイナリを取得するため、`apk upgrade`でも置換できない。
 対象を`usr/local/bin/gosu`に限定し、既存の再評価期限と同じ`2026-11-24T00:00:00Z`まで受容する。
 各CVEの条件と修正版は[Goの公式告知](https://groups.google.com/g/golang-announce/c/U2fTuyDJznI)を参照。
+
+2026-10-28には、Go 1.26.10 / 1.27.3で修正されたCVE-2026-111943（`crypto/x509`、
+[Go issue 82345](https://go.dev/issue/82345)）が`gosu`に出た。運用上の懸念がある一部の中間CA証明書を経由する
+チェーンを、証明書検証が信頼してしまう問題である。`gosu`はTLSハンドシェイクも証明書検証も行わないため、
+受け入れうるチェーンがそもそも存在しない。`gosu 1.20`は2026-10-25に公開されたが、上流の
+`postgres:16-alpine`のDockerfileは2026-10-28時点でも`GOSU_VERSION 1.19`のままである。
+同じく`usr/local/bin/gosu`に限定し、`2026-11-24T00:00:00Z`まで受容する。受容は合計26件になった。
 
 digest固定したベースの指摘を、Dockerfileの`apt-get upgrade`ではなく受容で扱う理由は
 [docs/ci-cd-design.md](../../docs/ci-cd-design.md) 9.2を参照。
@@ -62,10 +70,30 @@ SDK 10.0.400の同梱PowerShell 7.6.4にあった`System.Security.Cryptography.X
 SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで既に解消している。
 `scripts/scan-image.ps1`は中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
 
-`caddy`は受容記録を持たない。公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
+`caddy`は、公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
 TLSのKeyUpdate DoS（CVE-2026-56862）を含んでいたため、修正版Goでビルドし直す
 [Dockerfile.caddy](../../Dockerfile.caddy) へ切り替えてHIGH / CRITICALを0件にした。
-2026-10-08（UTC）公開のHTTP/TLS指摘も受容せず、Go 1.27.2と`x/net v0.60.0`への更新で対応する。
+2026-10-08（UTC）公開のHTTP/TLS指摘も受容せず、Go 1.27.2と`x/net v0.60.0`への更新で対応した。
+
+2026-10-28の再評価で、修正版のある3件はすべて更新で解消した。Go 1.27.3（CVE-2026-111943）、
+`go-jose/v4` v4.1.6（CVE-2026-116587、
+[GHSA-mgcc-cww5-fp2q](https://github.com/advisories/GHSA-mgcc-cww5-fp2q)）、
+`klauspost/compress` v1.18.7（CVE-2026-63209、
+[GHSA-259r-337f-4rfw](https://github.com/advisories/GHSA-259r-337f-4rfw)）である。
+CVE-2026-116587は`go-jose/v3`にも出たが、v3には修正版が無い。v3は`caddypki`と`caddytls`から
+smallstepの`go.step.sm/crypto/jose`経由でリンクされ、smallstepの最新版（`go.step.sm/crypto` v0.91.1）も
+Caddyのmainブランチもv3.0.5を要求するため、固定では外せない。
+
+そのため、Caddyで初めての受容記録として`web-writing-tool-caddy.trivyignore.yaml`を置いた。
+脆弱な経路は、攻撃者が渡したRSA鍵入りのJWKを解析する処理である。このバイナリでリクエスト由来のJWKを
+解析するのは、`acme_server`ハンドラーが公開するACMEサーバーAPI（`smallstep/certificates/acme/api`）だけである。
+このリポジトリのCaddyfileにも、wwt-seo-infraの共通Caddyfileにも`acme_server`は無い。`tls internal`のローカルCAは
+設定にある名前へ署名するだけで、リクエストからJWKを読まない。公開証明書を取得するACMEクライアントacmezは
+go-joseを使わない。共通Caddyは`admin off`で、このリポジトリのCaddyの管理APIもコンテナ内のlocalhostにしか
+bindしないため、実行中にACMEサーバーを追加されることもない。`purls`はv3.0.5に限定し、`2026-11-24T00:00:00Z`まで受容する。
+
+ファイル名は、CIと`docker-compose.yml`が使うイメージ名`web-writing-tool-caddy`から決まる。wwt-seo-infraは
+同じ`Dockerfile.caddy`から共通Caddyをビルドし、このリポジトリ名のタグでスキャンするため、同じ受容が適用される。
 
 ## 再トリアージ
 

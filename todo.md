@@ -730,6 +730,15 @@
   - 検証: 修正前の期限切れと、SDK更新時のNU1004を再現。修正後はPowerShell 5.1/7の受容検証・セルフテスト、本番appビルド、appとmigrateのHIGH / CRITICAL 0件とゲート成功、migrateのreceipt生成、単体148件・結合125件、NuGet脆弱性0件、スクリプト文字コード、Compose・通知の回帰テスト、7プロジェクトのlockファイル確認、`git diff --check`が成功した。
   - コマンド: `scripts/scan-image.ps1 -ValidateOnly -SelfTest`（`powershell`と`pwsh`）、`scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate`、`scripts/scan-image.ps1 -AppImage web-writing-tool-app:ci-openssl-fixed-20261028 -ServiceName app`。ビルド・非ブラウザテスト・NuGetスキャンはGit管理対象の検証用コピーで実行し、302件のソース・設定と全lockファイルの一致を確認した。詳細とログは`test-results/openssl-ci-fix-20261028/verification.md`（Git管理外）。E2E・性能・Caddy/PostgreSQLの再スキャン・GitHub Actions再実行・本番Migrationと反映は未実施。
 
+## 17.5 CaddyとPostgreSQLの新規HIGHによるmain CI失敗の修正（2026-10-28）
+
+- [x] `T-1368` CaddyとPostgreSQLのイメージに出た新規HIGHを解消し、解消できないものを到達性評価のうえ受容する。
+  - 対象: `Dockerfile.caddy`, `security/trivy`, `docs/ci-cd-design.md`, `RELEASE_NOTES.md`
+  - 原因: `33f04f8`のmainのCIで、`Production Docker smoke`の脆弱性ゲートがCaddy（Go stdlib 1.27.2、`go-jose/v3` v3.0.5、`go-jose/v4` v4.1.4、`klauspost/compress` v1.18.6）と`postgres:16-alpine`の`gosu`（Go 1.24.6）のHIGHで失敗した。PRではこのジョブが走らないため、マージ後に初めて検出された。リリース候補が通知されず、wwt-seo-infraの本番デプロイは期限切れの受容記録を持つ`4135893`のまま停止していた。
+  - 完了条件: Caddyを修正版のGoと依存モジュールで再ビルドする。修正版の無い`go-jose/v3`と`gosu`のCVEを、CVE単位の到達性評価とともに対象を限定して受容する。キャッシュされた`apk upgrade`層が修正済みのAlpineパッケージを隠さないよう、ランタイムステージに名前を付ける。
+  - 検証: 修正前のCaddy（Go 1.27.2ビルド）で、`go-jose/v4`・`klauspost/compress`・stdlibのHIGH 3件と終了コード1を再現した（`go-jose/v3`は新しい受容で抑制され、v4は抑制されないことも確認）。修正後のCaddyは`--no-cache-filter runtime`で再ビルドし、`caddy build-info`でGo 1.27.3、`go-jose/v4` v4.1.6、`klauspost/compress` v1.18.7を確認した。Alpine層とCaddyのHIGH / CRITICALは0件、`postgres:16-alpine`もゲートに成功した。wwt-seo-infraの`caddy/compose.yaml`経由で`web-writing-tool-caddy:shared-*`のタグをスキャンするとゲートに成功し、manifestのimage IDはビルドしたIDと一致した。従来どおり`sha256:`のIDでスキャンすると`go-jose/v3`で失敗した。PowerShell 5.1の受容検証・セルフテストも成功した。
+  - コマンド: `docker build --pull --no-cache-filter runtime --file Dockerfile.caddy --tag web-writing-tool-caddy:ci-fix-20261028 .`、`CADDY_IMAGE`を設定して`powershell -NoProfile -File scripts/scan-image.ps1 -ServiceName 'postgres,caddy'`、`powershell -NoProfile -File scripts/scan-image.ps1 -ValidateOnly -SelfTest`。ログは`test-results/caddy-postgres-cve-fix-20261028/`（Git管理外）。pwsh 7での検証、appイメージの再スキャン、E2E、GitHub Actionsの実行、本番反映は未実施。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装

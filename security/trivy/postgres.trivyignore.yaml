@@ -199,6 +199,14 @@
       ],
       "statement": "Go crypto/tls memory exhaustion requires a TLS server to process a malformed ClientHello containing multiple ECH outer extension references. gosu only switches user and execs the postgres entrypoint; it performs no TLS handshake and is replaced before PostgreSQL accepts connections, so the ECH parser is unreachable. PostgreSQL's own TLS implementation is not this Go binary. The current upstream image still downloads gosu 1.19 built with Go 1.24.6, and apk upgrade cannot replace it. Accept only this binary pending an upstream gosu update. Re-triage on expiry: see security/trivy/README.md.",
       "expired_at": "2026-11-24T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-111943",
+      "paths": [
+        "usr/local/bin/gosu"
+      ],
+      "statement": "Go crypto/x509 distrust of a small set of intermediate CA certificates: before Go 1.26.10 / 1.27.3, certificate verification still returns chains through those intermediates, so a TLS peer holding a certificate issued under them is trusted. gosu only switches user and execs the postgres entrypoint; it performs no TLS handshake and never verifies an X.509 certificate, so there is no chain for it to accept. PostgreSQL's own TLS implementation is not this Go binary. gosu 1.20 was published on 2026-10-25, but the upstream postgres:16-alpine Dockerfile still pins gosu 1.19 built with Go 1.24.6, and apk upgrade cannot replace this release binary. Accept only this binary pending an upstream gosu update. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
     }
   ]
 }
