@@ -1,0 +1,12 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-116587",
+      "purls": [
+        "pkg:golang/github.com/go-jose/go-jose/v3@v3.0.5"
+      ],
+      "statement": "go-jose passes the modulus and primes of an RSA JWK, without size bounds, to crypto/rsa PrivateKey.Validate, which takes cubic time on Go 1.24 and later, so parsing an attacker-supplied JWK exhausts CPU (GHSA-mgcc-cww5-fp2q). In usr/bin/caddy, go-jose v3 is imported only by go.step.sm/crypto/jose, which is linked through caddypki and caddytls into smallstep/certificates. The only place that code parses a JWK from a request is the ACME server API (smallstep/certificates/acme/api, reached through the acme_server handler), which reads the jwk in a client's account JWS. Neither the Caddyfile in this repository nor the shared Caddyfile in wwt-seo-infra configures acme_server; the local CA behind tls internal only signs certificates for names in the config and parses no JWK from a request. Public certificates come from the ACME client acmez, which does not use go-jose. The shared Caddy runs with admin off, and the admin endpoint of this repository's Caddy listens only on localhost inside the container, so no request can add an ACME server at runtime. go-jose v4 carries the same CVE and is lifted to the fixed v4.1.6 by Dockerfile.caddy. v3 has no fixed release, and the newest go.step.sm/crypto (v0.91.1) and Caddy's main branch still require v3.0.5. The purl is pinned to v3.0.5 so any other version re-opens the gate. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-24T00:00:00Z"
+    }
+  ]
+}

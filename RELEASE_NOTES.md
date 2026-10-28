@@ -80,6 +80,10 @@ CIの`build-test`は、restoreしうる最初のコマンドをlocked restoreに
 | postgresイメージ | `security/trivy/postgres.trivyignore.yaml`から、`libcrypto3` / `libssl3`のCVE-2026-14456と、`libuuid`のutil-linux由来7件（CVE-2026-53612〜53614、76642、78408〜78410）の受容を削除。上流の`postgres:16-alpine`がAlpine 3.24.2で再ビルドされ（2026-09-17作成）、`libcrypto3` / `libssl3` 3.5.8-r0、`libuuid` 2.42.3-r1になって解消した。受容は3.5.7-r0 / 2.42.1-r0に版を限定していたため既に何にも一致しておらず、期限の2026-10-27を過ぎると受容記録の検証でCIが止まるところだった。残る受容は下記の追加分を含め`usr/local/bin/gosu`のGo stdlib 25件 |
 | Caddyイメージ | Goを`1.27.2`、`x/net`を`v0.60.0`へ更新し、CVE-2026-78667、CVE-2026-78669、CVE-2026-97031由来のHIGH 4件を解消。`x/net v0.60.0`の要求に合わせ、強制置換の`x/crypto`を`v0.57.0`、`x/text`を`v0.42.0`へ更新した |
 | postgresイメージ | `gosu`のGo stdlib由来のCVE-2026-78667、CVE-2026-78669、CVE-2026-97031を、`security/trivy/postgres.trivyignore.yaml`で2026-11-24（UTC）まで受容。ユーザー変更後に`exec`するだけでHTTP/TLS処理へ到達しないため、対象を`usr/local/bin/gosu`に限定した。受容は合計25件 |
+| Caddyイメージ | Goを`1.27.3`へ更新し、`go-jose/v4`を`v4.1.6`、`klauspost/compress`を`v1.18.7`へ強制置換する行を追加。CVE-2026-111943（`crypto/x509`）、CVE-2026-116587（go-jose v4）、CVE-2026-63209（`s2.NewDict`）由来のHIGH 3件を解消した。2026-10-28のmainのCIの`Production Docker smoke`がこれらで失敗し、`33f04f8`がリリース候補として通知されていなかった |
+| Caddyイメージ | 修正版の無い`go-jose/v3` v3.0.5のCVE-2026-116587を、新設の`security/trivy/web-writing-tool-caddy.trivyignore.yaml`で2026-11-24（UTC）まで受容。Caddyで初めての受容記録。v3は`caddypki`がsmallstepの`go.step.sm/crypto`経由でリンクし、上流の最新版も要求し続けるため外せない。リクエスト由来のJWKを解析するのは`acme_server`のACMEサーバーAPIだけで、どのCaddyfileも設定しないため到達しない |
+| Caddyイメージ | ランタイムステージに`runtime`と名前を付けた。`apk upgrade`の層がキャッシュされたホストでは上流で修正済みのbrotli（CVE-2026-111497）とcurl（CVE-2026-92392）のHIGHが残るため、wwt-seo-infraは`--no-cache-filter runtime`でこのステージだけを作り直す |
+| postgresイメージ | `gosu`のGo stdlib由来のCVE-2026-111943を、`usr/local/bin/gosu`に限定して2026-11-24（UTC）まで受容。`gosu`は証明書検証を行わないため到達しない。受容は合計26件 |
 
 ## v0.1.0 — MVP初回リリース
 

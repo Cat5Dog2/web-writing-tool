@@ -8,8 +8,9 @@
 #
 # The --replace lines lift dependencies that carry HIGH or CRITICAL findings: x/crypto
 # (CVE-2026-56854, ssh source-address restrictions), x/net (DNS record parsing panic), x/text
-# (norm.Iter infinite loop) and grpc-go (xDS RBAC, HTTP/2 transport, CVE-2026-84304). They are
-# plain version bumps, so no per-CVE reachability judgement is needed.
+# (norm.Iter infinite loop), grpc-go (xDS RBAC, HTTP/2 transport, CVE-2026-84304), go-jose v4
+# (CVE-2026-116587, RSA JWK validation DoS) and klauspost/compress (CVE-2026-63209, s2 dictionary
+# integer overflow). They are plain version bumps, so no per-CVE reachability judgement is needed.
 #
 # Every --replace is a hard override, not a floor: it holds the module at that exact version in
 # both directions. That is why grpc sat on v1.82.1 after the CVE-2026-84304 fix shipped in
@@ -25,14 +26,29 @@
 # findings (CVE-2026-78667, CVE-2026-78669, CVE-2026-97031). x/net v0.60.0 requires x/crypto
 # v0.57.0 and x/text v0.42.0, so their hard overrides must move with it to avoid downgrading them.
 #
+# Go 1.27.3 clears CVE-2026-111943 (crypto/x509 stops returning chains through a set of distrusted
+# intermediates). go-jose v4 and klauspost/compress had no --replace before; the v4.1.4 and v1.18.6
+# that Caddy selects on its own are both affected, and v4.1.6 / v1.18.7 are the fixed releases.
+#
+# go-jose v3 carries the same CVE-2026-116587 with no fixed release, and caddypki links it through
+# smallstep's go.step.sm/crypto, which still requires v3 in its newest release. No pin removes it,
+# so it is accepted rather than fixed: security/trivy/web-writing-tool-caddy.trivyignore.yaml
+# records why the vulnerable JWK parsing is unreachable in this deployment.
+#
 # apk upgrade in the runtime stage clears the c-ares and curl findings in the base layer.
+# Docker caches that layer by its command text, so on a host that built it before, it keeps the
+# packages that were current then: brotli CVE-2026-111497 and curl CVE-2026-92392 came back on
+# 2026-10-28 from a layer cached on 2026-10-02. CI builds without a cache. A host that keeps one
+# must rebuild only this stage with --no-cache-filter runtime, as wwt-seo-infra's
+# build-and-scan-caddy.sh does, so keep the stage name in step with it.
 #
 # Exit condition: once an upstream caddy image is published that is built with
-# Go 1.26.9 / 1.27.2 or newer and carries no HIGH/CRITICAL findings, delete this file and point
-# docker-compose.yml back at the official image. docs/ci-cd-design.md records the check.
+# Go 1.26.10 / 1.27.3 or newer and carries no HIGH/CRITICAL findings other than the accepted
+# go-jose v3 entry, delete this file and point docker-compose.yml back at the official image.
+# docs/ci-cd-design.md records the check.
 
 ARG CADDY_VERSION=2.11.4
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.3
 ARG XCADDY_VERSION=v0.4.7
 
 FROM golang:${GO_VERSION}-alpine AS build
@@ -54,9 +70,11 @@ RUN xcaddy build "v${CADDY_VERSION}" \
     --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
     --replace golang.org/x/text=golang.org/x/text@v0.42.0 \
     --replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.6 \
+    --replace github.com/klauspost/compress=github.com/klauspost/compress@v1.18.7 \
     --output /out/caddy
 
-FROM caddy:${CADDY_VERSION}
+FROM caddy:${CADDY_VERSION} AS runtime
 
 RUN apk --no-cache upgrade
 
