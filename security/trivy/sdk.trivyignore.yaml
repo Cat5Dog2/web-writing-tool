@@ -1,0 +1,12 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2026-111497",
+      "purls": [
+        "pkg:deb/ubuntu/libbrotli1@1.1.0-2build2"
+      ],
+      "statement": "Brotli decoder only. The out-of-bounds write is in the decoder (c/dec/decode.c) of the system libbrotlidec and needs a crafted brotli stream fed to that library. In this image the only packages that depend on libbrotli1 are libcurl4t64, used by the curl command, and libcurl3t64-gnutls, used by git's HTTPS transport; no other file under /usr/lib, /usr/bin, /usr/share/dotnet or /usr/share/powershell links libbrotlidec or names it for dlopen. .NET compiles its own brotli into libSystem.IO.Compression.Native, which links only libc and libm, so no .NET process, NuGet's HttpClient included, loads the system library. migrate runs nothing but the .NET CLI under bash -lc: a locked dotnet restore and dotnet tool restore against the NuGet feed, then dotnet-ef database update, which builds the projects with MSBuild and reaches PostgreSQL through Npgsql over TCP. None of these executes curl or git: no MSBuild target in the SDK or this repository execs them, and the login shell's profile scripts do not call them. The container is short lived and publishes no port. Ubuntu ships the fix as 1.1.0-2ubuntu0.1 (USN-8956-1), but the SDK is pinned by digest and the newest sdk:10.0 on MCR (created 2026-10-26, the pinned digest itself) still carries 1.1.0-2build2, so no pin can clear it yet. The purl is pinned to 1.1.0-2build2 so any other version re-opens the gate; delete this file when the sdk digest moves to an image that carries the fix. The CVE is in the CISA KEV catalog, so the expiry is one week after the November 2026 .NET servicing release rather than the usual re-triage date. Re-triage on expiry: see security/trivy/README.md.",
+      "expired_at": "2026-11-17T00:00:00Z"
+    }
+  ]
+}

@@ -739,6 +739,15 @@
   - 検証: 修正前のCaddy（Go 1.27.2ビルド）で、`go-jose/v4`・`klauspost/compress`・stdlibのHIGH 3件と終了コード1を再現した（`go-jose/v3`は新しい受容で抑制され、v4は抑制されないことも確認）。修正後のCaddyは`--no-cache-filter runtime`で再ビルドし、`caddy build-info`でGo 1.27.3、`go-jose/v4` v4.1.6、`klauspost/compress` v1.18.7を確認した。Alpine層とCaddyのHIGH / CRITICALは0件、`postgres:16-alpine`もゲートに成功した。wwt-seo-infraの`caddy/compose.yaml`経由で`web-writing-tool-caddy:shared-*`のタグをスキャンするとゲートに成功し、manifestのimage IDはビルドしたIDと一致した。従来どおり`sha256:`のIDでスキャンすると`go-jose/v3`で失敗した。PowerShell 5.1の受容検証・セルフテストも成功した。
   - コマンド: `docker build --pull --no-cache-filter runtime --file Dockerfile.caddy --tag web-writing-tool-caddy:ci-fix-20261028 .`、`CADDY_IMAGE`を設定して`powershell -NoProfile -File scripts/scan-image.ps1 -ServiceName 'postgres,caddy'`、`powershell -NoProfile -File scripts/scan-image.ps1 -ValidateOnly -SelfTest`。ログは`test-results/caddy-postgres-cve-fix-20261028/`（Git管理外）。pwsh 7での検証、appイメージの再スキャン、E2E、GitHub Actionsの実行、本番反映は未実施。
 
+## 17.6 SDKイメージのbrotli HIGHによるschedule CI失敗の修正（2026-10-29）
+
+- [x] `T-1369` migrateのSDKイメージに出た`libbrotli1`のHIGHを到達性評価のうえ受容する。
+  - 対象: `security/trivy`, `docs/ci-cd-design.md`, `RELEASE_NOTES.md`
+  - 原因: `779ee0b`のscheduleのCIで、`Production Docker smoke`の`Migration image vulnerability scan`が、固定digestのSDKイメージの`libbrotli1` 1.1.0-2build2に出たCVE-2026-111497（HIGH、CISA KEV掲載）で失敗した。Ubuntuは1.1.0-2ubuntu0.1（USN-8956-1、2026-10-26）で修正済みだが、`sdk:10.0`、`sdk:10.0-noble`、`sdk:10.0.403`はいずれも固定中のdigest（2026-10-26作成）のままで、digest更新では解消できない。PRでは`migration-image-gate`が同じゲートを通るため、修正までPRも止まる。
+  - 完了条件: CVE単位の到達性評価とともに、`purls`を固定中の版に限定して受容する。CISA KEV掲載のため期限は11月の.NET月例更新の1週間後（2026-11-17）とする。上流の再ビルド後はdigestを更新して受容ファイルを消す。
+  - 検証: 修正前のmigrateスキャンでHIGH 1件と終了コード1を再現した。イメージ内で`libbrotli1`に依存するのは`libcurl4t64`（curl）と`libcurl3t64-gnutls`（git）だけで、`libSystem.IO.Compression.Native`はlibcとlibmしかリンクせず、`/usr/share/dotnet`と`/usr/share/powershell`に`libbrotli`を読み込むファイルは無いことを確認した（唯一の一致はNativeAOT用の静的ライブラリ一覧）。ログインシェルのprofile、SDKのMSBuildターゲット、リポジトリのプロジェクトにcurl / gitの実行は無い。appの`aspnet`ベースには`libbrotli1`が無い。修正後はPowerShell 5.1の受容検証・セルフテストとmigrateのゲートが成功し、receiptを生成した。purlの版を1.1.0-2build1へ一時的に変えるとゲートが失敗することも確認した。
+  - コマンド: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ValidateOnly -SelfTest`、`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-image.ps1 -ComposeProfile tools -ServiceName migrate -ScanReceiptOutputPath <一時パス>`。pwsh 7での検証、app・postgres・caddyの再スキャン、Migrationの実行、GitHub Actionsの再実行、本番反映は未実施。
+
 ## 18. Codex向け実装プロンプト例
 
 ### 18.1 1タスク実装
