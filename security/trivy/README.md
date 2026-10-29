@@ -35,6 +35,7 @@ JSONはYAMLの部分集合なのでTrivyはそのまま読める。PowerShellが
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` | Go stdlib由来26件。エントリーポイントでrootを降りるためだけに実行され、ソケットを開かず非信頼入力も読まない |
 | `web-writing-tool-caddy` | `github.com/go-jose/go-jose/v3` v3.0.5 | CVE-2026-116587の1件。修正版が無い。クライアントのJWKを解析するのはACMEサーバー（`acme_server`）だけで、この構成では設定していない |
+| `mcr.microsoft.com/dotnet/sdk` | `libbrotli1` 1.1.0-2build2 | CVE-2026-111497の1件。Ubuntuは1.1.0-2ubuntu0.1で修正済みだが、最新の`sdk:10.0`も固定中のdigestのままで、上流の再ビルド待ち。システムのbrotliを読み込むのはcurlとgitのlibcurlだけで、migrateはどちらも実行しない |
 
 2026-10-10の再評価では、最新の`postgres:16-alpine`をpullしても`gosu 1.19`（Go 1.24.6ビルド）が残った。
 追加した3件はそれぞれ、HTTPのRangeヘッダー処理（CVE-2026-78667）、HTTP/2のSETTINGS処理
@@ -69,6 +70,21 @@ SDK 10.0.401 / ASP.NET Core 10.0.12には、同梱の.NETライブラリやPower
 SDK 10.0.400の同梱PowerShell 7.6.4にあった`System.Security.Cryptography.Xml` 10.0.6由来の5件は、
 SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を同梱したことで既に解消している。
 `scripts/scan-image.ps1`は中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。
+
+2026-10-29には、`779ee0b`のscheduleのCIで`Production Docker smoke`が、migrateの`libbrotli1` 1.1.0-2build2に
+出たCVE-2026-111497（HIGH、Brotliデコーダーの範囲外書き込み、CISA KEV掲載）で失敗した。
+[UbuntuのCVE情報](https://ubuntu.com/security/cves/CVE-2026-111497.json)の修正版は1.1.0-2ubuntu0.1
+（USN-8956-1、2026-10-26公開）だが、`sdk:10.0`、`sdk:10.0-noble`、`sdk:10.0.403`はいずれも固定中のdigest
+（2026-10-26作成）を指したままで、digest更新では解消できない。appの実行基盤の`aspnet`には`libbrotli1`自体が無い。
+
+イメージ内で`libbrotli1`に依存するのは、curlコマンドが使う`libcurl4t64`と、gitのHTTPS転送が使う
+`libcurl3t64-gnutls`だけである。.NETはbrotliを`libSystem.IO.Compression.Native`へ静的に組み込んでおり、
+このライブラリはlibcとlibmしかリンクしない。`/usr/share/dotnet`と`/usr/share/powershell`にも、
+`libbrotlidec`を名前で読み込むファイルは無い。migrateはlocked restore、tool restore、`dotnet-ef database update`を
+実行するだけで、curlもgitも起動しない。SDKとこのリポジトリのMSBuildターゲットも、ログインシェルのprofileも
+これらを呼ばない。そのため`purls`を1.1.0-2build2に限定して`sdk.trivyignore.yaml`で受容した。
+CISA KEV掲載のため、期限は通常の再評価日ではなく、2026-11-10（11月のPatch Tuesday）に予定される
+.NETの月例更新の1週間後の`2026-11-17T00:00:00Z`とした。修正版を含むdigestへ動かしたらファイルごと消す。
 
 `caddy`は、公開イメージのバイナリがGo 1.26.3ビルドで、インターネットから到達可能な
 TLSのKeyUpdate DoS（CVE-2026-56862）を含んでいたため、修正版Goでビルドし直す

@@ -482,10 +482,12 @@ Trivyは`statement`も`expired_at`も任意として扱い、`expired_at`を省�
 | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu`のGo stdlib 26件 | 起動時にrootを降りるためだけに実行され、PostgreSQLが接続を受ける前に終了する。ソケットを開かず非信頼入力も読まない。2026-10-10に追加したHTTP/TLSの3件と、2026-10-28に追加した`crypto/x509`の1件の到達性評価は`security/trivy/README.md`参照 |
 | `web-writing-tool-caddy` | `github.com/go-jose/go-jose/v3` v3.0.5のCVE-2026-116587 | 修正版が無い。リクエスト由来のJWKを解析するのは`acme_server`が公開するACMEサーバーAPIだけで、どのCaddyfileも設定しない。共通Caddyは`admin off`で、実行中にも追加できない。`purls`をv3.0.5に限定する |
+| `mcr.microsoft.com/dotnet/sdk` | `libbrotli1` 1.1.0-2build2のCVE-2026-111497 | Brotliデコーダーの範囲外書き込み。イメージ内でシステムのbrotliを読み込むのはcurlとgitのlibcurlだけで、.NETはbrotliを静的に組み込み読み込まない。migrateは.NET CLIでlocked restore、tool restore、`dotnet-ef database update`を実行するだけで、curlもgitも起動しない。修正版は上流がsdkを再ビルドした後のdigest更新で入る。CISA KEV掲載のため期限は`2026-11-17`と短くする |
 
 appとSDKのCVE-2026-84782は、2026-10-28に修正済みOpenSSLを含む公式イメージへ固定digestを更新し、
 受容を解消した。同梱ライブラリのHIGH / CRITICALも解消するため、SDK 10.0.403 / ASP.NET Core 10.0.14へ
 そろえ、`global.json`と暗黙参照のlockファイルも更新した。根拠は`security/trivy/README.md`参照。
+appの`aspnet`ベースには`libbrotli1`が無いため、CVE-2026-111497の受容はSDKだけである。
 
 `caddy`は、到達可能なTLS DoSを受容せず自前ビルドで解消した。修正版のある指摘は今もすべて更新で解消し、
 受容は修正版が無く到達しない`go-jose/v3`の1件だけである。9.1参照。wwt-seo-infraは同じ`Dockerfile.caddy`から
@@ -498,7 +500,8 @@ appの`Dockerfile`はruntimeベース（aspnet）を、migrateは公開SDKイメ
 イメージを公開するまでは、どのdigestへ動かしても消えない。CVE-2026-84782（Ubuntuの公開は2026-09-29）が
 この例で、2026-10-02の初回評価では、当時の最新の`aspnet:10.0`と`sdk:10.0`（いずれも2026-09-21作成）は
 脆弱な3.0.13-0ubuntu3.15のままだった。その後、公式イメージが修正版3.0.13-0ubuntu3.16で
-再ビルドされたため、2026-10-28の再評価ではdigest更新で解消できた。
+再ビルドされたため、2026-10-28の再評価ではdigest更新で解消できた。`libbrotli1`のCVE-2026-111497
+（Ubuntuの修正版公開は2026-10-26）も同じ状態で、2026-10-29時点の最新の`sdk:10.0`は固定中のdigestのままである。
 
 その間は到達性を評価し、到達しないものだけを、固定中のdigestが持つパッケージ版へ`purls`を限定して
 受容する。版を限定するので、digestを動かして版が変われば受容は効かなくなり、別の版で残っていれば
@@ -683,8 +686,10 @@ migrateは長期稼働サービスのmanifestへ入れない。代わりにmigra
 並行実行や後日の再利用を拒否する。再試行は新しいスキャンから行う。PRでは`migration-image-gate`、main / schedule /
 手動実行では`docker-production`がこの経路を検証する。
 
-現在、migrateイメージに受容記録はない。`libssl3t64` / `openssl`のCVE-2026-84782は、2026-10-28の
-固定digest更新で解消した。9.2を参照する。SDK 10.0.400が同梱していたPowerShell 7.6.4の
+現在の受容内容は`libbrotli1` 1.1.0-2build2のCVE-2026-111497の1件で、期限は`2026-11-17T00:00:00Z`である。
+到達性の評価と、digest更新ではなく受容で扱う理由は9.2と`security/trivy/README.md`を参照する。
+`libssl3t64` / `openssl`のCVE-2026-84782は、2026-10-28の固定digest更新で解消した。
+SDK 10.0.400が同梱していたPowerShell 7.6.4の
 `System.Security.Cryptography.Xml` 10.0.6由来5件は、SDK 10.0.401がPowerShell 7.6.6（同 10.0.10）を
 同梱したことで解消したため、digest更新と同時に受容記録を削除した。`scripts/scan-image.ps1`は
 中身が空の受容ファイルを拒否するので、受容が0件になったらファイルごと消す。

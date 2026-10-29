@@ -84,6 +84,7 @@ CIの`build-test`は、restoreしうる最初のコマンドをlocked restoreに
 | Caddyイメージ | 修正版の無い`go-jose/v3` v3.0.5のCVE-2026-116587を、新設の`security/trivy/web-writing-tool-caddy.trivyignore.yaml`で2026-11-24（UTC）まで受容。Caddyで初めての受容記録。v3は`caddypki`がsmallstepの`go.step.sm/crypto`経由でリンクし、上流の最新版も要求し続けるため外せない。リクエスト由来のJWKを解析するのは`acme_server`のACMEサーバーAPIだけで、どのCaddyfileも設定しないため到達しない |
 | Caddyイメージ | ランタイムステージに`runtime`と名前を付けた。`apk upgrade`の層がキャッシュされたホストでは上流で修正済みのbrotli（CVE-2026-111497）とcurl（CVE-2026-92392）のHIGHが残るため、wwt-seo-infraは`--no-cache-filter runtime`でこのステージだけを作り直す |
 | postgresイメージ | `gosu`のGo stdlib由来のCVE-2026-111943を、`usr/local/bin/gosu`に限定して2026-11-24（UTC）まで受容。`gosu`は証明書検証を行わないため到達しない。受容は合計26件 |
+| SDKイメージ | `libbrotli1` 1.1.0-2build2のCVE-2026-111497（HIGH、Brotliデコーダーの範囲外書き込み、CISA KEV掲載）を、`security/trivy/sdk.trivyignore.yaml`で2026-11-17（UTC）まで受容。2026-10-29に`779ee0b`のscheduleのCIで`Production Docker smoke`のmigrateイメージのゲートが失敗していた。Ubuntuは1.1.0-2ubuntu0.1で修正済みだが、最新の`sdk:10.0`も固定中のdigestのままでdigest更新では解消できない。システムのbrotliを読み込むのはcurlとgitのlibcurlだけで、.NETは静的に組み込んだbrotliを使い、migrateはcurlもgitも実行しないため到達しない。上流の再ビルド後にdigestを更新して受容を消す。appの`aspnet`ベースには`libbrotli1`が無い |
 
 ## v0.1.0 — MVP初回リリース
 
